@@ -1,0 +1,5 @@
+{
+  "name": "PDF 講稿生成器 20251110 v2_test",
+  "description": "上傳您的 PDF 文件，AI 將為您自動生成每一頁的詳細講稿，讓您的演講更具吸引力。",
+  "requestFramePermissions": []
+}
