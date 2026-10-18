@@ -1,0 +1,96 @@
+import { describe, expect, it } from "vitest";
+import { SubtitleStyle } from "@lvs/shared";
+import { splitSentences } from "../src/segment.js";
+import { assColor, buildCues, chunkSentence, cuesToAss, cuesToSrt, formatAssTime, formatSrtTime, segmentCueTexts, wrapCueLines } from "../src/subtitles.js";
+
+describe("segmentation", () => {
+  it("splits sentences on CJK and Latin terminators", () => {
+    expect(splitSentences("第一句。第二句！Third sentence. Fourth?\n第五")).toEqual(["第一句。", "第二句！", "Third sentence.", "Fourth?", "第五"]);
+    expect(splitSentences("p < .05 是顯著的。")).toEqual(["p < .05 是顯著的。"]);
+  });
+  it("chunks long sentences at clause punctuation within two lines", () => {
+    const s = "這是一段很長的句子，裡面有很多子句，所以需要被切開，否則字幕會太長，觀眾會看不完，對吧。";
+    const chunks = chunkSentence(s, 12);
+    expect(chunks.join("")).toBe(s.replace(/\s/g, ""));
+    for (const c of chunks) expect(Array.from(c).length).toBeLessThanOrEqual(24);
+    expect(chunks.length).toBeGreaterThan(1);
+  });
+  it("hard-wraps text without punctuation", () => {
+    const chunks = chunkSentence("一".repeat(50), 10);
+    expect(chunks.map((c) => c.length)).toEqual([20, 20, 10]);
+  });
+  it("wrapCueLines breaks at a clause boundary", () => {
+    expect(wrapCueLines("前半句很短，後半句也不長", 8)).toBe("前半句很短，\n後半句也不長");
+    expect(wrapCueLines("短", 8)).toBe("短");
+  });
+  it("segmentCueTexts", () => {
+    expect(segmentCueTexts("甲。乙。", 20)).toEqual(["甲。", "乙。"]);
+  });
+});
+
+describe("buildCues", () => {
+  it("distributes proportionally without timestamps", () => {
+    const cues = buildCues({ subtitleText: "一二三四。五六七八九十一二。", durationSec: 6, maxCharsPerLine: 20, language: "zh-TW" });
+    expect(cues).toHaveLength(2);
+    expect(cues[0]).toMatchObject({ index: 1, startSec: 0, endSec: 2 });
+    expect(cues[1]).toMatchObject({ index: 2, startSec: 2, endSec: 6 });
+  });
+  it("aligns to word timestamps when available", () => {
+    const text = "今天好。明天見。";
+    const ts = [
+      { text: "今", startSec: 0.5, endSec: 0.8 },
+      { text: "天", startSec: 0.8, endSec: 1.1 },
+      { text: "好", startSec: 1.1, endSec: 1.6 },
+      { text: "明", startSec: 2.5, endSec: 2.8 },
+      { text: "天", startSec: 2.8, endSec: 3.1 },
+      { text: "見", startSec: 3.1, endSec: 3.7 },
+    ];
+    const cues = buildCues({ subtitleText: text, timestamps: ts, durationSec: 4, maxCharsPerLine: 20, language: "zh-TW" });
+    expect(cues[0]).toMatchObject({ startSec: 0.5, endSec: 1.6, text: "今天好。" });
+    expect(cues[1]).toMatchObject({ startSec: 2.5, endSec: 3.7, text: "明天見。" });
+    expect(cues[0]!.words).toHaveLength(3);
+  });
+  it("falls back gracefully when subtitle text differs from spoken text", () => {
+    // spoken "V O two max" vs subtitle "VO₂max": no unit matches for that cue -> proportional
+    const ts = [
+      { text: "V", startSec: 0, endSec: 0.2 },
+      { text: "O", startSec: 0.2, endSec: 0.4 },
+      { text: "two", startSec: 0.4, endSec: 0.7 },
+      { text: "max", startSec: 0.7, endSec: 1.0 },
+      { text: "很", startSec: 1.2, endSec: 1.4 },
+      { text: "高", startSec: 1.4, endSec: 1.8 },
+    ];
+    const cues = buildCues({ subtitleText: "VO₂max。很高。", timestamps: ts, durationSec: 2, maxCharsPerLine: 20, language: "mixed" });
+    expect(cues).toHaveLength(2);
+    expect(cues[1]).toMatchObject({ startSec: 1.2, endSec: 1.8 });
+    expect(cues[0]!.endSec).toBeLessThanOrEqual(cues[1]!.startSec);
+  });
+  it("keeps cues monotonic and within duration", () => {
+    const cues = buildCues({ subtitleText: "A. B. C. D. E.", durationSec: 1, maxCharsPerLine: 20, language: "en", minCueSec: 0.4 });
+    for (let i = 1; i < cues.length; i++) expect(cues[i]!.startSec).toBeGreaterThanOrEqual(cues[i - 1]!.endSec);
+    expect(cues.at(-1)!.endSec).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("exporters", () => {
+  const cues = [
+    { index: 1, startSec: 0, endSec: 1.5, text: "第一行\n第二行" },
+    { index: 2, startSec: 61.25, endSec: 3600.5, text: "Hello {world}" },
+  ];
+  it("srt", () => {
+    expect(formatSrtTime(61.25)).toBe("00:01:01,250");
+    expect(cuesToSrt(cues)).toBe("1\n00:00:00,000 --> 00:00:01,500\n第一行\n第二行\n\n2\n00:01:01,250 --> 01:00:00,500\nHello {world}\n");
+  });
+  it("ass", () => {
+    expect(formatAssTime(61.25)).toBe("0:01:01.25");
+    expect(assColor("#FFFFFF", 1)).toBe("&H00FFFFFF");
+    expect(assColor("#102030", 0.6)).toBe("&H66302010");
+    const style = SubtitleStyle.parse({ fontFamily: "Noto Sans CJK TC", fontSizePx: 40, position: "bottom", marginPx: 48 });
+    const ass = cuesToAss(cues, style, 1920, 1080);
+    expect(ass).toContain("PlayResX: 1920");
+    expect(ass).toContain("Style: Default,Noto Sans CJK TC,40,&H00FFFFFF,&H00FFFFFF,&H66000000,&H66000000,0,0,0,0,100,100,0,0,3,10,0,2,96,96,48,1");
+    expect(ass).toContain("Dialogue: 0,0:00:00.00,0:00:01.50,Default,,0,0,0,,第一行\\N第二行");
+    expect(ass).toContain("Hello ｛world｝");
+    expect(cuesToAss(cues, { ...style, position: "top" }, 1280, 720)).toContain(",8,64,64,48,1");
+  });
+});
