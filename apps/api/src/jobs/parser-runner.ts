@@ -35,7 +35,9 @@ export class PythonParserRunner implements ParserRunner {
 
   async run(input: ParserRunInput): Promise<ParserManifest> {
     await new Promise<void>((resolveRun, reject) => {
-      const child = spawn(this.opts.python, ["-I", "-m", "lvs_parser", "parse", input.filePath, "--out", input.outDir], {
+      // -E ignores PYTHON* env vars; -I would also drop the cwd (where lvs_parser lives) and
+      // user-site packages from sys.path, so the module could not be found.
+      const child = spawn(this.opts.python, ["-E", "-m", "lvs_parser", "parse", input.filePath, "--out", input.outDir], {
         cwd: this.opts.cwd,
         env: { ...process.env, SOFFICE_BIN: this.opts.sofficeBin ?? "soffice", PYTHONUNBUFFERED: "1" },
         stdio: ["ignore", "pipe", "pipe"],

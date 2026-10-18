@@ -8,7 +8,7 @@ import type { AppContext } from "./context.js";
 import { createDb, type DbHandle } from "./db/client.js";
 import { ApiHttpError } from "./errors.js";
 import { EventBus } from "./events/bus.js";
-import { buildHandlers, unimplementedSeams, type GenerationSeams } from "./jobs/handlers/index.js";
+import { buildHandlers, type GenerationSeams } from "./jobs/handlers/index.js";
 import { PythonParserRunner, type ParserRunner } from "./jobs/parser-runner.js";
 import { JobRunner } from "./jobs/runner.js";
 import { assetRoutes } from "./routes/assets.js";
@@ -16,7 +16,9 @@ import { healthRoutes } from "./routes/health.js";
 import { projectRoutes } from "./routes/projects.js";
 import { providerRoutes } from "./routes/providers.js";
 import { ProviderService } from "./services/providers.js";
-import { fallbackDeriveTexts, type DeriveTexts } from "./services/scripts.js";
+import { pipelineDeriveTexts, type DeriveTexts } from "./services/scripts.js";
+import { createGenerationSeams } from "./services/generation.js";
+import type { ProviderRegistry } from "@lvs/providers";
 import { LocalStorageService } from "./storage/local.js";
 import { AssetUrlSigner } from "./storage/signing.js";
 import type { StorageService } from "./storage/types.js";
@@ -27,8 +29,10 @@ export interface BuildServerOptions {
   dbHandle?: DbHandle;
   storage?: StorageService;
   parserRunner?: ParserRunner;
-  /** Integration point for @lvs/pipeline + @lvs/providers + @lvs/render. */
+  /** Override the generation seams (tests); default wires @lvs/pipeline + @lvs/providers + @lvs/render. */
   seams?: GenerationSeams;
+  /** Provider registry (tests inject mock responders); default `defaultRegistry`. */
+  registry?: ProviderRegistry;
   deriveTexts?: DeriveTexts;
   /** Start polling immediately (default true). Tests call runner.drain() instead. */
   startRunner?: boolean;
@@ -54,13 +58,15 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<BuiltS
   const parserRunner =
     opts.parserRunner ??
     new PythonParserRunner({ python: config.PARSER_PYTHON, cwd: config.PARSER_CLI, timeoutMs: config.PARSER_TIMEOUT_MS, sofficeBin: config.SOFFICE_BIN });
+  const providers = new ProviderService(dbHandle.db, config, opts.registry);
+  const seams = opts.seams ?? createGenerationSeams({ providers, config });
   const runner = new JobRunner({
     db: dbHandle.db,
     storage,
     bus,
     config,
     parserRunner,
-    handlers: buildHandlers(opts.seams ?? unimplementedSeams),
+    handlers: buildHandlers(seams),
     logger: app.log,
     ...opts.runnerOverrides,
   });
@@ -72,8 +78,8 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<BuiltS
     bus,
     runner,
     auth: createAuth(config.DEV_OWNER_ID),
-    providers: new ProviderService(dbHandle.db, config),
-    deriveTexts: opts.deriveTexts ?? fallbackDeriveTexts,
+    providers,
+    deriveTexts: opts.deriveTexts ?? pipelineDeriveTexts,
   };
 
   await app.register(cors, { origin: true, exposedHeaders: ["Content-Disposition", "Content-Range", "Accept-Ranges"] });

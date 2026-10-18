@@ -26,6 +26,15 @@ importers:
       '@fastify/multipart':
         specifier: ^10.1.4
         version: 10.1.4
+      '@lvs/pipeline':
+        specifier: workspace:*
+        version: link:../../packages/pipeline
+      '@lvs/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
+      '@lvs/render':
+        specifier: workspace:*
+        version: link:../../workers/render
       '@lvs/shared':
         specifier: workspace:*
         version: link:../../packages/shared

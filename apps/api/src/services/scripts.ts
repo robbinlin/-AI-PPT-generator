@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
-import { contentHash, type Language, type ScriptRevision } from "@lvs/shared";
+import { contentHash, type GlossaryEntry, type Language, type ScriptRevision } from "@lvs/shared";
+import { derivePronunciationText, deriveSubtitleText } from "@lvs/pipeline";
 import type { Db } from "../db/client.js";
 import { toScriptRevision } from "../db/mappers.js";
 import { scenes, scriptRevisions, type SceneRow } from "../db/schema.js";
@@ -11,15 +12,22 @@ export interface DerivedTexts {
 }
 
 /**
- * Integration seam: @lvs/pipeline will provide a real implementation (symbol → reading,
- * number normalisation, glossary readings). This fallback only normalises whitespace.
+ * Turns a user-edited script into the TTS text (glossary readings, spoken numbers/symbols)
+ * and the on-screen subtitle text. `glossary` is the latest outline's glossary when known.
  */
-export type DeriveTexts = (script: string, language: Language) => DerivedTexts;
+export type DeriveTexts = (script: string, language: Language, glossary?: GlossaryEntry[]) => DerivedTexts;
 
+/** Whitespace-only derivation; tests use it to keep fixtures literal. */
 export const fallbackDeriveTexts: DeriveTexts = (script) => {
   const normalised = script.replace(/\r\n?/g, "\n").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
   return { pronunciationText: normalised, subtitleText: normalised };
 };
+
+/** Default: the pipeline's deterministic text derivation. */
+export const pipelineDeriveTexts: DeriveTexts = (script, language, glossary = []) => ({
+  pronunciationText: derivePronunciationText(script, glossary, language),
+  subtitleText: deriveSubtitleText(script),
+});
 
 /** Rough speaking-time guess used before audio exists (zh ≈ 4.2 chars/s, en ≈ 2.5 words/s). */
 export function estimateSpeakingSeconds(text: string, language: Language): number {
@@ -50,6 +58,9 @@ export interface CreateRevisionInput {
   /** Hash of the inputs that produced an AI script; for user scripts the hash of the text. */
   inputHash?: string;
   deriveTexts?: DeriveTexts;
+  /** Glossary readings applied by `deriveTexts` (latest outline). */
+  glossary?: GlossaryEntry[];
+  estimatedDurationSec?: number;
 }
 
 /**
@@ -57,8 +68,8 @@ export interface CreateRevisionInput {
  * Returns the existing latest revision unchanged when the text is identical (autosave no-op).
  */
 export async function createScriptRevision(db: Db, input: CreateRevisionInput): Promise<{ revision: ScriptRevision; created: boolean }> {
-  const derive = input.deriveTexts ?? fallbackDeriveTexts;
-  const derived = derive(input.script, input.language);
+  const derive = input.deriveTexts ?? pipelineDeriveTexts;
+  const derived = derive(input.script, input.language, input.glossary);
   const pronunciationText = input.pronunciationText ?? derived.pronunciationText;
   const subtitleText = input.subtitleText ?? derived.subtitleText;
   const latest = await latestRevisionForScene(db, input.scene.id);
@@ -85,7 +96,7 @@ export async function createScriptRevision(db: Db, input: CreateRevisionInput): 
       source: input.source,
       outlineRevisionId: input.outlineRevisionId ?? null,
       contentHash: hash,
-      estimatedDurationSec: estimateSpeakingSeconds(pronunciationText, input.language),
+      estimatedDurationSec: input.estimatedDurationSec ?? estimateSpeakingSeconds(pronunciationText, input.language),
     })
     .returning();
   const revision = toScriptRevision(row!);

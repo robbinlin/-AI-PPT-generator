@@ -24,7 +24,7 @@ import { jobs, projects, scenes, scriptRevisions, slides, sourceDocuments } from
 import { badRequest, notFound } from "../errors.js";
 import { renderScriptDocument } from "../jobs/handlers/export-script.js";
 import { estimateJob } from "../services/estimate.js";
-import { getProjectDetail, latestSourceDocument, requireProject } from "../services/projects.js";
+import { getProjectDetail, latestOutline, latestSourceDocument, requireProject } from "../services/projects.js";
 import { createScriptRevision } from "../services/scripts.js";
 import { SOURCE_MIME, sniffSourceKind } from "../util/magic.js";
 import { parse } from "../util/validate.js";
@@ -231,6 +231,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const project = await requireProject(db, ownerId, req.params.id);
     const body = parse(UpdateScriptRequest, req.body);
     const scene = await requireScene(project.id, req.params.sceneId);
+    const outline = await latestOutline(db, project.id);
     const { revision, created } = await createScriptRevision(db, {
       scene,
       script: body.script,
@@ -239,6 +240,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
       source: "user",
       language: project.settings.language,
       deriveTexts: ctx.deriveTexts,
+      glossary: outline?.glossary,
     });
     if (created) {
       const [fresh] = await db.select().from(scenes).where(eq(scenes.id, scene.id)).limit(1);

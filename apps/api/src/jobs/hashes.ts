@@ -1,104 +1,73 @@
 /**
- * Input hashes that decide whether a derived asset is up to date.
- * Mirrors the table in docs/ARCHITECTURE.md ("Input hashes"). Pure functions.
- *
- * TODO(pipeline): @lvs/pipeline may export equivalents; when it does, re-export from here so
- * the API and the pipeline never disagree about what invalidates what.
+ * Input hashes that decide whether a derived asset is up to date. Thin adapters over the
+ * canonical implementations in `@lvs/pipeline` (docs/ARCHITECTURE.md "Input hashes") so the
+ * API and the pipeline can never disagree about what invalidates what.
  */
-import { contentHash, type DerivedStatus, type ProjectSettings, type Scene, type ScriptRevision, type Slide } from "@lvs/shared";
+import type { DerivedStatus, ProjectSettings, Scene, ScriptRevision, Slide } from "@lvs/shared";
+import * as pipeline from "@lvs/pipeline";
 
-export function scriptSettingsSubset(s: ProjectSettings) {
-  return {
-    language: s.language,
-    audience: s.audience,
-    audienceNote: s.audienceNote,
-    mode: s.mode,
-    contentBoundary: s.contentBoundary,
-    targetDurationSec: s.targetDurationSec,
-    styleNote: s.styleNote,
-    llmProviderId: s.llmProviderId,
-  };
-}
+export const scriptSettingsSubset = pipeline.scriptSettingsSubset;
 
 /** Outline depends on every visible slide's content, in order, and the script settings. */
 export function outlineInputHash(slidesInOrder: Slide[], settings: ProjectSettings): string {
-  return contentHash({
-    kind: "outline",
-    slides: slidesInOrder.filter((s) => !s.hidden).map((s) => s.contentHash),
-    settings: scriptSettingsSubset(settings),
-  });
+  return pipeline.outlineInputHash({ slideContentHashes: slidesInOrder.filter((s) => !s.hidden).map((s) => s.contentHash), settings });
 }
 
-export function scriptInputHash(args: {
-  slide: Slide;
-  prev?: Slide;
-  next?: Slide;
-  outlineInputHash?: string;
-  settings: ProjectSettings;
-}): string {
-  return contentHash({
-    kind: "script",
-    slide: args.slide.contentHash,
-    prev: args.prev?.contentHash,
-    next: args.next?.contentHash,
-    outline: args.outlineInputHash,
-    settings: scriptSettingsSubset(args.settings),
+export function scriptInputHash(args: { slide: Slide; prev?: Slide; next?: Slide; outlineInputHash?: string; settings: ProjectSettings }): string {
+  return pipeline.scriptInputHash({
+    slideContentHash: args.slide.contentHash,
+    outlineInputHash: args.outlineInputHash ?? "",
+    prevSlideContentHash: args.prev?.contentHash,
+    nextSlideContentHash: args.next?.contentHash,
+    settings: args.settings,
   });
 }
 
 export function audioInputHash(args: {
   pronunciationText: string;
   settings: ProjectSettings;
-  glossaryReadings?: Array<{ term: string; reading?: string }>;
+  glossaryReadings?: Array<{ term: string; reading?: string; definition?: string }>;
 }): string {
-  const v = args.settings.voice;
-  return contentHash({
-    kind: "audio",
-    text: args.pronunciationText,
-    voice: { providerId: v.providerId, voiceId: v.voiceId, speed: v.speed, sentencePauseSec: v.sentencePauseSec },
+  return pipeline.audioInputHash({
+    pronunciationText: args.pronunciationText,
+    voice: args.settings.voice,
+    glossary: args.glossaryReadings,
     language: args.settings.language,
-    glossary: (args.glossaryReadings ?? []).filter((g) => g.reading).map((g) => [g.term, g.reading]),
   });
 }
 
 export function subtitleInputHash(args: { audioInputHash: string; subtitleText: string; settings: ProjectSettings }): string {
-  return contentHash({
-    kind: "subtitle",
-    audio: args.audioInputHash,
-    text: args.subtitleText,
+  return pipeline.subtitleInputHash({
+    audioInputHash: args.audioInputHash,
+    subtitleText: args.subtitleText,
     maxCharsPerLine: args.settings.subtitles.style.maxCharsPerLine,
   });
 }
 
 export function avatarInputHash(args: { audioAssetId: string; settings: ProjectSettings }): string {
-  return contentHash({
-    kind: "avatar",
+  return pipeline.avatarInputHash({
     audioAssetId: args.audioAssetId,
-    providerId: args.settings.avatar.providerId,
-    avatarId: args.settings.avatar.avatarId,
+    providerId: args.settings.avatar.providerId ?? "",
+    avatarId: args.settings.avatar.avatarId ?? "",
     aspectRatio: args.settings.aspectRatio,
   });
 }
 
-export function renderInputHash(args: {
-  scenesInOrder: Scene[];
-  settings: ProjectSettings;
-  preset: string;
-  burnSubtitles: boolean;
-}): string {
-  return contentHash({
-    kind: "render",
+export function renderInputHash(args: { scenesInOrder: Scene[]; settings: ProjectSettings; preset: string; burnSubtitles: boolean }): string {
+  return pipeline.renderInputHash({
     scenes: args.scenesInOrder.map((s) => ({
-      audio: s.audio.assetId,
-      avatar: s.avatar.assetId,
-      subtitle: s.subtitle.assetId,
+      sceneId: s.id,
+      audioAssetId: s.audio.assetId,
+      avatarVideoAssetId: s.avatar.assetId,
+      subtitleAssetId: s.subtitle.assetId,
       muted: s.muted,
-      layout: s.avatarLayout ?? args.settings.avatar.layout,
-      transition: s.transitionIn ?? args.settings.transition,
-      tail: s.tailPauseSec,
+      tailPauseSec: s.tailPauseSec,
+      avatarLayout: s.avatarLayout,
+      transitionIn: s.transitionIn,
     })),
     subtitleStyle: args.settings.subtitles.style,
-    burn: args.burnSubtitles,
+    burnSubtitles: args.burnSubtitles,
+    transition: args.settings.transition,
     preset: args.preset,
     aspectRatio: args.settings.aspectRatio,
   });

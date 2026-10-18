@@ -30,6 +30,16 @@ const EnvSchema = z.object({
   JOB_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(500),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(200 * 1024 * 1024),
   DEV_OWNER_ID: z.string().default("dev"),
+  /** Scratch + scene cache for the render worker. */
+  RENDER_WORK_DIR: z.string().default("./data/render"),
+  /** Slide images attached to the outline prompt (cost control). */
+  OUTLINE_MAX_IMAGES: z.coerce.number().int().min(0).default(12),
+  /** Attach the slide image to each per-slide script prompt. */
+  SCRIPT_ATTACH_IMAGE: z.coerce.boolean().default(true),
+  /** Polling cadence for external avatar tasks. */
+  AVATAR_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
+  /** Lifetime of the signed audio URL handed to avatar providers (they queue for a while). */
+  AVATAR_AUDIO_URL_TTL_SEC: z.coerce.number().int().positive().default(6 * 3600),
 });
 
 export type Config = z.infer<typeof EnvSchema> & {

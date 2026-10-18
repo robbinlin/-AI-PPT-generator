@@ -1,7 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { SetProviderKeyRequest } from "@lvs/shared";
 import type { AppContext } from "../context.js";
-import { notImplemented } from "../errors.js";
 import { parse } from "../util/validate.js";
 
 export async function providerRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
@@ -16,16 +15,15 @@ export async function providerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     ctx.providers.deleteKey(ctx.auth.resolve(req).ownerId, req.params.providerId),
   );
 
-  // TODO(providers): resolve the TtsProvider / AvatarProvider from @lvs/providers with
-  // ctx.providers.credentials(...) and return listVoices() / listAvatars().
   app.get<{ Params: { providerId: string } }>("/providers/:providerId/voices", async (req) => {
-    const d = ctx.providers.descriptor(req.params.providerId);
-    if (d.kind !== "tts") throw notImplemented(`${d.id} is not a TTS provider`);
-    throw notImplemented("voice listing is not wired yet");
+    const { ownerId } = ctx.auth.resolve(req);
+    const tts = await ctx.providers.requireTts(ownerId, req.params.providerId);
+    return tts.listVoices();
   });
+
   app.get<{ Params: { providerId: string } }>("/providers/:providerId/avatars", async (req) => {
-    const d = ctx.providers.descriptor(req.params.providerId);
-    if (d.kind !== "avatar") throw notImplemented(`${d.id} is not an avatar provider`);
-    throw notImplemented("avatar listing is not wired yet");
+    const { ownerId } = ctx.auth.resolve(req);
+    const avatar = await ctx.providers.requireAvatar(ownerId, req.params.providerId);
+    return avatar.listAvatars();
   });
 }

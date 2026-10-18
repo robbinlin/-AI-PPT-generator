@@ -41,9 +41,18 @@ export interface GenerationSeams {
     next?: Slide;
     outline: OutlineRevision | undefined;
     settings: ProjectSettings;
+    /** Latest script of the preceding visible scene, for continuity. */
+    previousScript?: string;
   }): Promise<ScriptRevision>;
   /** TODO(providers): TtsProvider.synthesize → store `audio` asset (+ timestamps) and `subtitle` asset (SRT); update scene states + durationSec. */
-  synthesizeSpeech(args: { ctx: JobContext; scene: Scene; script: ScriptRevision; settings: ProjectSettings; inputHash: string }): Promise<void>;
+  synthesizeSpeech(args: {
+    ctx: JobContext;
+    scene: Scene;
+    script: ScriptRevision;
+    settings: ProjectSettings;
+    inputHash: string;
+    outline: OutlineRevision | undefined;
+  }): Promise<void>;
   /** TODO(providers): AvatarProvider.createTask with the audio asset URL; ctx.setProviderTaskId(taskId) BEFORE polling; store `avatar_video` asset. */
   generateAvatar(args: { ctx: JobContext; scene: Scene; audioAssetId: string; settings: ProjectSettings; inputHash: string }): Promise<void>;
   /** TODO(render): build RenderSpec from scenes/assets (storage.localPath), run @lvs/render, store `video` + `subtitle` assets. */
@@ -91,20 +100,25 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
     const { detail, visibleScenes, slidesById } = await loadDetail(ctx);
     const targets = selectScenesToProcess(visibleScenes, ctx.job.payload.sceneIds, ctx.job.payload.force, (s) => s.script.status);
     const ids: string[] = [];
+    // Scenes are processed in deck order so each prompt can see the script written just before it.
+    const latestScript = new Map(Object.entries(detail.scripts).map(([sceneId, rev]) => [sceneId, rev.script]));
     for (let i = 0; i < targets.length; i++) {
       const scene = targets[i]!;
       const pos = visibleScenes.findIndex((s) => s.id === scene.id);
       const slide = slidesById.get(scene.slideId)!;
+      const prevScene = pos > 0 ? visibleScenes[pos - 1] : undefined;
       await ctx.emit(i / Math.max(1, targets.length), `生成第 ${slide.pageNumber} 頁講稿`);
       const rev = await seams.generateScript({
         ctx,
         scene,
         slide,
-        prev: pos > 0 ? slidesById.get(visibleScenes[pos - 1]!.slideId) : undefined,
+        prev: prevScene ? slidesById.get(prevScene.slideId) : undefined,
         next: pos < visibleScenes.length - 1 ? slidesById.get(visibleScenes[pos + 1]!.slideId) : undefined,
         outline: detail.outline,
         settings: detail.project.settings,
+        previousScript: prevScene ? latestScript.get(prevScene.id) : undefined,
       });
+      latestScript.set(scene.id, rev.script);
       ids.push(rev.id);
       ctx.publish({ kind: "script", script: rev });
     }
@@ -120,7 +134,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
       const script = detail.scripts[scene.id]!;
       const inputHash = audioInputHash({ pronunciationText: script.pronunciationText, settings: detail.project.settings, glossaryReadings: detail.outline?.glossary });
       await ctx.emit(i / Math.max(1, targets.length), `合成第 ${scene.index + 1} 段語音`);
-      await seams.synthesizeSpeech({ ctx, scene, script, settings: detail.project.settings, inputHash });
+      await seams.synthesizeSpeech({ ctx, scene, script, settings: detail.project.settings, inputHash, outline: detail.outline });
     }
     return { processed: targets.length, skipped: withScript.length - targets.length };
   };

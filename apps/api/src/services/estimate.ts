@@ -1,50 +1,34 @@
-import type { CostEstimate, JobType, ProjectDetail, UsageUnit } from "@lvs/shared";
+import type { CostEstimate, JobType, ProjectDetail } from "@lvs/shared";
+import { estimateCost, type EstimateKind } from "@lvs/pipeline";
 
-/**
- * Placeholder price table (USD). TODO(pipeline): @lvs/pipeline owns real per-provider
- * pricing; this file should then only call into it.
- */
-const PRICE: Record<string, Partial<Record<UsageUnit, number>>> = {
-  gemini: { tokens_in: 1.25 / 1e6, tokens_out: 10 / 1e6 },
-  anthropic: { tokens_in: 3 / 1e6, tokens_out: 15 / 1e6 },
-  "gemini-tts": { chars: 10 / 1e6 },
-  elevenlabs: { chars: 0.0003 },
-  heygen: { avatar_seconds: 0.02 },
-  render: { render_seconds: 0.001 },
-};
+const KINDS: ReadonlySet<string> = new Set(["generate_outline", "generate_script", "synthesize_speech", "generate_avatar", "render_video"]);
 
-function line(providerId: string, unit: UsageUnit, quantity: number) {
-  const unitPrice = PRICE[providerId]?.[unit] ?? 0;
-  return { providerId, unit, quantity, estimatedCost: Math.round(quantity * unitPrice * 1e4) / 1e4 };
-}
-
+/** Order-of-magnitude cost of running `type` on the project right now (pipeline price table). */
 export function estimateJob(detail: ProjectDetail, type: JobType): CostEstimate {
+  if (!KINDS.has(type)) return { lines: [], total: 0, currency: "USD" };
+  const kind = type as EstimateKind;
   const s = detail.project.settings;
-  const lines: CostEstimate["lines"] = [];
-  const visibleScenes = detail.scenes.filter((sc) => !detail.slides.find((sl) => sl.id === sc.slideId)?.hidden);
-  const totalChars = visibleScenes.reduce((n, sc) => n + (detail.scripts[sc.id]?.pronunciationText.length ?? 0), 0);
-  const slideChars = detail.slides.reduce((n, sl) => n + sl.content.plainText.length + (sl.content.notes?.length ?? 0), 0);
-  switch (type) {
+  const hidden = new Set(detail.slides.filter((sl) => sl.hidden).map((sl) => sl.id));
+  const visibleScenes = detail.scenes.filter((sc) => !hidden.has(sc.slideId));
+  const slideChars = detail.slides
+    .filter((sl) => !sl.hidden)
+    .reduce((n, sl) => n + sl.content.plainText.length + (sl.content.notes?.length ?? 0), 0);
+  const scriptChars = visibleScenes.reduce((n, sc) => n + (detail.scripts[sc.id]?.pronunciationText.length ?? 0), 0);
+  switch (kind) {
     case "generate_outline":
-      lines.push(line(s.llmProviderId, "tokens_in", Math.ceil(slideChars * 1.2) + 2000));
-      lines.push(line(s.llmProviderId, "tokens_out", 1500));
-      break;
+      return estimateCost(kind, { providerId: s.llmProviderId, chars: slideChars + 2000, calls: 1, outputTokensPerCall: 1500 });
     case "generate_script":
-      lines.push(line(s.llmProviderId, "tokens_in", visibleScenes.length * 2500 + Math.ceil(slideChars * 1.2)));
-      lines.push(line(s.llmProviderId, "tokens_out", visibleScenes.length * 500));
-      break;
+      return estimateCost(kind, {
+        providerId: s.llmProviderId,
+        chars: visibleScenes.length * 2500 + slideChars,
+        calls: Math.max(1, visibleScenes.length),
+        outputTokensPerCall: 600,
+      });
     case "synthesize_speech":
-      lines.push(line(s.voice.providerId, "chars", totalChars));
-      break;
+      return estimateCost(kind, { providerId: s.voice.providerId, chars: scriptChars });
     case "generate_avatar":
-      lines.push(line(s.avatar.providerId ?? "heygen", "avatar_seconds", Math.ceil(detail.totalDurationSec)));
-      break;
+      return estimateCost(kind, { providerId: s.avatar.providerId ?? "heygen", seconds: Math.ceil(detail.totalDurationSec) });
     case "render_video":
-      lines.push(line("render", "render_seconds", Math.ceil(detail.totalDurationSec)));
-      break;
-    default:
-      break;
+      return estimateCost(kind, { seconds: Math.ceil(detail.totalDurationSec) });
   }
-  const total = Math.round(lines.reduce((n, l) => n + l.estimatedCost, 0) * 1e4) / 1e4;
-  return { lines, total, currency: "USD" };
 }
