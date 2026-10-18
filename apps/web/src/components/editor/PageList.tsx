@@ -1,0 +1,130 @@
+import { useEffect, useMemo } from "react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import type { Scene, Slide } from "@lvs/shared";
+import { useAssetUrl } from "../../api/context";
+import type { EditorActions } from "../../hooks/useEditorActions";
+import { t } from "../../i18n";
+import { sortByIndex } from "../../lib/scenes";
+import { currentScript, useEditor } from "../../store/editorStore";
+import { PageListItem } from "./PageListItem";
+import { StatusLegend } from "./StatusDots";
+
+export interface PageListProps {
+  actions: Pick<EditorActions, "reorder" | "setHidden" | "updateScene">;
+}
+
+export function PageList({ actions }: PageListProps) {
+  const detail = useEditor((s) => s.detail);
+  const drafts = useEditor((s) => s.drafts);
+  const selectedSceneId = useEditor((s) => s.selectedSceneId);
+  const select = useEditor((s) => s.select);
+
+  const slides = useMemo(() => (detail ? sortByIndex(detail.slides) : []), [detail]);
+  const sceneBySlide = useMemo(() => new Map((detail?.scenes ?? []).map((s) => [s.slideId, s])), [detail]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  // Keep the selected page in view when it changes from the keyboard.
+  useEffect(() => {
+    if (!selectedSceneId) return;
+    const el = document.querySelector(`[data-scene-id="${selectedSceneId}"]`);
+    if (el && "scrollIntoView" in el) el.scrollIntoView({ block: "nearest" });
+  }, [selectedSceneId]);
+
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const ids = slides.map((s) => s.id);
+    const from = ids.indexOf(String(active.id));
+    const to = ids.indexOf(String(over.id));
+    if (from === -1 || to === -1) return;
+    void actions.reorder(arrayMove(ids, from, to));
+  };
+
+  return (
+    <aside className="flex min-h-0 flex-col border-r border-neutral-800 bg-neutral-900">
+      <div className="flex items-center justify-between px-3 py-2.5">
+        <h2 className="text-xs font-semibold text-neutral-300">{t.pageList.title}</h2>
+        <span className="text-xs text-neutral-500">{slides.length}</span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        {slides.length === 0 ? (
+          <p className="px-2 py-6 text-center text-xs text-neutral-500">{t.editor.noScenes}</p>
+        ) : (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <SortableContext items={slides.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+              <ol className="flex flex-col gap-1">
+                {slides.map((slide, i) => {
+                  const scene = sceneBySlide.get(slide.id);
+                  return (
+                    <SortablePage
+                      key={slide.id}
+                      projectId={slide.projectId}
+                      slide={slide}
+                      scene={scene}
+                      position={i + 1}
+                      scriptText={scene ? currentScript({ detail, drafts }, scene.id) : ""}
+                      selected={scene !== undefined && scene.id === selectedSceneId}
+                      onSelect={() => scene && select(scene.id)}
+                      onToggleHidden={() => void actions.setHidden(slide.id, !slide.hidden)}
+                      onToggleMuted={() => scene && void actions.updateScene(scene.id, { muted: !scene.muted })}
+                    />
+                  );
+                })}
+              </ol>
+            </SortableContext>
+          </DndContext>
+        )}
+      </div>
+      <div className="border-t border-neutral-800 px-3 py-2">
+        <StatusLegend />
+      </div>
+    </aside>
+  );
+}
+
+interface SortablePageProps {
+  projectId: string;
+  slide: Slide;
+  scene: Scene | undefined;
+  position: number;
+  scriptText: string;
+  selected: boolean;
+  onSelect: () => void;
+  onToggleHidden: () => void;
+  onToggleMuted: () => void;
+}
+
+function SortablePage({ projectId, ...rest }: SortablePageProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: rest.slide.id });
+  const thumbnailUrl = useAssetUrl(projectId, rest.slide.thumbnailAssetId ?? rest.slide.imageAssetId);
+  return (
+    <PageListItem
+      {...rest}
+      thumbnailUrl={thumbnailUrl}
+      setNodeRef={setNodeRef}
+      dragging={isDragging}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      dragAttributes={attributes}
+      dragListeners={listeners}
+    />
+  );
+}

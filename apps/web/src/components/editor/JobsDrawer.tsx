@@ -1,0 +1,124 @@
+import { useEffect } from "react";
+import type { Job } from "@lvs/shared";
+import { CircleCheck, CircleSlash, CircleX, ListChecks, X } from "lucide-react";
+import { useApi } from "../../api/context";
+import type { EditorActions } from "../../hooks/useEditorActions";
+import { fmt, t } from "../../i18n";
+import { formatRelativeTime } from "../../lib/format";
+import { editorStore, useEditor } from "../../store/editorStore";
+import { Button, IconButton } from "../ui/Button";
+import { ProgressBar, Spinner } from "../ui/Misc";
+
+/** Header button: spinner + progress text of the most recent active job; opens the drawer. */
+export function JobsIndicator({ onOpen }: { onOpen: () => void }) {
+  const jobs = useEditor((s) => s.detail?.activeJobs);
+  const active = jobs ?? [];
+  const lead = active[active.length - 1];
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={t.jobs.title}
+      className="flex h-8 max-w-64 items-center gap-2 rounded-md border border-neutral-800 px-2.5 text-xs text-neutral-300 hover:bg-neutral-800"
+    >
+      {lead ? (
+        <Spinner className="size-3.5 shrink-0" />
+      ) : (
+        <ListChecks className="size-3.5 shrink-0 text-neutral-500" aria-hidden />
+      )}
+      <span className="truncate">
+        {lead
+          ? `${t.jobs.types[lead.type]} ${Math.round(lead.progress * 100)}%${active.length > 1 ? ` · ${fmt(t.jobs.count, { n: active.length })}` : ""}`
+          : t.jobs.idle}
+      </span>
+    </button>
+  );
+}
+
+export interface JobsDrawerProps {
+  open: boolean;
+  onClose: () => void;
+  actions: Pick<EditorActions, "cancelJob">;
+}
+
+export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
+  const api = useApi();
+  const projectId = useEditor((s) => s.detail?.project.id);
+  const active = useEditor((s) => s.detail?.activeJobs);
+  const recent = useEditor((s) => s.recentJobs);
+
+  useEffect(() => {
+    if (!open || !projectId) return;
+    api.listJobs(projectId).then(
+      (jobs) => editorStore.getState().setRecentJobs(jobs),
+      () => undefined,
+    );
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, projectId, api, onClose]);
+
+  if (!open) return null;
+  const activeJobs = [...(active ?? [])].reverse();
+
+  return (
+    <div className="fixed inset-0 z-40" onMouseDown={onClose}>
+      <aside
+        aria-label={t.jobs.title}
+        className="absolute top-0 right-0 flex h-full w-96 flex-col border-l border-neutral-800 bg-neutral-900 shadow-2xl"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
+          <h2 className="text-sm font-semibold text-neutral-100">{t.jobs.title}</h2>
+          <IconButton icon={X} label={t.common.close} onClick={onClose} />
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <h3 className="mb-2 text-xs font-semibold text-neutral-400">{t.jobs.active}</h3>
+          {activeJobs.length === 0 && <p className="mb-4 text-xs text-neutral-500">{t.jobs.none}</p>}
+          <ul className="mb-6 flex flex-col gap-2">
+            {activeJobs.map((job) => (
+              <li key={job.id} className="rounded-md border border-neutral-800 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-sm text-neutral-100">{t.jobs.types[job.type]}</span>
+                  <Button size="sm" variant="ghost" onClick={() => void actions.cancelJob(job.id)}>
+                    {t.jobs.cancel}
+                  </Button>
+                </div>
+                <ProgressBar value={job.progress} indeterminate={job.status === "queued"} />
+                <div className="mt-1.5 flex justify-between text-[11px] text-neutral-500">
+                  <span className="truncate">{job.progressMessage ?? t.jobs.statuses[job.status]}</span>
+                  <span>{Math.round(job.progress * 100)}%</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <h3 className="mb-2 text-xs font-semibold text-neutral-400">{t.jobs.recent}</h3>
+          {recent.length === 0 && <p className="text-xs text-neutral-500">{t.jobs.none}</p>}
+          <ul className="flex flex-col gap-1">
+            {recent.map((job) => (
+              <RecentJob key={job.id} job={job} />
+            ))}
+          </ul>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function RecentJob({ job }: { job: Job }) {
+  const Icon = job.status === "succeeded" ? CircleCheck : job.status === "failed" ? CircleX : CircleSlash;
+  const color = job.status === "succeeded" ? "text-emerald-400" : job.status === "failed" ? "text-rose-400" : "text-neutral-500";
+  return (
+    <li className="flex items-start gap-2 rounded px-1 py-1.5 text-xs">
+      <Icon className={`mt-0.5 size-3.5 shrink-0 ${color}`} aria-hidden />
+      <div className="min-w-0 flex-1">
+        <div className="flex justify-between gap-2">
+          <span className="text-neutral-200">{t.jobs.types[job.type]}</span>
+          <span className="text-neutral-500">{formatRelativeTime(job.finishedAt ?? job.createdAt)}</span>
+        </div>
+        <div className={color}>{t.jobs.statuses[job.status]}</div>
+        {job.error && <div className="mt-0.5 break-words text-rose-300">{job.error}</div>}
+      </div>
+    </li>
+  );
+}

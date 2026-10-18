@@ -1,0 +1,188 @@
+import { useMemo, useState, type KeyboardEvent } from "react";
+import type { ScriptRevision } from "@lvs/shared";
+import { AlertTriangle, ChevronRight, Redo2, Undo2, Volume2, VolumeX, WandSparkles } from "lucide-react";
+import type { EditorActions } from "../../hooks/useEditorActions";
+import { fmt, t } from "../../i18n";
+import { countChars, estimateSpeechSeconds } from "../../lib/scenes";
+import { currentScript, useEditor, type SaveState } from "../../store/editorStore";
+import { toast } from "../../store/toastStore";
+import { Button, IconButton } from "../ui/Button";
+import { Spinner } from "../ui/Misc";
+
+export const SCRIPT_MAX_CHARS = 5000;
+
+export interface ScriptPanelProps {
+  actions: Pick<EditorActions, "enqueue" | "saveScript" | "updateScene">;
+}
+
+export function ScriptPanel({ actions }: ScriptPanelProps) {
+  const detail = useEditor((s) => s.detail);
+  const sceneId = useEditor((s) => s.selectedSceneId);
+  const drafts = useEditor((s) => s.drafts);
+  const history = useEditor((s) => (sceneId ? s.history[sceneId] : undefined));
+  const saveState = useEditor((s) => (sceneId ? s.saveState[sceneId] : undefined));
+  const editScript = useEditor((s) => s.editScript);
+  const undo = useEditor((s) => s.undo);
+  const redo = useEditor((s) => s.redo);
+
+  const scene = useMemo(() => detail?.scenes.find((s) => s.id === sceneId), [detail, sceneId]);
+  if (!detail || !scene) {
+    return <p className="p-4 text-sm text-neutral-500">{t.editor.selectPage}</p>;
+  }
+
+  const text = currentScript({ detail, drafts }, scene.id);
+  const revision = detail.scripts[scene.id];
+  const hasDraft = drafts[scene.id] !== undefined;
+  const settings = detail.project.settings;
+  const seconds = estimateSpeechSeconds(text, settings.language, settings.voice.speed);
+  const generating = scene.script.status === "generating" || scene.script.status === "queued";
+  const downstreamStale = [scene.audio, scene.subtitle, scene.avatar].some((s) => s.status === "stale");
+
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const key = e.key.toLowerCase();
+    if ((key === "z" && e.shiftKey) || key === "y") {
+      e.preventDefault();
+      redo(scene.id);
+    } else if (key === "z") {
+      e.preventDefault();
+      undo(scene.id);
+    }
+  };
+
+  const rewrite = async () => {
+    const job = await actions.enqueue({ type: "generate_script", sceneIds: [scene.id], force: true });
+    if (job) toast(t.script.aiRewriteQueued);
+  };
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-3 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-neutral-100">{fmt(t.script.heading, { n: scene.index + 1 })}</h2>
+          {revision && (
+            <p className="text-[11px] text-neutral-500">
+              {fmt(t.script.revisionInfo, {
+                v: revision.version,
+                source: revision.source === "ai" ? t.script.sourceAi : t.script.sourceUser,
+              })}
+            </p>
+          )}
+        </div>
+        <SaveIndicator state={saveState} hasDraft={hasDraft} onRetry={() => void actions.saveScript(scene.id, text)} />
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        <Button size="sm" icon={WandSparkles} onClick={() => void rewrite()} disabled={generating}>
+          {t.script.aiRewrite}
+        </Button>
+        <Button
+          size="sm"
+          variant={scene.muted ? "primary" : "secondary"}
+          icon={scene.muted ? VolumeX : Volume2}
+          aria-pressed={scene.muted}
+          onClick={() => void actions.updateScene(scene.id, { muted: !scene.muted })}
+        >
+          {scene.muted ? t.pageList.unmute : t.pageList.mute}
+        </Button>
+        <div className="ml-auto flex">
+          <IconButton icon={Undo2} label={t.script.undo} disabled={!history?.past.length} onClick={() => undo(scene.id)} />
+          <IconButton icon={Redo2} label={t.script.redo} disabled={!history?.future.length} onClick={() => redo(scene.id)} />
+        </div>
+      </div>
+
+      <div className="relative min-h-[200px] flex-1">
+        <textarea
+          aria-label={fmt(t.script.heading, { n: scene.index + 1 })}
+          className="size-full resize-none rounded-md border border-neutral-700 bg-neutral-950 p-3 text-sm leading-relaxed text-neutral-100 placeholder:text-neutral-600 focus:border-accent-500 focus:outline-none read-only:opacity-60"
+          value={text}
+          placeholder={t.script.placeholder}
+          maxLength={SCRIPT_MAX_CHARS}
+          readOnly={generating}
+          onChange={(e) => editScript(scene.id, e.target.value)}
+          onKeyDown={onKeyDown}
+        />
+        {generating && (
+          <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
+            <span className="flex items-center gap-2 rounded-full bg-neutral-800 px-3 py-1 text-xs text-neutral-200 shadow">
+              <Spinner className="size-3.5" /> {t.status[scene.script.status]}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between text-xs text-neutral-500">
+        <span className={countChars(text) > SCRIPT_MAX_CHARS * 0.95 ? "text-amber-300" : ""}>
+          {fmt(t.script.chars, { n: countChars(text), max: SCRIPT_MAX_CHARS })}
+        </span>
+        <span>{fmt(t.script.estSeconds, { n: seconds })}</span>
+      </div>
+
+      {downstreamStale && (
+        <p className="flex items-start gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-200">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          {t.script.staleHint}
+        </p>
+      )}
+
+      <DerivedTexts revision={revision} pending={hasDraft} />
+    </div>
+  );
+}
+
+function SaveIndicator({ state, hasDraft, onRetry }: { state: SaveState | undefined; hasDraft: boolean; onRetry: () => void }) {
+  if (state?.status === "error") {
+    return (
+      <button
+        type="button"
+        onClick={onRetry}
+        className="text-xs text-rose-300 underline-offset-2 hover:underline"
+        title={t.app.retry}
+      >
+        {fmt(t.script.saveFailed, { message: state.error ?? "" })}
+      </button>
+    );
+  }
+  if (state?.status === "saving") {
+    return (
+      <span className="flex items-center gap-1 text-xs text-neutral-400">
+        <Spinner className="size-3" /> {t.script.saving}
+      </span>
+    );
+  }
+  if (hasDraft) return <span className="text-xs text-amber-300">{t.script.unsaved}</span>;
+  return <span className="text-xs text-neutral-500">{t.script.saved}</span>;
+}
+
+function DerivedTexts({ revision, pending }: { revision: ScriptRevision | undefined; pending: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-md border border-neutral-800">
+      <button
+        type="button"
+        aria-expanded={open}
+        className="flex w-full items-center gap-1.5 px-2.5 py-2 text-xs font-medium text-neutral-300 hover:text-neutral-100"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <ChevronRight className={`size-3.5 transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
+        {t.script.derived}
+        {pending && <span className="ml-auto font-normal text-neutral-500">{t.script.derivedPending}</span>}
+      </button>
+      {open && (
+        <div className="flex max-h-56 flex-col gap-3 overflow-y-auto border-t border-neutral-800 px-2.5 py-2">
+          <ReadOnlyText label={t.script.pronunciation} text={revision?.pronunciationText} />
+          <ReadOnlyText label={t.script.subtitle} text={revision?.subtitleText} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReadOnlyText({ label, text }: { label: string; text: string | undefined }) {
+  return (
+    <div>
+      <div className="mb-1 text-[11px] font-medium text-neutral-500">{label}</div>
+      <p className="text-xs leading-relaxed whitespace-pre-wrap text-neutral-300">{text || t.script.derivedEmpty}</p>
+    </div>
+  );
+}

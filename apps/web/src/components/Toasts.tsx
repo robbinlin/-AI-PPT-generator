@@ -1,0 +1,36 @@
+import { X } from "lucide-react";
+import { t } from "../i18n";
+import { useToasts } from "../store/toastStore";
+
+export function Toasts() {
+  const toasts = useToasts((s) => s.toasts);
+  const dismiss = useToasts((s) => s.dismiss);
+  if (toasts.length === 0) return null;
+  return (
+    <div
+      className="pointer-events-none fixed bottom-4 left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center gap-2"
+      aria-live="polite"
+    >
+      {toasts.map((toast) => (
+        <div
+          key={toast.id}
+          className={`pointer-events-auto flex items-center gap-3 rounded-md border px-3 py-2 text-sm shadow-lg ${
+            toast.tone === "error"
+              ? "border-rose-500/40 bg-rose-950 text-rose-100"
+              : "border-neutral-700 bg-neutral-800 text-neutral-100"
+          }`}
+        >
+          <span>{toast.text}</span>
+          <button
+            type="button"
+            aria-label={t.common.close}
+            className="text-neutral-400 hover:text-neutral-100"
+            onClick={() => dismiss(toast.id)}
+          >
+            <X className="size-3.5" aria-hidden />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
