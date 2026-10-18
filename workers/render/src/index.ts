@@ -10,7 +10,7 @@ import { computeTimeline, globalCues } from "./timeline.js";
 export { assemble, buildConcatList, buildTransitionGraph } from "./assemble.js";
 export { assColor, ffmpegColor, parseHexColor } from "./color.js";
 export { FfmpegError, RenderAbortedError, ffprobe, probeDuration, runFfmpeg } from "./ffmpeg.js";
-export { buildSceneArgs, overlayPosition, renderScene, sceneCacheKey } from "./scene.js";
+export { buildSceneArgs, chromaKeyFilter, overlayPosition, renderScene, sceneCacheKey } from "./scene.js";
 export type { SceneContext, SceneOutput } from "./scene.js";
 export { assTime, buildAss, buildSrt, emWidth, srtTime, wrapText } from "./subtitles.js";
 export { computeTimeline, globalCues } from "./timeline.js";

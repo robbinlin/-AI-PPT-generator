@@ -1,7 +1,6 @@
 import type { z } from "zod";
 import type { AspectRatio, Language } from "./enums.js";
-import type { GlossaryEntry } from "./entities.js";
-import type { WordTimestamp } from "./media.js";
+import type { GlossaryEntry, WordTimestamp } from "./entities.js";
 
 /**
  * Provider interfaces. Implementations live in packages/providers.

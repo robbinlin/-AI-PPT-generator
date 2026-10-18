@@ -9,6 +9,7 @@ import {
   FFPROBE,
   colorDistance,
   grabFrame,
+  makeGreenScreenVideo,
   makeTestsrcVideo,
   probe,
   tmpDir,
@@ -137,6 +138,35 @@ describe("render (real ffmpeg)", () => {
     const result = await render(spec, opts("t3b"));
     const frame = await grabFrame(result.mp4Path, 0.5, path.join(dir, "t3b", "frame.png"));
     expect(colorDistance(frame.pixel(W - 11 - 54, H - 11 - 54), SLIDE_RGB)).toBeLessThan(25);
+  });
+
+  it("3c. keys out a green-screen avatar so the slide shows through", async () => {
+    const avatar = path.join(dir, "green.mp4");
+    await makeGreenScreenVideo(avatar, 1);
+    const spec = baseSpec("t3c", [
+      {
+        sceneId: randomUUID(),
+        imagePath: slideA,
+        durationSec: 1,
+        avatar: {
+          videoPath: avatar,
+          chromaKey: "#00FF00",
+          layout: { shape: "rect", anchor: "bottom-right", size: 0.5, margin: 0, visible: true },
+        },
+      },
+    ]);
+    const result = await render(spec, opts("t3c"));
+    const frame = await grabFrame(result.mp4Path, 0.5, path.join(dir, "t3c", "frame.png"));
+    const size = 180; // even(0.5 * 360), square clip → 180x180 at bottom-right
+    const x0 = W - size;
+    const y0 = H - size;
+    // Centre of the red square (60..140 of 200 → 54..126 of 180) stays red.
+    const centre = frame.pixel(x0 + 90, y0 + 90);
+    expect(centre[0]).toBeGreaterThan(150);
+    expect(centre[1]).toBeLessThan(100);
+    // The green border is keyed out → slide colour.
+    expect(colorDistance(frame.pixel(x0 + 10, y0 + 10), SLIDE_RGB)).toBeLessThan(40);
+    expect(colorDistance(frame.pixel(x0 + 170, y0 + 170), SLIDE_RGB)).toBeLessThan(40);
   });
 
   it("4. burns CJK subtitles and writes a global SRT", async () => {

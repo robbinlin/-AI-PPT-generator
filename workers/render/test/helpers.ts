@@ -92,6 +92,16 @@ export async function makeTestsrcVideo(file: string, durationSec = 1): Promise<v
   ]);
 }
 
+/** Green background with a red square in the middle: what a chroma-key avatar looks like. */
+export async function makeGreenScreenVideo(file: string, durationSec = 1): Promise<void> {
+  await exec(FFMPEG, [
+    "-hide_banner", "-loglevel", "error", "-y",
+    "-f", "lavfi", "-i", `color=c=0x00FF00:s=200x200:r=15:d=${durationSec}`,
+    "-vf", "drawbox=x=60:y=60:w=80:h=80:color=red:t=fill",
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", file,
+  ]);
+}
+
 export interface Probe {
   duration: number;
   video?: { width: number; height: number; codec: string; pixFmt: string };

@@ -9,6 +9,7 @@ import {
   buildSceneArgs,
   buildSrt,
   buildTransitionGraph,
+  chromaKeyFilter,
   computeTimeline,
   ffmpegColor,
   globalCues,
@@ -165,5 +166,34 @@ describe("command building", () => {
     expect(joined).toContain("alphaextract");
     expect(joined).toContain("blend=all_mode=multiply");
     expect(joined).toContain("overlay=x=W-w-14:y=14");
+  });
+
+  it("keys out a green screen before the circle mask", () => {
+    expect(chromaKeyFilter("#00FF00")).toBe("chromakey=color=0x00FF00:similarity=0.3:blend=0.1");
+    const circle = buildSceneArgs({
+      scene: scene({
+        avatar: { videoPath: "/a.mp4", hasAlpha: false, chromaKey: "#00ff00", layout: { shape: "circle", anchor: "bottom-right", size: 0.3, margin: 0.03, visible: true } },
+      }),
+      width: 1280,
+      height: 720,
+      fps: 25,
+      backgroundColor: "#000",
+      outPath: "/o.mp4",
+    });
+    const graph = circle[circle.indexOf("-filter_complex") + 1]!;
+    expect(graph).toContain("crop=216:216,setsar=1,format=rgba,chromakey=color=0x00FF00:similarity=0.3:blend=0.1,format=rgba[avc]");
+    expect(graph).toContain("alphaextract");
+    expect(graph).toContain("blend=all_mode=multiply");
+    const rect = buildSceneArgs({
+      scene: scene({ avatar: { videoPath: "/a.mp4", hasAlpha: false, chromaKey: "#00FF00", layout: { shape: "rect", anchor: "left", size: 0.5, margin: 0, visible: true } } }),
+      width: 640,
+      height: 360,
+      fps: 15,
+      backgroundColor: "#000",
+      outPath: "/o.mp4",
+    });
+    const rectGraph = rect[rect.indexOf("-filter_complex") + 1]!;
+    expect(rectGraph).toContain("scale=-2:180,setsar=1,format=rgba,chromakey=color=0x00FF00:similarity=0.3:blend=0.1[av]");
+    expect(rectGraph).not.toContain("alphaextract");
   });
 });

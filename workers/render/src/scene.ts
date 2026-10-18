@@ -7,7 +7,7 @@ import { DEFAULT_FFMPEG, DEFAULT_FFPROBE, ffprobe, num, runFfmpeg, throwIfAborte
 import { buildAss } from "./subtitles.js";
 
 /** Bump when the scene command line changes in a way that alters output. */
-export const SCENE_RENDER_VERSION = 1;
+export const SCENE_RENDER_VERSION = 2;
 
 export const VIDEO_ENCODE_ARGS = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"];
 export const AUDIO_ENCODE_ARGS = ["-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2"];
@@ -92,6 +92,11 @@ export async function sceneCacheKey(scene: RenderScene, ctx: SceneContext): Prom
   });
 }
 
+/** ffmpeg `chromakey` filter for a #RRGGBB background colour (tolerant enough for compressed green screens). */
+export function chromaKeyFilter(hex: string, similarity = 0.3, blend = 0.1): string {
+  return `chromakey=color=${ffmpegColor(hex)}:similarity=${similarity}:blend=${blend}`;
+}
+
 /** overlay x/y expressions for an anchor; `W/H` = frame, `w/h` = avatar. */
 export function overlayPosition(anchor: AvatarLayout["anchor"], marginPx: number): { x: string; y: string } {
   const m = String(marginPx);
@@ -157,9 +162,12 @@ export function buildSceneArgs(input: SceneCommandInput): string[] {
     const size = even(layout.size * H);
     const margin = Math.round(layout.margin * H);
     const pre = `[2:v]setpts=PTS-STARTPTS,fps=${fps}`;
+    // Green-screen providers: key the background out before any mask so the disc intersects it.
+    const key = scene.avatar.chromaKey ? `,format=rgba,${chromaKeyFilter(scene.avatar.chromaKey)}` : "";
+    const keepAlpha = hasAlpha || !!scene.avatar.chromaKey;
     if (layout.shape === "circle") {
       filters.push(
-        `${pre},scale=${size}:${size}:force_original_aspect_ratio=increase,crop=${size}:${size},setsar=1,format=rgba[avc]`,
+        `${pre},scale=${size}:${size}:force_original_aspect_ratio=increase,crop=${size}:${size},setsar=1${key},format=rgba[avc]`,
       );
       // One-frame anti-aliased disc, looped forever (cheaper than a per-frame geq).
       filters.push(
@@ -167,15 +175,15 @@ export function buildSceneArgs(input: SceneCommandInput): string[] {
           `geq=lum='255*clip(W/2-hypot(X+0.5-W/2,Y+0.5-H/2)+0.5,0,1)',` +
           `loop=loop=-1:size=1,setpts=N/(${fps}*TB)[mask]`,
       );
-      if (hasAlpha) {
-        // Keep the provider's alpha and intersect it with the disc.
+      if (keepAlpha) {
+        // Keep the provider's (or keyed) alpha and intersect it with the disc.
         filters.push("[avc]split[avc0][avc1]", "[avc1]alphaextract[ava]", "[ava][mask]blend=all_mode=multiply[avm]");
         filters.push("[avc0][avm]alphamerge[av]");
       } else {
         filters.push("[avc][mask]alphamerge[av]");
       }
     } else {
-      filters.push(`${pre},scale=-2:${size},setsar=1${hasAlpha ? ",format=rgba" : ""}[av]`);
+      filters.push(`${pre},scale=-2:${size},setsar=1${key}${hasAlpha && !key ? ",format=rgba" : ""}[av]`);
     }
     const pos = overlayPosition(layout.anchor, margin);
     filters.push(`[bg][av]overlay=x=${pos.x}:y=${pos.y}:format=auto:eof_action=repeat[ov]`);

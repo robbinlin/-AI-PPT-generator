@@ -1,29 +1,12 @@
 import { z } from "zod";
 import { Id } from "./ids.js";
 import { Transition } from "./enums.js";
-import { AvatarLayout, SubtitleStyle } from "./entities.js";
-
-/** Word (or character for CJK) level timing returned by a TTS provider or forced aligner. */
-export const WordTimestamp = z.object({
-  text: z.string(),
-  startSec: z.number().nonnegative(),
-  endSec: z.number().nonnegative(),
-});
-export type WordTimestamp = z.infer<typeof WordTimestamp>;
-
-export const SubtitleCue = z.object({
-  index: z.number().int().min(1),
-  startSec: z.number().nonnegative(),
-  endSec: z.number().nonnegative(),
-  text: z.string(),
-  /** Optional per-word timing for karaoke-style highlight. */
-  words: z.array(WordTimestamp).optional(),
-});
-export type SubtitleCue = z.infer<typeof SubtitleCue>;
+import { AvatarLayout, SubtitleCue, SubtitleStyle } from "./entities.js";
 
 /**
  * Input to the render worker (workers/render). Produced by the API from the
  * current scenes + assets, fully resolved to local file paths.
+ * Subtitle cue times are relative to their scene; `fontSizePx`/`marginPx` are output pixels.
  */
 export const RenderScene = z.object({
   sceneId: Id,
@@ -37,6 +20,8 @@ export const RenderScene = z.object({
       layout: AvatarLayout,
       /** True when the provider supplied an alpha channel (webm/mov). */
       hasAlpha: z.boolean().default(false),
+      /** Background colour (#RRGGBB) to key out, e.g. "#00FF00" for HeyGen green-screen output. */
+      chromaKey: z.string().optional(),
     })
     .optional(),
   subtitles: z.array(SubtitleCue).default([]),

@@ -139,6 +139,24 @@ export const Slide = z.object({
 });
 export type Slide = z.infer<typeof Slide>;
 
+/** Word (or character for CJK) level timing returned by a TTS provider or forced aligner. */
+export const WordTimestamp = z.object({
+  text: z.string(),
+  startSec: z.number().nonnegative(),
+  endSec: z.number().nonnegative(),
+});
+export type WordTimestamp = z.infer<typeof WordTimestamp>;
+
+export const SubtitleCue = z.object({
+  index: z.number().int().min(1),
+  startSec: z.number().nonnegative(),
+  endSec: z.number().nonnegative(),
+  text: z.string(),
+  /** Optional per-word timing for karaoke-style highlight. */
+  words: z.array(WordTimestamp).optional(),
+});
+export type SubtitleCue = z.infer<typeof SubtitleCue>;
+
 export const SceneAssetState = z.object({
   status: DerivedStatus.default("missing"),
   assetId: Id.optional(),
@@ -146,6 +164,8 @@ export const SceneAssetState = z.object({
   inputHash: z.string().optional(),
   jobId: Id.optional(),
   error: z.string().optional(),
+  /** Subtitle state only: timed cues (scene-relative seconds) that the SRT asset was written from. */
+  cues: z.array(SubtitleCue).optional(),
 });
 export type SceneAssetState = z.infer<typeof SceneAssetState>;
 
