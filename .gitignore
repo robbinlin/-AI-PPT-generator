@@ -15,7 +15,7 @@ build
 coverage
 # runtime data
 data/
-storage/
+/data/storage/
 *.pglite
 # python
 __pycache__/
