@@ -1,5 +1,28 @@
-import "dotenv/config";
 import { randomBytes } from "node:crypto";
+import { existsSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+import dotenv from "dotenv";
+
+/** Nearest ancestor of cwd containing pnpm-workspace.yaml, else cwd. Lets `pnpm --filter` runs find root files. */
+export function findRepoRoot(start = process.cwd()): string {
+  let dir = resolve(start);
+  for (;;) {
+    if (existsSync(join(dir, "pnpm-workspace.yaml"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return resolve(start);
+    dir = parent;
+  }
+}
+
+export const REPO_ROOT = process.env.REPO_ROOT ?? findRepoRoot();
+// Root .env first, then a package-local .env may override.
+dotenv.config({ path: join(REPO_ROOT, ".env") });
+dotenv.config({ path: join(process.cwd(), ".env"), override: true });
+
+/** Relative paths in config are relative to the repo root, not to the process cwd. */
+export function fromRoot(p: string): string {
+  return isAbsolute(p) ? p : resolve(REPO_ROOT, p);
+}
 import { z } from "zod";
 
 const EnvSchema = z.object({
@@ -63,5 +86,15 @@ export function loadConfig(overrides: Partial<z.input<typeof EnvSchema>> = {}): 
     providerKeyEncryptionKey = randomBytes(32);
     warnings.push("PROVIDER_KEY_ENCRYPTION_KEY unset: stored provider keys will be unreadable after restart");
   }
-  return { ...env, assetUrlSecret, providerKeyEncryptionKey, warnings };
+  const resolved = {
+    ...env,
+    PGLITE_DIR: fromRoot(env.PGLITE_DIR),
+    STORAGE_ROOT: fromRoot(env.STORAGE_ROOT),
+    PARSER_CLI: fromRoot(env.PARSER_CLI),
+    RENDER_WORK_DIR: fromRoot(env.RENDER_WORK_DIR),
+  };
+  if (!existsSync(join(resolved.PARSER_CLI, "lvs_parser"))) {
+    throw new Error(`PARSER_CLI (${resolved.PARSER_CLI}) does not contain the lvs_parser package; set PARSER_CLI to workers/parser`);
+  }
+  return { ...resolved, assetUrlSecret, providerKeyEncryptionKey, warnings };
 }

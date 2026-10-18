@@ -10,7 +10,12 @@ const CJK_RE =
 /** Characters that must not start a line (kinsoku shori, simplified). */
 const NO_LINE_START = new Set([..."，。、；：！？）」』】》〉〕｝,.;:!?)]}%…—"]);
 
-const len = (s: string) => [...s].length;
+/** Width in CJK-equivalent columns, the unit of `SubtitleStyle.maxCharsPerLine` (shared with @lvs/pipeline). */
+const len = (s: string) => {
+  let w = 0;
+  for (const ch of s) w += CJK_RE.test(ch) ? 1 : 0.5;
+  return w;
+};
 
 function tokenize(text: string): string[] {
   const tokens: string[] = [];
@@ -45,7 +50,7 @@ export function emWidth(s: string): number {
 }
 
 /**
- * Greedy wrap. A line holds at most `maxChars` code points and, when `maxEm` is given, at
+ * Greedy wrap. A line holds at most `maxChars` columns (CJK = 1, other = 0.5) and, when `maxEm` is given, at
  * most `maxEm` em of estimated width (so a large font on a small frame cannot overflow).
  * CJK text breaks between any two characters; Latin words are kept whole unless longer
  * than a full line. Closing punctuation is never moved to the start of a line (it may

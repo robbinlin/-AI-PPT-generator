@@ -119,7 +119,6 @@ export function withEffectiveStatuses(
 
 export async function getProjectDetail(db: Db, ownerId: string, projectId: string): Promise<ProjectDetail> {
   const projectRow = await requireProject(db, ownerId, projectId);
-  const project = toProject(projectRow);
   const [sourceDocument, slideList, sceneList, outline, active] = await Promise.all([
     latestSourceDocument(db, projectId),
     listSlidesInOrder(db, projectId),
@@ -127,6 +126,7 @@ export async function getProjectDetail(db: Db, ownerId: string, projectId: strin
     latestOutline(db, projectId),
     activeJobs(db, projectId),
   ]);
+  const project = { ...toProject(projectRow), pageCount: sourceDocument?.pageCount };
   const scripts = await latestScripts(
     db,
     sceneList.map((s) => s.id),
@@ -146,6 +146,31 @@ export async function getProjectDetail(db: Db, ownerId: string, projectId: strin
   if (assetIds.size > 0) {
     const rows = await db.select().from(assets).where(inArray(assets.id, [...assetIds]));
     for (const r of rows) assetMap[r.id] = toAsset(r);
+  }
+  // Project-level outputs (rendered video, whole-video SRT, script exports) are not referenced
+  // by any scene; include the newest of each kind so the editor can offer downloads.
+  const outputRows = await db
+    .select()
+    .from(assets)
+    .where(and(eq(assets.projectId, projectId), inArray(assets.kind, ["video", "script_export"])))
+    .orderBy(desc(assets.createdAt));
+  const seenKinds = new Set<string>();
+  for (const r of outputRows) {
+    if (seenKinds.has(r.kind)) continue;
+    seenKinds.add(r.kind);
+    assetMap[r.id] = toAsset(r);
+  }
+  // The global SRT written by the last render sits next to the video; find it via the render job result.
+  const lastRender = await db
+    .select()
+    .from(jobs)
+    .where(and(eq(jobs.projectId, projectId), eq(jobs.type, "render_video"), eq(jobs.status, "succeeded")))
+    .orderBy(desc(jobs.createdAt))
+    .limit(1);
+  const srtId = (lastRender[0]?.result as { srtAssetId?: string } | null)?.srtAssetId;
+  if (srtId && !assetMap[srtId]) {
+    const [srt] = await db.select().from(assets).where(eq(assets.id, srtId));
+    if (srt) assetMap[srt.id] = toAsset(srt);
   }
 
   let totalDurationSec = 0;

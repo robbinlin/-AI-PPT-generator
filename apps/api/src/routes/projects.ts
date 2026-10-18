@@ -49,7 +49,9 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
   app.get("/projects", async (req) => {
     const { ownerId } = ctx.auth.resolve(req);
     const rows = await db.select().from(projects).where(eq(projects.ownerId, ownerId)).orderBy(desc(projects.updatedAt));
-    return rows.map(toProject);
+    return Promise.all(
+      rows.map(async (r) => ({ ...toProject(r), pageCount: (await latestSourceDocument(db, r.id))?.pageCount })),
+    );
   });
 
   app.post("/projects", async (req, reply) => {

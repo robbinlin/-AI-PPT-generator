@@ -14,16 +14,20 @@ function slideBlocks(prompt: string): Array<{ number: number; title: string; bod
   for (let i = 0; i < matches.length; i++) {
     const m = matches[i]!;
     const start = (m.index ?? 0) + m[0].length;
-    const end = i + 1 < matches.length ? (matches[i + 1]!.index ?? prompt.length) : prompt.length;
+    let end = i + 1 < matches.length ? (matches[i + 1]!.index ?? prompt.length) : prompt.length;
+    const nextSection = prompt.indexOf("\n## ", start);
+    if (nextSection >= 0 && nextSection < end) end = nextSection;
     const block = prompt.slice(start, end);
+    const tableRows = block.split("\n").filter((l) => l.trim().startsWith("|")).length;
     const title = TITLE_LINE.exec(block)?.[1]?.trim() ?? `Slide ${m[1]}`;
     const body = block
       .split("\n")
       .map((l) => l.trim())
-      .filter((l) => l && !l.startsWith("Title:") && !l.startsWith("##") && !l.startsWith("Speaker notes:"))
+      .filter((l) => l && !l.startsWith("Title:") && !l.startsWith("##") && !l.startsWith("Speaker notes:") && !l.startsWith("|") && l !== "Table:")
       .map((l) => l.replace(/^- /, ""))
       .slice(0, 6)
-      .join(" ");
+      .concat(tableRows > 1 ? [`一張 ${tableRows - 1} 列的表格`] : [])
+      .join("，");
     out.push({ number: Number(m[1]), title, body });
   }
   return out;

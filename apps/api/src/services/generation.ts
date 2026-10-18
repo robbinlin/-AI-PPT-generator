@@ -49,6 +49,15 @@ export interface GenerationDeps {
   config: Config;
 }
 
+function scaleSubtitleStyle<T extends { fontSizePx: number; marginPx: number }>(style: T, factor: number): T {
+  if (factor === 1) return style;
+  return {
+    ...style,
+    fontSizePx: Math.max(10, Math.round(style.fontSizePx * factor)),
+    marginPx: Math.max(0, Math.round(style.marginPx * factor)),
+  };
+}
+
 const PRESETS: Record<string, Record<ProjectSettings["aspectRatio"], { width: number; height: number }>> = {
   preview_540p: { "16:9": { width: 960, height: 540 }, "9:16": { width: 540, height: 960 }, "1:1": { width: 540, height: 540 } },
   hd_1080p: { "16:9": { width: 1920, height: 1080 }, "9:16": { width: 1080, height: 1920 }, "1:1": { width: 1080, height: 1080 } },
@@ -390,7 +399,8 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         height: size.height,
         fps: 30,
         scenes: renderScenes,
-        subtitleStyle: settings.subtitles.style,
+        // Style sizes are authored for 1080p; scale them to the preset so previews wrap the same way.
+        subtitleStyle: scaleSubtitleStyle(settings.subtitles.style, size.height / 1080),
         burnSubtitles: burnSubtitles && settings.subtitles.enabled,
         backgroundColor: "#000000",
         outputs: { mp4Path: join(workDir, "output.mp4"), srtPath: join(workDir, "output.srt") },

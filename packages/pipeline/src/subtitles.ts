@@ -70,25 +70,32 @@ function tokensForWrap(text: string): string[] {
   return toks;
 }
 
-/** Insert a line break so a cue of up to two lines wraps at a clause boundary when possible. */
+/** Insert line breaks so no line exceeds `maxChars` columns, breaking at clause punctuation when possible. */
 export function wrapCueLines(text: string, maxChars: number): string {
-  if (displayWidth(text) <= maxChars) return text;
-  const toks = tokensForWrap(text);
-  let bestBreak = -1;
-  let width = 0;
-  let lastClause = -1;
-  for (let i = 0; i < toks.length; i++) {
-    width += displayWidth(toks[i]!);
-    if (/[，、,；;：:]$/.test(toks[i]!.trim()) && width <= maxChars) lastClause = i;
-    if (width > maxChars) {
-      bestBreak = lastClause >= 0 ? lastClause : i - 1;
-      break;
+  const lines: string[] = [];
+  let rest = text.trim();
+  while (displayWidth(rest) > maxChars) {
+    const toks = tokensForWrap(rest);
+    let bestBreak = -1;
+    let width = 0;
+    let lastClause = -1;
+    for (let i = 0; i < toks.length; i++) {
+      width += displayWidth(toks[i]!);
+      if (/[，、,；;：:]$/.test(toks[i]!.trim()) && width <= maxChars) lastClause = i;
+      if (width > maxChars) {
+        bestBreak = lastClause >= 0 ? lastClause : i - 1;
+        break;
+      }
     }
+    if (bestBreak < 0) break;
+    const a = toks.slice(0, bestBreak + 1).join("").trim();
+    const b = toks.slice(bestBreak + 1).join("").trim();
+    if (!a || !b) break;
+    lines.push(a);
+    rest = b;
   }
-  if (bestBreak < 0) return text;
-  const a = toks.slice(0, bestBreak + 1).join("").trim();
-  const b = toks.slice(bestBreak + 1).join("").trim();
-  return b ? `${a}\n${b}` : a;
+  lines.push(rest);
+  return lines.join("\n");
 }
 
 /** Split subtitle text into cue-sized pieces (no timing yet). */

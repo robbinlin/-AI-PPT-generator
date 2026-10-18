@@ -41,6 +41,7 @@ export const SubtitleStyle = z.object({
   backgroundOpacity: z.number().min(0).max(1).default(0.6),
   position: z.enum(["bottom", "top"]).default("bottom"),
   marginPx: z.number().int().min(0).default(48),
+  /** Line width in CJK-equivalent columns: a CJK character counts 1, any other character 0.5. */
   maxCharsPerLine: z.number().int().min(8).max(80).default(28),
   highlightWords: z.boolean().default(false),
 });
@@ -100,6 +101,8 @@ export const Project = z.object({
   ownerId: z.string(),
   name: z.string().min(1).max(200),
   settings: ProjectSettings,
+  /** Pages in the latest parsed source document; absent until a deck has been uploaded. */
+  pageCount: z.number().int().nonnegative().optional(),
   createdAt: IsoDate,
   updatedAt: IsoDate,
 });

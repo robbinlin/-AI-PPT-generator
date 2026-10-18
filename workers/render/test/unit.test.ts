@@ -46,10 +46,10 @@ describe("wrapText", () => {
     expect(wrapText("一二三四，五六", 4)).toEqual(["一二三四，", "五六"]);
   });
   it("keeps Latin words whole and honours explicit newlines", () => {
-    expect(wrapText("the quick brown fox jumps", 10)).toEqual(["the quick", "brown fox", "jumps"]);
+    expect(wrapText("the quick brown fox jumps", 10)).toEqual(["the quick brown fox", "jumps"]);
     expect(wrapText("a\nb", 10)).toEqual(["a", "b"]);
-    expect(wrapText("abcdefghijkl", 5)).toEqual(["abcde", "fghij", "kl"]);
-    expect(wrapText("使用 Python 程式", 10)).toEqual(["使用 Python", "程式"]);
+    expect(wrapText("abcdefghijkl", 5)).toEqual(["abcdefghij", "kl"]);
+    expect(wrapText("使用 Python 程式", 6)).toEqual(["使用 Python", "程式"]);
   });
   it("also caps estimated width so large fonts on small frames do not overflow", () => {
     expect(wrapText("一二三四五六", 28, 4)).toEqual(["一二三四", "五六"]);

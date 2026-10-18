@@ -18,7 +18,8 @@ import { providerRoutes } from "./routes/providers.js";
 import { ProviderService } from "./services/providers.js";
 import { pipelineDeriveTexts, type DeriveTexts } from "./services/scripts.js";
 import { createGenerationSeams } from "./services/generation.js";
-import type { ProviderRegistry } from "@lvs/providers";
+import { ProviderRegistry, defaultRegistry, mockLlmFactory } from "@lvs/providers";
+import { smartMockResponder } from "./services/mock-llm.js";
 import { LocalStorageService } from "./storage/local.js";
 import { AssetUrlSigner } from "./storage/signing.js";
 import type { StorageService } from "./storage/types.js";
@@ -58,7 +59,9 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<BuiltS
   const parserRunner =
     opts.parserRunner ??
     new PythonParserRunner({ python: config.PARSER_PYTHON, cwd: config.PARSER_CLI, timeoutMs: config.PARSER_TIMEOUT_MS, sofficeBin: config.SOFFICE_BIN });
-  const providers = new ProviderService(dbHandle.db, config, opts.registry);
+  // The default `mock` LLM answers with a prompt-aware responder so the whole flow runs offline.
+  const registry = opts.registry ?? defaultRegistry.registerLlm(mockLlmFactory(smartMockResponder));
+  const providers = new ProviderService(dbHandle.db, config, registry);
   const seams = opts.seams ?? createGenerationSeams({ providers, config });
   const runner = new JobRunner({
     db: dbHandle.db,
