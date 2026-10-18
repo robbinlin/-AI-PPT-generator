@@ -1,0 +1,236 @@
+import { randomUUID } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { asc, eq, inArray, ne } from "drizzle-orm";
+import { sha256Hex, SlideContent, type ParserManifest, type SceneAssetState } from "@lvs/shared";
+import { toScene, toSlide } from "../../db/mappers.js";
+import { assets, scenes, slides, sourceDocuments, type SceneRow, type SlideRow } from "../../db/schema.js";
+import { NonRetryableJobError } from "../../errors.js";
+import type { JobHandler } from "../context.js";
+import { throwIfAborted } from "../context.js";
+
+export const slideContentHash = (plainText: string, notes: string | undefined) => sha256Hex(`${plainText}\n${notes ?? ""}`);
+
+type ParsedPage = {
+  pageNumber: number;
+  content: SlideContent;
+  contentHash: string;
+  image: { buffer: Buffer; width: number; height: number };
+  thumbnail: { buffer: Buffer };
+};
+
+/**
+ * parse_document: runs the parser worker on the uploaded deck, stores page images as
+ * assets, (re)creates slides, and matches scenes so existing scripts survive a re-upload.
+ */
+export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentId: string }> = async (ctx) => {
+  const { db, storage, job } = ctx;
+  const docId = job.payload.sourceDocumentId;
+  const [doc] = await db.select().from(sourceDocuments).where(eq(sourceDocuments.id, docId)).limit(1);
+  if (!doc) throw new NonRetryableJobError(`source document ${docId} not found`);
+  await db.update(sourceDocuments).set({ parseStatus: "running", parseJobId: job.id }).where(eq(sourceDocuments.id, docId));
+
+  const scratch = await mkdtemp(join(tmpdir(), "lvs-parse-"));
+  try {
+    await ctx.emit(0.02, "準備檔案");
+    const inputPath = join(scratch, `input.${doc.kind}`);
+    const src = await storage.getStream(doc.storageKey);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(inputPath, await streamToBuffer(src.stream));
+    throwIfAborted(ctx.signal);
+
+    const outDir = join(scratch, "out");
+    await ctx.emit(0.05, "解析文件");
+    const manifest = await ctx.parserRunner.run({
+      filePath: inputPath,
+      outDir,
+      kind: doc.kind as "pptx" | "ppt" | "pdf",
+      signal: ctx.signal,
+      onProgress: (f, m) => void ctx.emit(0.05 + f * 0.6, m ?? "解析文件"),
+    });
+    throwIfAborted(ctx.signal);
+
+    const pages = await loadPages(manifest, outDir);
+    await ctx.emit(0.7, `儲存 ${pages.length} 頁影像`);
+
+    const projectId = doc.projectId;
+    const prefix = `projects/${projectId}/slides/${docId}`;
+    const created: Array<{ page: ParsedPage; imageAssetId: string; thumbnailAssetId: string }> = [];
+    for (const page of pages) {
+      throwIfAborted(ctx.signal);
+      const n = String(page.pageNumber).padStart(3, "0");
+      const imageKey = `${prefix}/${n}.png`;
+      const thumbKey = `${prefix}/${n}.thumb.png`;
+      await storage.put(imageKey, page.image.buffer, "image/png");
+      await storage.put(thumbKey, page.thumbnail.buffer, "image/png");
+      const imageAssetId = randomUUID();
+      const thumbnailAssetId = randomUUID();
+      await db.insert(assets).values([
+        {
+          id: imageAssetId,
+          projectId,
+          kind: "slide_image",
+          storageKey: imageKey,
+          mimeType: "image/png",
+          sizeBytes: page.image.buffer.length,
+          width: page.image.width,
+          height: page.image.height,
+          inputHash: page.contentHash,
+          producedBy: { jobId: job.id },
+        },
+        {
+          id: thumbnailAssetId,
+          projectId,
+          kind: "thumbnail",
+          storageKey: thumbKey,
+          mimeType: "image/png",
+          sizeBytes: page.thumbnail.buffer.length,
+          inputHash: page.contentHash,
+          producedBy: { jobId: job.id },
+        },
+      ]);
+      created.push({ page, imageAssetId, thumbnailAssetId });
+    }
+
+    await ctx.emit(0.9, "建立頁面與場景");
+    const { newSlides, newScenes } = await db.transaction(async (tx) => {
+      const oldSlides = await tx.select().from(slides).where(eq(slides.projectId, projectId)).orderBy(asc(slides.index));
+      const oldScenes = await tx.select().from(scenes).where(eq(scenes.projectId, projectId)).orderBy(asc(scenes.index));
+      const oldSlideById = new Map(oldSlides.map((s) => [s.id, s]));
+
+      const insertedSlides: SlideRow[] = [];
+      for (let i = 0; i < created.length; i++) {
+        const c = created[i]!;
+        const [row] = await tx
+          .insert(slides)
+          .values({
+            id: randomUUID(),
+            projectId,
+            sourceDocumentId: docId,
+            index: i,
+            pageNumber: c.page.pageNumber,
+            contentHash: c.page.contentHash,
+            imageAssetId: c.imageAssetId,
+            thumbnailAssetId: c.thumbnailAssetId,
+            content: c.page.content,
+            hidden: false,
+          })
+          .returning();
+        insertedSlides.push(row!);
+      }
+
+      const matched = matchScenes(
+        insertedSlides,
+        oldScenes.map((sc) => ({ scene: sc, slide: oldSlideById.get(sc.slideId) })),
+      );
+
+      const resultScenes: SceneRow[] = [];
+      for (let i = 0; i < insertedSlides.length; i++) {
+        const slide = insertedSlides[i]!;
+        const m = matched.get(slide.id);
+        if (m) {
+          const staleScript: SceneAssetState =
+            m.kind === "same" || m.scene.script.status === "missing" ? m.scene.script : { ...m.scene.script, status: "stale" };
+          const [row] = await tx
+            .update(scenes)
+            .set({ slideId: slide.id, index: i, script: staleScript })
+            .where(eq(scenes.id, m.scene.id))
+            .returning();
+          resultScenes.push(row!);
+        } else {
+          const empty: SceneAssetState = { status: "missing" };
+          const [row] = await tx
+            .insert(scenes)
+            .values({ id: randomUUID(), projectId, slideId: slide.id, index: i, script: empty, audio: empty, avatar: empty, subtitle: empty })
+            .returning();
+          resultScenes.push(row!);
+        }
+      }
+      const keptSceneIds = new Set(resultScenes.map((s) => s.id));
+      const orphanScenes = oldScenes.filter((s) => !keptSceneIds.has(s.id)).map((s) => s.id);
+      if (orphanScenes.length) await tx.delete(scenes).where(inArray(scenes.id, orphanScenes));
+      // Old slides (previous document versions) are no longer referenced by any scene.
+      await tx.delete(slides).where(ne(slides.sourceDocumentId, docId));
+      await tx
+        .update(sourceDocuments)
+        .set({ parseStatus: "succeeded", pageCount: insertedSlides.length })
+        .where(eq(sourceDocuments.id, docId));
+      return { newSlides: insertedSlides, newScenes: resultScenes };
+    });
+
+    ctx.publish({ kind: "slides", slides: newSlides.map(toSlide), scenes: newScenes.map(toScene) });
+    await ctx.emit(1, "完成");
+    return { pageCount: newSlides.length, warnings: manifest.meta.warnings, converter: manifest.meta.converter };
+  } catch (err) {
+    const cancelled = ctx.signal.aborted || (err as Error).name === "AbortError";
+    await db
+      .update(sourceDocuments)
+      .set({ parseStatus: cancelled ? "cancelled" : job.attempts >= job.maxAttempts || err instanceof NonRetryableJobError ? "failed" : "queued" })
+      .where(eq(sourceDocuments.id, docId));
+    throw err;
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+};
+
+async function loadPages(manifest: ParserManifest, outDir: string): Promise<ParsedPage[]> {
+  const pages: ParsedPage[] = [];
+  for (const entry of manifest.pages) {
+    const content = SlideContent.parse(JSON.parse(await readFile(join(outDir, entry.contentPath), "utf8")));
+    const image = await readFile(join(outDir, entry.imagePath));
+    const thumbnail = await readFile(join(outDir, entry.thumbnailPath));
+    pages.push({
+      pageNumber: entry.pageNumber,
+      content,
+      contentHash: slideContentHash(content.plainText, content.notes),
+      image: { buffer: image, width: entry.imageWidthPx, height: entry.imageHeightPx },
+      thumbnail: { buffer: thumbnail },
+    });
+  }
+  pages.sort((a, b) => a.pageNumber - b.pageNumber);
+  return pages;
+}
+
+type OldEntry = { scene: SceneRow; slide: SlideRow | undefined };
+type Match = { scene: SceneRow; kind: "same" | "changed" };
+
+/**
+ * Pass 1: identical content hash => same scene, scripts intact.
+ * Pass 2: same page number => same scene, script marked stale.
+ * Anything else is a new scene; unmatched old scenes are deleted.
+ */
+export function matchScenes(newSlides: SlideRow[], old: OldEntry[]): Map<string, Match> {
+  const out = new Map<string, Match>();
+  const unused = new Set(old.map((_, i) => i));
+  const byHash = new Map<string, number[]>();
+  const byPage = new Map<number, number[]>();
+  old.forEach((o, i) => {
+    if (!o.slide) return;
+    byHash.set(o.slide.contentHash, [...(byHash.get(o.slide.contentHash) ?? []), i]);
+    byPage.set(o.slide.pageNumber, [...(byPage.get(o.slide.pageNumber) ?? []), i]);
+  });
+  const take = (list: number[] | undefined) => {
+    const i = list?.find((x) => unused.has(x));
+    if (i === undefined) return undefined;
+    unused.delete(i);
+    return old[i]!;
+  };
+  const pending: SlideRow[] = [];
+  for (const s of newSlides) {
+    const hit = take(byHash.get(s.contentHash));
+    if (hit) out.set(s.id, { scene: hit.scene, kind: "same" });
+    else pending.push(s);
+  }
+  for (const s of pending) {
+    const hit = take(byPage.get(s.pageNumber));
+    if (hit) out.set(s.id, { scene: hit.scene, kind: "changed" });
+  }
+  return out;
+}
+
+async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const c of stream) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+  return Buffer.concat(chunks);
+}
