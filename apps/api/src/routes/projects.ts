@@ -1,0 +1,341 @@
+import { createHash, randomUUID } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import type { FastifyInstance } from "fastify";
+import {
+  CreateProjectRequest,
+  EnqueueJobRequest,
+  JobType,
+  ProjectSettings,
+  ReorderSlidesRequest,
+  UpdateProjectRequest,
+  UpdateSceneRequest,
+  UpdateScriptRequest,
+} from "@lvs/shared";
+import { z } from "zod";
+import type { AppContext } from "../context.js";
+import { toJob, toProject, toScene, toScriptRevision, toSlide, toSourceDocument } from "../db/mappers.js";
+import { jobs, projects, scenes, scriptRevisions, slides, sourceDocuments } from "../db/schema.js";
+import { badRequest, notFound } from "../errors.js";
+import { renderScriptDocument } from "../jobs/handlers/export-script.js";
+import { estimateJob } from "../services/estimate.js";
+import { getProjectDetail, latestSourceDocument, requireProject } from "../services/projects.js";
+import { createScriptRevision } from "../services/scripts.js";
+import { SOURCE_MIME, sniffSourceKind } from "../util/magic.js";
+import { parse } from "../util/validate.js";
+
+const HEAD_BYTES = 64 * 1024;
+
+function deepMerge<T extends Record<string, unknown>>(base: T, patch: Record<string, unknown>): T {
+  const out: Record<string, unknown> = { ...base };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) continue;
+    const cur = out[k];
+    if (v && typeof v === "object" && !Array.isArray(v) && cur && typeof cur === "object" && !Array.isArray(cur)) {
+      out[k] = deepMerge(cur as Record<string, unknown>, v as Record<string, unknown>);
+    } else out[k] = v;
+  }
+  return out as T;
+}
+
+export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
+  const { db } = ctx;
+
+  app.get("/projects", async (req) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const rows = await db.select().from(projects).where(eq(projects.ownerId, ownerId)).orderBy(desc(projects.updatedAt));
+    return rows.map(toProject);
+  });
+
+  app.post("/projects", async (req, reply) => {
+    const body = parse(CreateProjectRequest, req.body);
+    const { ownerId } = ctx.auth.resolve(req);
+    const settings = ProjectSettings.parse(body.settings ?? {});
+    const [row] = await db.insert(projects).values({ id: randomUUID(), ownerId, name: body.name, settings }).returning();
+    reply.code(201);
+    return toProject(row!);
+  });
+
+  app.get<{ Params: { id: string } }>("/projects/:id", async (req) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    return getProjectDetail(db, ownerId, req.params.id);
+  });
+
+  app.patch<{ Params: { id: string } }>("/projects/:id", async (req) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const body = parse(UpdateProjectRequest, req.body);
+    const current = await requireProject(db, ownerId, req.params.id);
+    const settings = body.settings ? ProjectSettings.parse(deepMerge(current.settings as Record<string, unknown>, body.settings)) : current.settings;
+    const [row] = await db
+      .update(projects)
+      .set({ name: body.name ?? current.name, settings, updatedAt: new Date() })
+      .where(eq(projects.id, current.id))
+      .returning();
+    const project = toProject(row!);
+    ctx.bus.publish(project.id, { kind: "project", project });
+    return project;
+  });
+
+  app.delete<{ Params: { id: string } }>("/projects/:id", async (req, reply) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const project = await requireProject(db, ownerId, req.params.id);
+    const active = await db.select().from(jobs).where(and(eq(jobs.projectId, project.id), inArray(jobs.status, ["queued", "running"])));
+    for (const j of active) await ctx.runner.cancel(j.id);
+    await db.delete(projects).where(eq(projects.id, project.id));
+    // Storage objects are left for a sweeper; keys are prefixed by project id.
+    reply.code(204);
+    return null;
+  });
+
+  // ------------------------------------------------------------ upload ----
+
+  app.post<{ Params: { id: string } }>("/projects/:id/source", async (req) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const project = await requireProject(db, ownerId, req.params.id);
+    const part = await req.file();
+    if (!part) throw badRequest("multipart field `file` is required");
+
+    const scratch = await mkdtemp(join(tmpdir(), "lvs-upload-"));
+    const tmpPath = join(scratch, "upload.bin");
+    const hash = createHash("sha256");
+    const headChunks: Buffer[] = [];
+    let headLen = 0;
+    let size = 0;
+    const tap = new Transform({
+      transform(chunk: Buffer, _enc, cb) {
+        hash.update(chunk);
+        size += chunk.length;
+        if (headLen < HEAD_BYTES) {
+          headChunks.push(chunk.subarray(0, HEAD_BYTES - headLen));
+          headLen += Math.min(chunk.length, HEAD_BYTES - headLen);
+        }
+        cb(null, chunk);
+      },
+    });
+    try {
+      await pipeline(part.file, tap, createWriteStream(tmpPath));
+      if (part.file.truncated) throw badRequest(`file exceeds ${ctx.config.MAX_UPLOAD_BYTES} bytes`);
+      const kind = sniffSourceKind(Buffer.concat(headChunks), part.filename);
+      if (!kind) throw badRequest("unsupported file type; upload a .pptx, .ppt or .pdf");
+
+      const previous = await latestSourceDocument(db, project.id);
+      const docId = randomUUID();
+      const safeName = part.filename.replace(/[^\w.\-一-鿿]+/g, "_").slice(0, 120) || `deck.${kind}`;
+      const storageKey = `projects/${project.id}/source/${docId}/${safeName}`;
+      await ctx.storage.put(storageKey, createReadStream(tmpPath), SOURCE_MIME[kind]);
+      const [row] = await db
+        .insert(sourceDocuments)
+        .values({
+          id: docId,
+          projectId: project.id,
+          filename: part.filename,
+          mimeType: SOURCE_MIME[kind],
+          kind,
+          storageKey,
+          sizeBytes: size,
+          sha256: hash.digest("hex"),
+          version: (previous?.version ?? 0) + 1,
+          parseStatus: "queued",
+        })
+        .returning();
+      const job = await ctx.runner.enqueue(project.id, { type: "parse_document", sourceDocumentId: docId }, { dedupeKey: `parse:${docId}` });
+      await db.update(sourceDocuments).set({ parseJobId: job.id }).where(eq(sourceDocuments.id, docId));
+      await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, project.id));
+      return { sourceDocument: toSourceDocument({ ...row!, parseJobId: job.id }), job };
+    } finally {
+      await rm(scratch, { recursive: true, force: true });
+    }
+  });
+
+  // ------------------------------------------------------------ slides ----
+
+  app.post<{ Params: { id: string } }>("/projects/:id/slides/reorder", async (req) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const project = await requireProject(db, ownerId, req.params.id);
+    const body = parse(ReorderSlidesRequest, req.body);
+    const existing = await db.select().from(slides).where(eq(slides.projectId, project.id));
+    const ids = new Set(existing.map((s) => s.id));
+    if (body.slideIds.length !== ids.size || body.slideIds.some((id) => !ids.has(id)) || new Set(body.slideIds).size !== ids.size) {
+      throw badRequest("slideIds must be a permutation of the project's slides");
+    }
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < body.slideIds.length; i++) {
+        const slideId = body.slideIds[i]!;
+        await tx.update(slides).set({ index: i }).where(eq(slides.id, slideId));
+        await tx.update(scenes).set({ index: i }).where(eq(scenes.slideId, slideId));
+      }
+      await tx.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, project.id));
+    });
+    const [newSlides, newScenes] = await Promise.all([
+      db.select().from(slides).where(eq(slides.projectId, project.id)).orderBy(asc(slides.index)),
+      db.select().from(scenes).where(eq(scenes.projectId, project.id)).orderBy(asc(scenes.index)),
+    ]);
+    const payload = { slides: newSlides.map(toSlide), scenes: newScenes.map(toScene) };
+    ctx.bus.publish(project.id, { kind: "slides", ...payload });
+    return payload;
+  });
+
+  app.patch<{ Params: { id: string; slideId: string } }>("/projects/:id/slides/:slideId", async (req) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const project = await requireProject(db, ownerId, req.params.id);
+    const body = parse(z.object({ hidden: z.boolean() }), req.body);
+    const [row] = await db
+      .update(slides)
+      .set({ hidden: body.hidden })
+      .where(and(eq(slides.id, req.params.slideId), eq(slides.projectId, project.id)))
+      .returning();
+    if (!row) throw notFound("slide", req.params.slideId);
+    const [all, allScenes] = await Promise.all([
+      db.select().from(slides).where(eq(slides.projectId, project.id)).orderBy(asc(slides.index)),
+      db.select().from(scenes).where(eq(scenes.projectId, project.id)).orderBy(asc(scenes.index)),
+    ]);
+    ctx.bus.publish(project.id, { kind: "slides", slides: all.map(toSlide), scenes: allScenes.map(toScene) });
+    return toSlide(row);
+  });
+
+  // ------------------------------------------------------------ scenes ----
+
+  const requireScene = async (projectId: string, sceneId: string) => {
+    const [row] = await db
+      .select()
+      .from(scenes)
+      .where(and(eq(scenes.id, sceneId), eq(scenes.projectId, projectId)))
+      .limit(1);
+    if (!row) throw notFound("scene", sceneId);
+    return row;
+  };
+
+  app.patch<{ Params: { id: string; sceneId: string } }>("/projects/:id/scenes/:sceneId", async (req) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const project = await requireProject(db, ownerId, req.params.id);
+    const body = parse(UpdateSceneRequest, req.body);
+    await requireScene(project.id, req.params.sceneId);
+    const set: Partial<typeof scenes.$inferInsert> = {};
+    if (body.muted !== undefined) set.muted = body.muted;
+    if (body.avatarLayout !== undefined) set.avatarLayout = body.avatarLayout;
+    if (body.transitionIn !== undefined) set.transitionIn = body.transitionIn;
+    if (body.tailPauseSec !== undefined) set.tailPauseSec = body.tailPauseSec;
+    const [row] = await db.update(scenes).set(set).where(eq(scenes.id, req.params.sceneId)).returning();
+    const scene = toScene(row!);
+    ctx.bus.publish(project.id, { kind: "scene", scene });
+    return scene;
+  });
+
+  app.put<{ Params: { id: string; sceneId: string } }>("/projects/:id/scenes/:sceneId/script", async (req) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const project = await requireProject(db, ownerId, req.params.id);
+    const body = parse(UpdateScriptRequest, req.body);
+    const scene = await requireScene(project.id, req.params.sceneId);
+    const { revision, created } = await createScriptRevision(db, {
+      scene,
+      script: body.script,
+      pronunciationText: body.pronunciationText,
+      subtitleText: body.subtitleText,
+      source: "user",
+      language: project.settings.language,
+      deriveTexts: ctx.deriveTexts,
+    });
+    if (created) {
+      const [fresh] = await db.select().from(scenes).where(eq(scenes.id, scene.id)).limit(1);
+      ctx.bus.publish(project.id, { kind: "script", script: revision });
+      if (fresh) ctx.bus.publish(project.id, { kind: "scene", scene: toScene(fresh) });
+      await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, project.id));
+    }
+    return revision;
+  });
+
+  app.get<{ Params: { id: string; sceneId: string } }>("/projects/:id/scenes/:sceneId/scripts", async (req) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const project = await requireProject(db, ownerId, req.params.id);
+    await requireScene(project.id, req.params.sceneId);
+    const rows = await db
+      .select()
+      .from(scriptRevisions)
+      .where(eq(scriptRevisions.sceneId, req.params.sceneId))
+      .orderBy(desc(scriptRevisions.version));
+    return rows.map(toScriptRevision);
+  });
+
+  // -------------------------------------------------------------- jobs ----
+
+  app.post<{ Params: { id: string } }>("/projects/:id/jobs", async (req, reply) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const project = await requireProject(db, ownerId, req.params.id);
+    const payload = parse(EnqueueJobRequest, req.body);
+    const dedupeKey = payload.type === "generate_outline" || payload.type === "render_video" ? `${payload.type}:${JSON.stringify(payload)}` : undefined;
+    const job = await ctx.runner.enqueue(project.id, payload, { dedupeKey });
+    let estimate;
+    if (["generate_outline", "generate_script", "synthesize_speech", "generate_avatar", "render_video"].includes(payload.type)) {
+      estimate = estimateJob(await getProjectDetail(db, ownerId, project.id), payload.type);
+    }
+    reply.code(202);
+    return { job, estimate };
+  });
+
+  app.get<{ Params: { id: string }; Querystring: { status?: string } }>("/projects/:id/jobs", async (req) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const project = await requireProject(db, ownerId, req.params.id);
+    const where = req.query.status
+      ? and(eq(jobs.projectId, project.id), eq(jobs.status, req.query.status))
+      : eq(jobs.projectId, project.id);
+    const rows = await db.select().from(jobs).where(where).orderBy(desc(jobs.createdAt)).limit(200);
+    return rows.map(toJob);
+  });
+
+  app.post<{ Params: { id: string; jobId: string } }>("/projects/:id/jobs/:jobId/cancel", async (req) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const project = await requireProject(db, ownerId, req.params.id);
+    const [row] = await db.select().from(jobs).where(and(eq(jobs.id, req.params.jobId), eq(jobs.projectId, project.id))).limit(1);
+    if (!row) throw notFound("job", req.params.jobId);
+    return (await ctx.runner.cancel(row.id)) ?? toJob(row);
+  });
+
+  app.get<{ Params: { id: string }; Querystring: { type?: string } }>("/projects/:id/estimate", async (req) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const type = parse(JobType, req.query.type, "query.type");
+    return estimateJob(await getProjectDetail(db, ownerId, req.params.id), type);
+  });
+
+  app.get<{ Params: { id: string }; Querystring: { format?: string } }>("/projects/:id/export/script", async (req, reply) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const format = parse(z.enum(["txt", "md"]).default("md"), req.query.format, "query.format");
+    const detail = await getProjectDetail(db, ownerId, req.params.id);
+    const text = renderScriptDocument(detail, format);
+    const safe = detail.project.name.replace(/[^\w\-一-鿿]+/g, "_");
+    reply.header("Content-Type", format === "md" ? "text/markdown; charset=utf-8" : "text/plain; charset=utf-8");
+    reply.header("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(safe)}.${format}`);
+    return reply.send(text);
+  });
+
+  // ------------------------------------------------------------ events ----
+
+  app.get<{ Params: { id: string } }>("/projects/:id/events", async (req, reply) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const project = await requireProject(db, ownerId, req.params.id);
+    reply.hijack();
+    const res = reply.raw;
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+      "Access-Control-Allow-Origin": (req.headers.origin as string | undefined) ?? "*",
+    });
+    res.write(`: connected ${project.id}\n\n`);
+    const unsubscribe = ctx.bus.subscribe(project.id, (event) => {
+      res.write(`event: ${event.kind}\ndata: ${JSON.stringify(event)}\n\n`);
+    });
+    const keepAlive = setInterval(() => res.write(": keep-alive\n\n"), 15_000);
+    const cleanup = () => {
+      clearInterval(keepAlive);
+      unsubscribe();
+    };
+    req.raw.on("close", cleanup);
+    res.on("close", cleanup);
+  });
+}
