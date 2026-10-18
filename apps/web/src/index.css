@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --color-accent-400: oklch(0.72 0.14 275);
+  --color-accent-500: oklch(0.62 0.18 275);
+  --color-accent-600: oklch(0.55 0.19 275);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 1100px;
+  background: var(--color-neutral-950);
+  color: var(--color-neutral-200);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Thin, unobtrusive scrollbars in the dark panels. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-neutral-700) transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent-400);
+  outline-offset: 2px;
+}
+
+@keyframes indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+.animate-indeterminate {
+  animation: indeterminate 1.4s ease-in-out infinite;
+}

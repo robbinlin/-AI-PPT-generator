@@ -1,0 +1,131 @@
+import { z } from "zod";
+import {
+  Job,
+  Project,
+  Scene,
+  Slide,
+  SourceDocument,
+  Language,
+  type CostEstimate,
+  type CreateProjectRequest,
+  type EnqueueJobRequest,
+  type EnqueueJobResponse,
+  type JobStatus,
+  type ProjectDetail,
+  type ProjectEvent,
+  type ProviderInfo,
+  type ReorderSlidesRequest,
+  type ScriptRevision,
+  type SetProviderKeyRequest,
+  type UpdateProjectRequest,
+  type UpdateSceneRequest,
+  type UpdateScriptRequest,
+} from "@lvs/shared";
+
+/*
+ * Response shapes that docs/API.md describes inline but `@lvs/shared` does not export as
+ * schemas. Kept local until they move into shared (see apps/web/README.md).
+ */
+
+export const HealthResponse = z.object({ ok: z.literal(true), version: z.string() });
+export type HealthResponse = z.infer<typeof HealthResponse>;
+
+export const UploadSourceResponse = z.object({ sourceDocument: SourceDocument, job: Job });
+export type UploadSourceResponse = z.infer<typeof UploadSourceResponse>;
+
+export const ReorderSlidesResponse = z.object({ slides: z.array(Slide), scenes: z.array(Scene) });
+export type ReorderSlidesResponse = z.infer<typeof ReorderSlidesResponse>;
+
+export const AssetUrlResponse = z.object({ url: z.string().min(1), expiresAt: z.string() });
+export type AssetUrlResponse = z.infer<typeof AssetUrlResponse>;
+
+/** Zod mirror of the `Voice` interface in `@lvs/shared/providers` (an interface, not a schema). */
+export const VoiceSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  languages: z.array(Language),
+  gender: z.enum(["female", "male", "neutral"]).optional(),
+  previewUrl: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+});
+export type VoiceOption = z.infer<typeof VoiceSchema>;
+
+/** Zod mirror of the `AvatarCharacter` interface in `@lvs/shared/providers`. */
+export const AvatarCharacterSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  previewImageUrl: z.string().optional(),
+  kind: z.enum(["stock", "personal"]),
+});
+export type AvatarOption = z.infer<typeof AvatarCharacterSchema>;
+
+/**
+ * `GET /projects` returns `Project[]`, which has no page count. The list view reads an
+ * optional `pageCount` if the API adds it (the mock does) and shows "not uploaded" otherwise.
+ */
+export const ProjectSummary = Project.extend({ pageCount: z.number().int().nonnegative().optional() });
+export type ProjectSummary = z.infer<typeof ProjectSummary>;
+
+export type EstimateType = "synthesize_speech" | "generate_avatar" | "render_video";
+export type ScriptExportFormat = "txt" | "md";
+
+export interface UploadOptions {
+  /** Upload progress, 0..1. */
+  onProgress?: (fraction: number) => void;
+}
+
+export type ProjectEventListener = (event: ProjectEvent) => void;
+
+/** Typed surface over every route in docs/API.md. Implemented by HttpApiClient and MockApiClient. */
+export interface ApiClient {
+  readonly mode: "http" | "mock";
+
+  health(): Promise<HealthResponse>;
+
+  listProviders(): Promise<ProviderInfo[]>;
+  setProviderKey(providerId: string, req: SetProviderKeyRequest): Promise<ProviderInfo>;
+  deleteProviderKey(providerId: string): Promise<ProviderInfo>;
+  listVoices(providerId: string): Promise<VoiceOption[]>;
+  listAvatars(providerId: string): Promise<AvatarOption[]>;
+
+  listProjects(): Promise<ProjectSummary[]>;
+  createProject(req: CreateProjectRequest): Promise<Project>;
+  getProject(projectId: string): Promise<ProjectDetail>;
+  updateProject(projectId: string, req: UpdateProjectRequest): Promise<Project>;
+  deleteProject(projectId: string): Promise<void>;
+
+  uploadSource(projectId: string, file: File, options?: UploadOptions): Promise<UploadSourceResponse>;
+  reorderSlides(projectId: string, req: ReorderSlidesRequest): Promise<ReorderSlidesResponse>;
+  setSlideHidden(projectId: string, slideId: string, hidden: boolean): Promise<Slide>;
+  updateScene(projectId: string, sceneId: string, req: UpdateSceneRequest): Promise<Scene>;
+  updateScript(projectId: string, sceneId: string, req: UpdateScriptRequest): Promise<ScriptRevision>;
+  listScriptRevisions(projectId: string, sceneId: string): Promise<ScriptRevision[]>;
+
+  enqueueJob(projectId: string, req: EnqueueJobRequest): Promise<EnqueueJobResponse>;
+  listJobs(projectId: string, status?: JobStatus): Promise<Job[]>;
+  cancelJob(projectId: string, jobId: string): Promise<Job>;
+
+  getEstimate(projectId: string, type: EstimateType): Promise<CostEstimate>;
+  exportScript(projectId: string, format: ScriptExportFormat): Promise<Blob>;
+  getAssetUrl(projectId: string, assetId: string): Promise<AssetUrlResponse>;
+
+  /** Server-sent project events. Returns an unsubscribe function. */
+  subscribe(projectId: string, listener: ProjectEventListener): () => void;
+}
+
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string,
+    readonly details?: unknown,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
+export function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
