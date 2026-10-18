@@ -1,0 +1,92 @@
+import { describe, expect, it } from "vitest";
+import {
+  applyGlossaryReadings,
+  decimalToChinese,
+  derivePronunciationText,
+  deriveSubtitleText,
+  estimateSpeakingSeconds,
+  integerToChinese,
+  normaliseScripts,
+  targetLength,
+} from "../src/texts.js";
+
+describe("chinese numerals", () => {
+  it("integers", () => {
+    expect(integerToChinese(0)).toBe("零");
+    expect(integerToChinese(5)).toBe("五");
+    expect(integerToChinese(10)).toBe("十");
+    expect(integerToChinese(15)).toBe("十五");
+    expect(integerToChinese(25)).toBe("二十五");
+    expect(integerToChinese(110)).toBe("一百一十");
+    expect(integerToChinese(105)).toBe("一百零五");
+    expect(integerToChinese(1000)).toBe("一千");
+    expect(integerToChinese(10015)).toBe("一萬零一十五");
+    expect(integerToChinese(10500)).toBe("一萬零五百");
+    expect(integerToChinese(120000)).toBe("十二萬");
+    expect(integerToChinese(100000005)).toBe("一億零五");
+  });
+  it("decimals", () => {
+    expect(decimalToChinese("0.05")).toBe("零點零五");
+    expect(decimalToChinese("12.5")).toBe("十二點五");
+    expect(decimalToChinese("3")).toBe("三");
+  });
+});
+
+describe("derivePronunciationText (zh-TW)", () => {
+  const glossary = [
+    { term: "VO₂max", reading: "V O two max" },
+    { term: "ANOVA", reading: "變異數分析" },
+    { term: "Smith", reading: "史密斯" },
+    { term: "CI", reading: "信賴區間" },
+  ];
+  it("expands glossary readings, longest term first and whole-word for Latin", () => {
+    expect(applyGlossaryReadings("ANOVA 與 VO₂max", glossary)).toBe("變異數分析 與 V O two max");
+    // "CI" must not match inside "SCIENCE"
+    expect(applyGlossaryReadings("SCIENCE CI", glossary)).toBe("SCIENCE 信賴區間");
+  });
+  it("speaks p-values and comparisons", () => {
+    expect(derivePronunciationText("結果 p < .05。", glossary, "zh-TW")).toBe("結果 p 小於 零點零五。");
+    expect(derivePronunciationText("差異 p = 0.03，η² ≥ 0.14", glossary, "zh-TW")).toBe("差異 p 等於 零點零三，eta 平方 大於等於 零點一四");
+  });
+  it("speaks percentages and keeps integers as digits", () => {
+    expect(derivePronunciationText("提升 25%，共 120 人", glossary, "zh-TW")).toBe("提升 百分之二十五，共 120 人");
+    expect(derivePronunciationText("12.5% 的受試者", glossary, "zh-TW")).toBe("百分之十二點五 的受試者");
+  });
+  it("normalises subscripts when no reading exists", () => {
+    expect(normaliseScripts("H₂O x²")).toBe("H2O x2");
+    expect(derivePronunciationText("H₂O", [], "zh-TW")).toBe("H2O");
+  });
+  it("symbols and greek", () => {
+    expect(derivePronunciationText("α = .05 ± 2", glossary, "zh-TW")).toBe("阿爾法 等於 零點零五 正負 2");
+    expect(derivePronunciationText("由 A → B", glossary, "zh-TW")).toBe("由 A 到 B");
+  });
+  it("leaves author names to the glossary", () => {
+    expect(derivePronunciationText("Smith 等人提出", glossary, "zh-TW")).toBe("史密斯 等人提出");
+  });
+});
+
+describe("derivePronunciationText (en)", () => {
+  it("speaks decimals, percent and comparisons in English", () => {
+    expect(derivePronunciationText("p < .05 and 25% of VO₂max", [{ term: "VO₂max", reading: "V O two max" }], "en")).toBe(
+      "p less than zero point 0 5 and 25 percent of V O two max",
+    );
+  });
+});
+
+describe("deriveSubtitleText", () => {
+  it("normalises whitespace only", () => {
+    expect(deriveSubtitleText("  第一句。\r\n\r\n  補充：第二句  。 ")).toBe("第一句。\n補充：第二句 。");
+    expect(deriveSubtitleText("VO₂max p < .05")).toBe("VO₂max p < .05");
+  });
+});
+
+describe("length helpers", () => {
+  it("estimates speaking seconds", () => {
+    expect(estimateSpeakingSeconds("一".repeat(45), "zh-TW")).toBe(10);
+    expect(estimateSpeakingSeconds("word ".repeat(25).trim(), "en")).toBe(10);
+  });
+  it("targetLength", () => {
+    expect(targetLength(60, "zh-TW")).toEqual({ chars: 270 });
+    expect(targetLength(60, "en")).toEqual({ words: 150 });
+  });
+});
