@@ -33,6 +33,11 @@ applied at startup for both drivers. After changing `src/db/schema.ts` run
 | `JOB_CONCURRENCY`, `JOB_POLL_INTERVAL_MS` | `2`, `500` | in-process job runner |
 | `MAX_UPLOAD_BYTES` | 200 MiB | upload limit |
 | `DEV_OWNER_ID` | `dev` | single owner until auth lands (`src/auth.ts`) |
+| `RENDER_WORK_DIR` | `./data/render` | render scratch + per-project scene cache |
+| `OUTLINE_MAX_IMAGES` | `12` | slide images attached to the outline prompt (0 = text only) |
+| `SCRIPT_ATTACH_IMAGE` | `true` | attach the slide image to each script prompt |
+| `AVATAR_POLL_INTERVAL_MS` | `5000` | polling cadence for avatar providers |
+| `AVATAR_AUDIO_URL_TTL_SEC` | `21600` | lifetime of the signed audio URL handed to avatar providers |
 
 ## Layout
 
@@ -48,28 +53,35 @@ src/services/            project detail, script revisions, provider keys, cost e
 src/routes/              health, providers, projects (+slides, scenes, jobs, SSE, export), assets
 ```
 
-## Where to plug the pipeline
+## Generation wiring
 
-`buildServer({ seams })` takes a `GenerationSeams` object (`src/jobs/handlers/generation.ts`).
-The handlers already load the project, pick the scenes that are `missing`/`stale`, compute the
-input hash, emit progress and keep the job lifecycle correct; each seam only has to call the
-provider and persist the result:
+`buildServer()` wires `src/services/generation.ts` (`createGenerationSeams`) by default: it
+resolves providers from `@lvs/providers` per project settings (platform key from env or the
+owner's encrypted key; `mock` needs none), calls `@lvs/pipeline` for outline / scripts /
+subtitles and `@lvs/render` for the MP4, and persists assets, scene states, usage records and a
+derived timeline. Tests may pass `seams` (fake implementations) or `registry` (mock providers
+with custom responders, see `test/e2e.test.ts`). `src/services/mock-llm.ts` is the
+prompt-aware responder behind the `mock` LLM so the whole flow runs offline.
 
-| Seam | Fill with | Must persist |
-|---|---|---|
-| `generateOutline({ctx, slidesInOrder, settings, inputHash})` | `@lvs/pipeline` outline step via an `LlmProvider` | `outline_revisions` row (version+1, `inputHash`), return it |
-| `generateScript({ctx, scene, slide, prev, next, outline, settings})` | per-slide script step | `createScriptRevision(db, {source:"ai", inputHash: scriptInputHash(...)})` |
-| `synthesizeSpeech({ctx, scene, script, settings, inputHash})` | `TtsProvider.synthesize` | `audio` asset (+ `subtitle` SRT asset from timestamps), `scenes.audio/subtitle = {status:"ready", assetId, inputHash}`, `scenes.durationSec`, `usage_records` |
-| `generateAvatar({ctx, scene, audioAssetId, settings, inputHash})` | `AvatarProvider.createTask` then poll; call `ctx.setProviderTaskId` **before** polling | `avatar_video` asset, `scenes.avatar` state |
-| `renderVideo({ctx, scenesInOrder, settings, inputHash, preset, burnSubtitles})` | build a `RenderSpec` (use `storage.localPath`) and call `@lvs/render` | `video` asset (+ SRT), return `{videoAssetId, srtAssetId}` |
+Provider list and key storage come from the registry (`src/services/providers.ts`); the
+`/providers/:id/voices|avatars` routes call the real provider and answer `400` when no key is
+configured.
 
-Other seams: `buildServer({ deriveTexts })` replaces the whitespace-only
-pronunciation/subtitle derivation used by `PUT …/script`; `PROVIDER_CATALOGUE` in
-`src/services/providers.ts` should be replaced by the registry from `@lvs/providers`, and the
-`/providers/:id/voices|avatars` routes then call `listVoices()`/`listAvatars()`.
+## Live smoke test
+
+```bash
+GEMINI_API_KEY=... pnpm --filter @lvs/api smoke:live [deck.pptx]
+```
+
+Runs parse → outline → scripts → Gemini TTS → 540p render on the fixture deck (or the given
+file) with in-memory PGlite, prints the outline and the first two scripts with their
+pronunciation text, and writes `data/out/smoke.mp4` + `smoke.srt`.
 
 ## Tests
 
-`pnpm --filter @lvs/api test` — PGlite in memory, temp storage, a fake parser runner; covers the
-upload → parse → edit → re-upload flow, signed assets, SSE, the job runner (claim, retry,
-dedupe, cancel, concurrency) and the hash/matching helpers.
+`pnpm --filter @lvs/api test` — PGlite in memory, temp storage. `api.test.ts` uses a fake parser
+and covers upload → parse → edit → re-upload, signed assets, SSE, providers; `runner.test.ts`
+covers claim, retry, dedupe, cancel, concurrency; `e2e.test.ts` runs the real Python parser
+(LibreOffice), mock LLM/TTS/avatar providers and real ffmpeg on
+`fixtures/sample-exercise-physiology.pptx` end to end (about 75 s; skipped when `soffice`,
+`python3` or `ffmpeg` is missing).

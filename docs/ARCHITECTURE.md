@@ -65,11 +65,24 @@ upload ─► parse_document ─► generate_outline ─► generate_script (per
 * The user confirms scripts and listens to audio **before** avatar generation is offered;
   avatar is the expensive step.
 
+## Generation wiring (apps/api/src/services/generation.ts)
+
+| Job | Calls | Persists |
+|---|---|---|
+| `generate_outline` | `@lvs/pipeline.generateOutline` with up to `OUTLINE_MAX_IMAGES` slide PNGs | `outline_revisions` (version+1), `usage_records` |
+| `generate_script` | `generateSceneScript` per scene in deck order, with prev/next slide, the outline, `timeAllocation[slide]` and the previous scene's script | `script_revisions` (source=ai), scene `script` state, usage |
+| `synthesize_speech` | `TtsProvider.synthesize(pronunciationText)` then `buildCues` from the provider's timestamps (or proportional) | `audio` asset, `subtitle` SRT asset, `scene.subtitle.cues`, `scene.durationSec`, avatar → `stale` |
+| `generate_avatar` | `AvatarProvider.createTask(audioUrl = signed /assets/:id, 6 h)`; `job.providerTaskId = "<sceneId>:<taskId>"` is written **before** polling so a retry resumes the same task | `avatar_video` asset (`producedBy.providerTaskId`), usage |
+| `render_video` | builds a `RenderSpec` (local paths, cues, avatar layout, `chromaKey` for green-screen providers, fades) and runs `@lvs/render` with a per-project scene cache | `video` + `subtitle` assets, `timeline_revisions`, usage |
+
+`PUT …/script` derives pronunciation/subtitle text with the pipeline's deterministic rules and
+the latest outline's glossary, then marks audio/subtitle/avatar stale.
+
 ## Rendering (v1)
 
 ffmpeg only, no browser. Per scene: slide PNG looped for `durationSec`, audio muxed,
-avatar video overlaid (circle mask via `geq`/alpha or provider alpha), subtitles burned via
-ASS, fade transitions via `xfade`. Scenes are rendered to intermediate MP4s (cached by
+avatar video overlaid (circle mask via `geq`/alpha, provider alpha, or `chromakey` for
+green-screen providers such as HeyGen), subtitles burned via ASS, fade transitions via `xfade`. Scenes are rendered to intermediate MP4s (cached by
 scene input hash) and concatenated. Remotion/React compositions are a v2 option for effects
 bound to script words.
 

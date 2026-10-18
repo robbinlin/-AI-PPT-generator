@@ -10,8 +10,8 @@ All DTOs are defined in `@lvs/shared` (`src/api.ts`); this file lists routes onl
 | GET | `/providers` | – | `ProviderInfo[]` |
 | PUT | `/providers/:providerId/key` | `SetProviderKeyRequest` | `ProviderInfo` |
 | DELETE | `/providers/:providerId/key` | – | `ProviderInfo` |
-| GET | `/providers/:providerId/voices` | – | `Voice[]` (tts providers) |
-| GET | `/providers/:providerId/avatars` | – | `AvatarCharacter[]` (avatar providers) |
+| GET | `/providers/:providerId/voices` | – | `Voice[]` (tts providers; `400` when no key is configured) |
+| GET | `/providers/:providerId/avatars` | – | `AvatarCharacter[]` (avatar providers; `400` when no key is configured) |
 | GET | `/projects` | – | `Project[]` |
 | POST | `/projects` | `CreateProjectRequest` | `Project` |
 | GET | `/projects/:id` | – | `ProjectDetail` |
@@ -41,5 +41,15 @@ Conventions
   revision) so autosave does not create empty history.
 * Enqueuing `generate_script` without `sceneIds` processes every scene whose script state
   is `missing` or `stale`; with `force: true` it processes all. Same for speech/avatar.
-* The runner emits a `job` event on every status/progress change and a `scene` event when a
-  scene's asset state changes.
+* The runner emits a `job` event on every status/progress change, a `scene` event when a
+  scene's asset state changes, an `asset` event for every stored asset, `script` for new
+  revisions and `outline` after planning.
+* Provider ids are shared across kinds where one vendor key serves several (`gemini` is both an
+  LLM and a TTS provider; one stored key covers both). `mock` exists for every kind and needs no
+  key; it runs the whole flow offline with a prompt-aware canned responder.
+* `Scene.subtitle.cues` carries the timed cues (scene-relative seconds) that the SRT asset was
+  written from, so the editor can preview subtitles and the renderer burns them without
+  re-parsing SRT.
+* `render_video` writes the MP4 as a `video` asset and the global SRT as a `subtitle` asset;
+  both ids are in the job's `result` (`videoAssetId`, `srtAssetId`). A derived
+  `TimelineRevision` (one clip per scene per track) is stored at the same time.

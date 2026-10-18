@@ -34,4 +34,11 @@ workers/render      ffmpeg: RenderSpec → MP4/SRT
 legacy/             original prototype (not built)
 ```
 
-`pnpm test` runs every TypeScript test suite; `pytest workers/parser` runs the parser tests.
+`pnpm test` builds the libraries and runs every TypeScript test suite (including the
+end-to-end flow on the fixture deck with mock providers); `pytest workers/parser` runs the
+parser tests. `GEMINI_API_KEY=... pnpm --filter @lvs/api smoke:live` runs the same flow
+against real Gemini and writes `data/out/smoke.mp4`.
+
+No API key is needed to try the product: create a project with `llmProviderId: "mock"`,
+`voice.providerId: "mock"` (and `avatar.providerId: "mock"`); the mock providers produce
+deterministic scripts, silent audio and a test-pattern avatar.
