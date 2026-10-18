@@ -10,9 +10,11 @@ import type {
   Voice,
 } from "@lvs/shared";
 import { fromBase64 } from "../http.js";
-import { pcmDurationSec, pcmToWav, sampleRateFromMime } from "../wav.js";
+import { pcmDurationSec, parseWavHeader, pcmToWav, sampleRateFromMime } from "../wav.js";
 
-export const GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts";
+/** Overridable with GEMINI_TTS_MODEL. */
+export const GEMINI_TTS_MODEL = "gemini-3.8-flash-tts";
+const envTtsModel = () => process.env.GEMINI_TTS_MODEL || GEMINI_TTS_MODEL;
 
 /** Prebuilt Gemini voices (all multilingual). Names are the provider's voice ids. */
 export const GEMINI_VOICES: Voice[] = [
@@ -62,11 +64,26 @@ export interface GeminiTtsLikeResponse {
 export function mapGeminiTtsResponse(res: GeminiTtsLikeResponse, req: TtsRequest): ProviderResult<TtsResult> {
   const inline = res.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData;
   if (!inline?.data) throw new Error("gemini tts returned no audio");
-  const pcm = fromBase64(inline.data);
-  const fmt = { sampleRate: sampleRateFromMime(inline.mimeType), channels: 1 };
-  const durationSec = Math.round(pcmDurationSec(pcm.byteLength, fmt) * 1000) / 1000;
+  const bytes = fromBase64(inline.data);
+  const mime = (inline.mimeType ?? "").toLowerCase();
+  // Newer TTS models (gemini-3.x-flash-tts) return a complete WAV file; older ones return raw 16-bit PCM.
+  const isWav = mime.startsWith("audio/wav") || (bytes.length > 12 && String.fromCharCode(...bytes.subarray(0, 4)) === "RIFF");
+  let audio: Uint8Array;
+  let sampleRate: number;
+  let durationSec: number;
+  if (isWav) {
+    const header = parseWavHeader(bytes);
+    audio = bytes;
+    sampleRate = header.sampleRate;
+    durationSec = Math.round(header.durationSec * 1000) / 1000;
+  } else {
+    const fmt = { sampleRate: sampleRateFromMime(inline.mimeType), channels: 1 };
+    audio = pcmToWav(bytes, fmt);
+    sampleRate = fmt.sampleRate;
+    durationSec = Math.round(pcmDurationSec(bytes.byteLength, fmt) * 1000) / 1000;
+  }
   return {
-    data: { audio: pcmToWav(pcm, fmt), mimeType: "audio/wav", sampleRate: fmt.sampleRate, durationSec },
+    data: { audio, mimeType: "audio/wav", sampleRate, durationSec },
     usage: [
       { unit: "chars", quantity: req.text.length },
       { unit: "audio_seconds", quantity: durationSec },
@@ -105,5 +122,5 @@ export const geminiTtsFactory: ProviderFactory<TtsProvider> = {
   id: "gemini",
   displayName: "Google Gemini TTS",
   requiresApiKey: true,
-  create: (creds) => new GeminiTtsProvider(creds),
+  create: (creds) => new GeminiTtsProvider(creds, envTtsModel()),
 };

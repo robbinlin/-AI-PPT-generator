@@ -31,7 +31,7 @@ describe("jsonschema", () => {
 describe("gemini llm mapping", () => {
   it("builds a JSON-mode call with attachments first", () => {
     const call = buildGeminiJsonCall(req);
-    expect(call.model).toBe("gemini-2.5-pro");
+    expect(call.model).toBe("gemini-3.8-flash");
     expect(call.config.responseMimeType).toBe("application/json");
     expect(call.config.systemInstruction).toBe("sys");
     expect(JSON.stringify(call.config.responseJsonSchema)).not.toContain("additionalProperties");

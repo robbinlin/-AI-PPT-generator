@@ -26,7 +26,7 @@ describe("mock tts", () => {
 describe("gemini tts", () => {
   it("builds the call with voice and language steering", () => {
     const c = buildGeminiTtsCall({ ...req, speed: 0.8 });
-    expect(c.model).toBe("gemini-2.5-flash-preview-tts");
+    expect(c.model).toBe("gemini-3.8-flash-tts");
     expect(c.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe("v1");
     expect(c.contents[0]!.parts[0]!.text).toMatch(/slowly/);
     expect(c.contents[0]!.parts[0]!.text).toMatch(/今天介紹 VO2max。$/);

@@ -142,7 +142,9 @@ export function finalizeScriptTexts(
   const glossary = input.outline.glossary;
   const lang = input.settings.language;
   const pronunciationText = derivePronunciationText(raw.pronunciationText.trim() || script, glossary, lang);
-  const subtitleText = deriveSubtitleText(raw.subtitleText.trim() || script);
+  // Subtitles must match what is spoken; models tend to condense their own subtitleText, so
+  // derive it from the script and ignore raw.subtitleText.
+  const subtitleText = deriveSubtitleText(script);
   const estimated = raw.estimatedDurationSec > 0 ? raw.estimatedDurationSec : estimateSpeakingSeconds(script, lang);
   return { script, pronunciationText, subtitleText, estimatedDurationSec: Math.round(estimated * 10) / 10 };
 }
