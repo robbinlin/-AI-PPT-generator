@@ -1,0 +1,39 @@
+{
+  "$ref": "#/definitions/render-result",
+  "definitions": {
+    "render-result": {
+      "type": "object",
+      "properties": {
+        "mp4Path": {
+          "type": "string"
+        },
+        "srtPath": {
+          "type": "string"
+        },
+        "durationSec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "width": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "renderSeconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "mp4Path",
+        "durationSec",
+        "width",
+        "height",
+        "renderSeconds"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

@@ -1,22 +1,19 @@
 {
-  "name": "pdf-講稿生成器-20251110-v2_test",
+  "name": "lecture-video-studio",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.28.0",
+  "engines": { "node": ">=22" },
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "@google/genai": "^1.28.0"
+    "build": "pnpm -r --filter './packages/**' --filter './apps/**' --filter './workers/render' build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "dev:api": "pnpm --filter @lvs/api dev",
+    "dev:web": "pnpm --filter @lvs/web dev"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "typescript": "~5.8.3",
+    "vitest": "^3.2.4"
   }
 }
