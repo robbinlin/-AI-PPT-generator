@@ -1,0 +1,27 @@
+[project]
+name = "lvs-parser"
+version = "0.1.0"
+description = "Lecture Video Studio parser worker: PPTX/PPT/PDF -> page images + structured content"
+requires-python = ">=3.11"
+dependencies = [
+  "python-pptx>=1.0",
+  "pymupdf>=1.24",
+  "pillow>=10",
+  "jsonschema>=4",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+lvs-parser = "lvs_parser.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["lvs_parser*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
