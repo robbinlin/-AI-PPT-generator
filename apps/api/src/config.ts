@@ -27,7 +27,8 @@ import { z } from "zod";
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
-  HOST: z.string().default("0.0.0.0"),
+  /** "localhost" binds both 127.0.0.1 and ::1 (Windows browsers resolve localhost to ::1 first). Use 0.0.0.0 in containers. */
+  HOST: z.string().default("localhost"),
   LOG_LEVEL: z.string().default("info"),
   /** Empty => embedded PGlite. */
   DATABASE_URL: z.string().optional(),
