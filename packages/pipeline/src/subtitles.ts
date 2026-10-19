@@ -9,6 +9,17 @@ export interface BuildCuesInput {
   language: Language;
   /** Minimum on-screen time per cue. */
   minCueSec?: number;
+  /**
+   * Silent gaps detected in the audio (e.g. ffmpeg silencedetect). Used when the TTS
+   * provider gives no word timestamps: cue boundaries snap to the nearest pauses, which
+   * TTS engines reliably insert at sentence punctuation.
+   */
+  pauses?: AudioPause[];
+}
+
+export interface AudioPause {
+  startSec: number;
+  endSec: number;
 }
 
 const MAX_LINES = 2;
@@ -130,6 +141,8 @@ export function buildCues(input: BuildCuesInput): SubtitleCue[] {
   const ts = input.timestamps;
   if (ts && ts.length > 0) {
     timing = alignToTimestamps(cueUnits, ts, prop);
+  } else if (input.pauses && input.pauses.length > 0) {
+    timing = alignToPauses(prop, input.pauses, input.durationSec);
   }
 
   // Monotonic clean-up.
@@ -275,4 +288,91 @@ export function cuesToAss(cues: SubtitleCue[], style: SubtitleStyle, width: numb
   ];
   const lines = cues.map((c) => `Dialogue: 0,${formatAssTime(c.startSec)},${formatAssTime(c.endSec)},Default,,0,0,0,,${escapeAss(c.text)}`);
   return [...header, ...lines].join("\n") + "\n";
+}
+
+/**
+ * Snap the N-1 boundaries between proportionally placed cues onto detected pauses.
+ * Each boundary is matched to a pause whose midpoint is as close as possible to its
+ * proportional estimate, keeping order (dynamic programming over boundaries × pauses).
+ * Boundaries that cannot be matched (fewer pauses than boundaries, or the best pause is
+ * too far away) keep their proportional estimate. A cue ends when the pause starts and the
+ * next cue begins when it ends, so subtitles never linger through the silence.
+ */
+export function alignToPauses(
+  prop: Array<{ start: number; end: number }>,
+  pauses: AudioPause[],
+  durationSec: number,
+): Array<{ start: number; end: number }> {
+  const n = prop.length;
+  if (n < 2) return prop;
+  // Ignore leading/trailing silence: only inner pauses separate cues.
+  const inner = [...pauses]
+    .filter((p) => p.endSec > 0.05 && p.startSec < durationSec - 0.05 && p.endSec > p.startSec && p.endSec - p.startSec <= 2.5)
+    .sort((a, b) => a.startSec - b.startSec);
+  const estimates = prop.slice(0, n - 1).map((c) => c.end);
+  const m = inner.length;
+  if (m === 0) return prop;
+  const maxDrift = Math.max(1.5, durationSec * 0.12);
+  const mid = inner.map((p) => (p.startSec + p.endSec) / 2);
+  // Longer pauses are more likely sentence ends than comma breaths; give them a small head start.
+  const cost = (b: number, j: number) => Math.abs(mid[j]! - estimates[b]!) - 0.6 * Math.min(1, inner[j]!.endSec - inner[j]!.startSec);
+  // dp[b][j]: best total cost assigning boundaries 0..b with boundary b -> pause j (or unmatched).
+  const INF = Number.POSITIVE_INFINITY;
+  const B = estimates.length;
+  const dp: number[][] = Array.from({ length: B }, () => new Array<number>(m + 1).fill(INF));
+  const from: number[][] = Array.from({ length: B }, () => new Array<number>(m + 1).fill(-1));
+  // column m = "unmatched" sentinel carrying the drift penalty so matching is preferred when close.
+  const unmatchedPenalty = maxDrift;
+  for (let j = 0; j < m; j++) dp[0]![j] = cost(0, j) <= maxDrift ? cost(0, j) : INF;
+  // (costs can be slightly negative thanks to the duration bonus; the DP still minimises a sum.)
+  dp[0]![m] = unmatchedPenalty;
+  for (let b = 1; b < B; b++) {
+    // best over previous assignments with pause index < j (strictly increasing), or unmatched.
+    let bestPrev: number = dp[b - 1]![m]!;
+    let bestPrevIdx = m;
+    for (let j = 0; j < m; j++) {
+      // candidates for previous: unmatched (any), or pause k < j
+      const c = cost(b, j);
+      if (c <= maxDrift && bestPrev + c < dp[b]![j]!) {
+        dp[b]![j] = bestPrev + c;
+        from[b]![j] = bestPrevIdx;
+      }
+      if (dp[b - 1]![j]! < bestPrev) {
+        bestPrev = dp[b - 1]![j]!;
+        bestPrevIdx = j;
+      }
+    }
+    // unmatched for boundary b: best of all previous states + penalty
+    let best = INF;
+    let bestIdx = -1;
+    for (let j = 0; j <= m; j++) if (dp[b - 1]![j]! < best) { best = dp[b - 1]![j]!; bestIdx = j; }
+    dp[b]![m] = best + unmatchedPenalty;
+    from[b]![m] = bestIdx;
+  }
+  // backtrack
+  let j = 0;
+  for (let k = 1; k <= m; k++) if (dp[B - 1]![k]! < dp[B - 1]![j]!) j = k;
+  const assigned: number[] = new Array(B).fill(-1);
+  for (let b = B - 1; b >= 0; b--) {
+    if (j < m) assigned[b] = j;
+    j = from[b]![j]!;
+    if (j < 0) j = m;
+  }
+  const out = prop.map((c) => ({ ...c }));
+  for (let b = 0; b < B; b++) {
+    const pj = assigned[b]!;
+    if (pj < 0) continue;
+    out[b]!.end = inner[pj]!.startSec;
+    out[b + 1]!.start = inner[pj]!.endSec;
+  }
+  // Unmatched boundaries: keep proportional, but never cross a matched neighbour.
+  for (let b = 0; b < B; b++) {
+    if (assigned[b]! >= 0) continue;
+    const lo = out[b]!.start + 0.3;
+    const hi = out[b + 1]!.end - 0.3;
+    const t = Math.min(Math.max(estimates[b]!, lo), Math.max(lo, hi));
+    out[b]!.end = t;
+    out[b + 1]!.start = t;
+  }
+  return out;
 }

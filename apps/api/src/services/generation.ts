@@ -22,6 +22,7 @@ import type {
   SubtitleCue,
   Track,
 } from "@lvs/shared";
+import { detectPauses } from "./audio.js";
 import {
   buildCues,
   cuesToSrt,
@@ -271,9 +272,13 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         providerId: tts.id,
       });
 
+      // Without provider timestamps, snap cue boundaries to the pauses the TTS put at sentence ends.
+      const audioLocal = ctx.storage.localPath?.(audioAsset.storageKey);
+      const pauses = !timestamps?.length && audioLocal ? await detectPauses(audioLocal, { ffmpegBin: config.FFMPEG_BIN, signal: ctx.signal }) : [];
       const cues = buildCues({
         subtitleText: script.subtitleText,
         timestamps,
+        pauses,
         durationSec,
         maxCharsPerLine: settings.subtitles.style.maxCharsPerLine,
         language: settings.language,

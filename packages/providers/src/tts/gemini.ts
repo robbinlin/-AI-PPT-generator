@@ -39,17 +39,15 @@ export interface GeminiTtsCall {
 }
 
 /**
- * Gemini TTS has no speed parameter; we steer pace with a natural-language
- * instruction prefix, which the model treats as direction rather than speech.
+ * Gemini TTS is given the text verbatim. Earlier models accepted a natural-language
+ * instruction prefix ("Read the following in …"), but the 3.x TTS models read such
+ * prefixes aloud, so pace/language steering is deliberately NOT done through the prompt.
+ * Speed is adjusted downstream (speedControl: false) and language follows the text itself.
  */
 export function buildGeminiTtsCall(req: TtsRequest, model = GEMINI_TTS_MODEL): GeminiTtsCall {
-  const speed = req.speed ?? 1;
-  const pace = speed < 0.9 ? "Speak slowly and clearly. " : speed > 1.15 ? "Speak briskly. " : "";
-  const lang = req.language === "en" ? "" : "Read the following in Taiwanese Mandarin. ";
-  const prefix = pace || lang ? `${pace}${lang}Read exactly this text:\n` : "";
   return {
     model,
-    contents: [{ role: "user", parts: [{ text: prefix + req.text }] }],
+    contents: [{ role: "user", parts: [{ text: req.text }] }],
     config: {
       responseModalities: ["AUDIO"],
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: req.voiceId } } },

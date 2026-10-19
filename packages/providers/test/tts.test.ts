@@ -24,12 +24,11 @@ describe("mock tts", () => {
 });
 
 describe("gemini tts", () => {
-  it("builds the call with voice and language steering", () => {
+  it("sends the text verbatim with the chosen voice (no instruction prefix, which 3.x models read aloud)", () => {
     const c = buildGeminiTtsCall({ ...req, speed: 0.8 });
     expect(c.model).toBe("gemini-3.8-flash-tts");
     expect(c.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe("v1");
-    expect(c.contents[0]!.parts[0]!.text).toMatch(/slowly/);
-    expect(c.contents[0]!.parts[0]!.text).toMatch(/今天介紹 VO2max。$/);
+    expect(c.contents[0]!.parts[0]!.text).toBe(req.text);
     expect(buildGeminiTtsCall({ ...req, language: "en" }).contents[0]!.parts[0]!.text).toBe(req.text);
   });
   it("wraps PCM into WAV and computes duration", () => {

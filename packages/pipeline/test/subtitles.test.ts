@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SubtitleStyle } from "@lvs/shared";
 import { splitSentences } from "../src/segment.js";
-import { assColor, buildCues, chunkSentence, cuesToAss, cuesToSrt, formatAssTime, formatSrtTime, segmentCueTexts, wrapCueLines } from "../src/subtitles.js";
+import { alignToPauses, assColor, buildCues, chunkSentence, cuesToAss, cuesToSrt, formatAssTime, formatSrtTime, segmentCueTexts, wrapCueLines } from "../src/subtitles.js";
 
 describe("segmentation", () => {
   it("splits sentences on CJK and Latin terminators", () => {
@@ -92,5 +92,30 @@ describe("exporters", () => {
     expect(ass).toContain("Dialogue: 0,0:00:00.00,0:00:01.50,Default,,0,0,0,,第一行\\N第二行");
     expect(ass).toContain("Hello ｛world｝");
     expect(cuesToAss(cues, { ...style, position: "top" }, 1280, 720)).toContain(",8,64,64,48,1");
+  });
+});
+
+describe("alignToPauses", () => {
+  const prop = [
+    { start: 0, end: 3 },
+    { start: 3, end: 6 },
+    { start: 6, end: 9 },
+  ];
+  it("snaps cue boundaries to the nearest pauses in order", () => {
+    const out = alignToPauses(prop, [{ startSec: 2.6, endSec: 2.9 }, { startSec: 6.2, endSec: 6.5 }], 9);
+    expect(out.map((c) => [c.start, c.end])).toEqual([[0, 2.6], [2.9, 6.2], [6.5, 9]]);
+  });
+  it("ignores pauses too far from the estimate and long silences", () => {
+    const out = alignToPauses(prop, [{ startSec: 0.9, endSec: 1.0 }, { startSec: 2.6, endSec: 2.9 }, { startSec: 4, endSec: 8.9 }], 9);
+    expect(out[0]!.end).toBe(2.6);
+    expect(out[1]!.start).toBe(2.9);
+    expect(out[1]!.end).toBeCloseTo(6, 5);
+  });
+  it("keeps proportional timing when there are no usable pauses", () => {
+    expect(alignToPauses(prop, [], 9)).toEqual(prop);
+  });
+  it("feeds through buildCues when no timestamps are given", () => {
+    const cues = buildCues({ subtitleText: "第一句話。第二句話。第三句話。", durationSec: 9, maxCharsPerLine: 28, language: "zh-TW", pauses: [{ startSec: 2.6, endSec: 2.9 }, { startSec: 6.2, endSec: 6.5 }] });
+    expect(cues.map((c) => [c.startSec, c.endSec])).toEqual([[0, 2.6], [2.9, 6.2], [6.5, 9]]);
   });
 });

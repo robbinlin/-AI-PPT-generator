@@ -53,6 +53,8 @@ export function audioInputHash(input: {
     .sort((a, b) => a.term.localeCompare(b.term));
   return contentHash({
     kind: "audio",
+    // Bump when the way text is sent to TTS changes (v2: no instruction prefix, which 3.x models read aloud).
+    recipe: 2,
     text: input.pronunciationText,
     voice: {
       providerId: input.voice.providerId,
