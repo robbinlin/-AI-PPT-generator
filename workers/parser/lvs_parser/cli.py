@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 from . import __version__
-from .convert import ConvertError, soffice_binary, soffice_convert, soffice_version
+from .convert import ConvertError, powerpoint_available, powerpoint_convert_to_pdf, soffice_binary, soffice_convert, soffice_version
 from .manifest import PageEntry, SlideContent, build_manifest, write_json
 from .pdf_parser import parse_pdf
 from .pptx_parser import parse_pptx
@@ -119,17 +119,26 @@ def parse_file(input_path: Path, out_dir: Path, *, dpi: int = 150, thumb_width: 
         if pptx_path is not None:
             progress(0.2, "extracting slide content")
             contents, meta = parse_pptx(pptx_path, "converted")
-            binary = soffice_binary()
-            if binary:
-                progress(0.35, "rendering slides with LibreOffice")
+            if powerpoint_available():
+                progress(0.35, "rendering slides with PowerPoint")
                 try:
-                    pdf_path = soffice_convert(pptx_path, work / "pdf", "pdf", timeout)
-                    converter = soffice_version(binary)
+                    pdf_path = powerpoint_convert_to_pdf(pptx_path, work / "pdf", timeout)
+                    converter = "Microsoft PowerPoint (COM)"
                 except ConvertError as exc:
                     pdf_path = None
                     warnings.append(str(exc))
-            else:
-                warnings.append("soffice not found")
+            if pdf_path is None:
+                binary = soffice_binary()
+                if binary:
+                    progress(0.35, "rendering slides with LibreOffice")
+                    try:
+                        pdf_path = soffice_convert(pptx_path, work / "pdf", "pdf", timeout)
+                        converter = soffice_version(binary)
+                    except ConvertError as exc:
+                        pdf_path = None
+                        warnings.append(str(exc))
+                else:
+                    warnings.append("soffice not found")
             if pdf_path is not None:
                 rendered_list = render_pdf_pages(pdf_path, out_dir / "pages", out_dir / "thumbs", dpi, thumb_width)
                 rendered = {p.page_number: p for p in rendered_list}

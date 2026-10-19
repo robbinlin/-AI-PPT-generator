@@ -57,3 +57,11 @@ cd workers/parser && python3 -m pytest -q
 Fixtures are generated in-test (3-slide PPTX with notes/table/chart/picture, 3-page PDF with a
 scanned-style page, and a `.ppt` produced by LibreOffice). Every manifest and page JSON is
 validated against the shared JSON Schemas. soffice-dependent tests skip when it is absent.
+
+## Renderer selection for PPTX
+
+1. **Microsoft PowerPoint** (Windows, needs `pywin32`): used automatically when PowerPoint is
+   installed; the most faithful output (EMF/WMF, SmartArt, fonts). Set `LVS_PPTX_CONVERTER=soffice`
+   to skip it.
+2. **LibreOffice** (`SOFFICE_BIN`): cross-platform fallback.
+3. **Pillow fallback**: text-only page when neither is available (`renderFidelity: fallback`).
