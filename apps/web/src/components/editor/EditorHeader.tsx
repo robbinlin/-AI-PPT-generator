@@ -11,6 +11,7 @@ import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 import { Badge } from "../ui/Misc";
 import { ExportMenu } from "./ExportMenu";
+import { GenerateButton } from "./GenerateButton";
 import { JobsIndicator } from "./JobsDrawer";
 
 export interface EditorHeaderProps {
@@ -84,20 +85,8 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
         <Button icon={Upload} onClick={pickFile}>
           {t.editor.upload}
         </Button>
-        <Button
-          icon={NotebookPen}
-          disabled={!hasSlides || busy("generate_script")}
-          onClick={() => void actions.enqueue({ type: "generate_script", force: false })}
-        >
-          {t.editor.generateScripts}
-        </Button>
-        <Button
-          icon={AudioLines}
-          disabled={!hasSlides || busy("synthesize_speech")}
-          onClick={() => void actions.enqueue({ type: "synthesize_speech", force: false })}
-        >
-          {t.editor.generateSpeech}
-        </Button>
+        <GenerateButton kind="generate_script" icon={NotebookPen} label={t.editor.generateScripts} actions={actions} disabled={!hasSlides || busy("generate_script")} />
+        <GenerateButton kind="synthesize_speech" icon={AudioLines} label={t.editor.generateSpeech} actions={actions} disabled={!hasSlides || busy("synthesize_speech")} />
         <Button
           icon={UserRound}
           disabled={!hasSlides || !avatarEnabled || busy("generate_avatar")}
