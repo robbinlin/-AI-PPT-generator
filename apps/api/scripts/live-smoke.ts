@@ -37,9 +37,12 @@ async function main(): Promise<void> {
     RENDER_WORK_DIR: join(REPO, "data/smoke-render"),
     DATABASE_URL: undefined,
   });
-  const dbHandle = await createDb({ pgliteDir: ":memory:" });
+  // Persisted so a failed run (quota, 503) can be resumed: the same deck re-attaches to its
+  // project and only missing/stale work is redone.
+  const dbHandle = await createDb({ pgliteDir: join(REPO, "data/smoke-pglite") });
   const t = await buildServer({ config, dbHandle, startRunner: false, runnerOverrides: { concurrency: 2, pollIntervalMs: 50 } });
 
+  let projectId = "";
   const detail = async () => (await t.app.inject({ method: "GET", url: `/projects/${projectId}` })).json() as ProjectDetail;
   async function run(payload: Record<string, unknown>): Promise<Job> {
     const res = await t.app.inject({ method: "POST", url: `/projects/${projectId}/jobs`, payload });
@@ -52,28 +55,34 @@ async function main(): Promise<void> {
     return job;
   }
 
-  const created = await t.app.inject({
-    method: "POST",
-    url: "/projects",
-    payload: {
-      name: "live smoke",
-      settings: { llmProviderId: "gemini", voice: { providerId: "gemini", voiceId: "Kore" }, audience: "undergraduate", mode: "faithful" },
-    },
-  });
-  const projectId: string = created.json().id;
-
   const ext = deckPath.split(".").pop()!.toLowerCase();
   const file = await readFile(deckPath);
-  const boundary = "----lvsSmoke";
-  const body = Buffer.concat([
-    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="deck.${ext}"\r\nContent-Type: ${MIME[ext] ?? "application/octet-stream"}\r\n\r\n`),
-    file,
-    Buffer.from(`\r\n--${boundary}--\r\n`),
-  ]);
-  const up = await t.app.inject({ method: "POST", url: `/projects/${projectId}/source`, payload: body, headers: { "content-type": `multipart/form-data; boundary=${boundary}` } });
-  if (up.statusCode !== 200) throw new Error(`upload failed: ${up.body}`);
-  await t.ctx.runner.drain();
-  console.log(`✓ parsed ${(await detail()).slides.length} slides`);
+  const deckName = `smoke:${deckPath}`;
+  const existing = ((await t.app.inject({ method: "GET", url: "/projects" })).json() as Array<{ id: string; name: string }>).find((p) => p.name === deckName);
+  if (existing) {
+    projectId = existing.id;
+    console.log(`↻ resuming project ${projectId} (${(await detail()).slides.length} slides already parsed)`);
+  } else {
+    const created = await t.app.inject({
+      method: "POST",
+      url: "/projects",
+      payload: {
+        name: deckName,
+        settings: { llmProviderId: "gemini", voice: { providerId: "gemini", voiceId: "Kore" }, audience: "undergraduate", mode: "faithful" },
+      },
+    });
+    projectId = created.json().id;
+    const boundary = "----lvsSmoke";
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="deck.${ext}"\r\nContent-Type: ${MIME[ext] ?? "application/octet-stream"}\r\n\r\n`),
+      file,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const up = await t.app.inject({ method: "POST", url: `/projects/${projectId}/source`, payload: body, headers: { "content-type": `multipart/form-data; boundary=${boundary}` } });
+    if (up.statusCode !== 200) throw new Error(`upload failed: ${up.body}`);
+    await t.ctx.runner.drain();
+    console.log(`✓ parsed ${(await detail()).slides.length} slides`);
+  }
 
   await run({ type: "generate_outline" });
   const afterOutline = await detail();

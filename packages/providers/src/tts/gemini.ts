@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { parseModelList, withGeminiRetry } from "../gemini-retry.js";
 import type {
   ProviderCredentials,
   ProviderFactory,
@@ -113,8 +114,14 @@ export class GeminiTtsProvider implements TtsProvider {
   }
 
   async synthesize(req: TtsRequest): Promise<ProviderResult<TtsResult>> {
-    const res = await this.ai.models.generateContent(buildGeminiTtsCall(req, this.model));
-    return mapGeminiTtsResponse(res as GeminiTtsLikeResponse, req);
+    const models = [
+      this.model,
+      ...parseModelList(process.env.GEMINI_TTS_FALLBACK_MODELS, "gemini-3.8-flash-lite-tts,gemini-3.1-flash-tts-preview").filter((m) => m !== this.model),
+    ];
+    return withGeminiRetry(models, async (model) => {
+      const res = await this.ai.models.generateContent(buildGeminiTtsCall(req, model));
+      return mapGeminiTtsResponse(res as GeminiTtsLikeResponse, req);
+    });
   }
 }
 

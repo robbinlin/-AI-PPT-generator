@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { parseModelList, withGeminiRetry } from "../gemini-retry.js";
 import type { LlmJsonRequest, LlmProvider, ProviderCredentials, ProviderFactory, ProviderResult } from "@lvs/shared";
 import { extractJsonText, zodToProviderSchema } from "../jsonschema.js";
 import { toBase64 } from "../http.js";
@@ -73,45 +74,15 @@ export class GeminiLlmProvider implements LlmProvider {
   }
 
   async generateJson<T>(req: LlmJsonRequest<T>): Promise<ProviderResult<T>> {
-    const models = [req.model ?? this.defaultModel, ...envFallbackModels().filter((m) => m !== (req.model ?? this.defaultModel))];
-    let lastErr: unknown;
-    for (const model of models) {
-      for (let attempt = 0; attempt < GEMINI_MAX_ATTEMPTS; attempt++) {
-        try {
-          const call = buildGeminiJsonCall({ ...req, model }, this.defaultModel);
-          const res = await this.ai.models.generateContent(call);
-          return mapGeminiJsonResponse(res as GeminiLikeResponse, req);
-        } catch (err) {
-          lastErr = err;
-          const status = geminiErrorStatus(err);
-          // 429 with a daily quota exhausted or any non-transient error: do not hammer the model.
-          if (!(status === 503 || status === 429 || status === 500)) throw err;
-          if (status === 429 && /per.?day|PerDay/i.test(String(err))) break;
-          if (attempt < GEMINI_MAX_ATTEMPTS - 1) await sleep(Math.min(30_000, 2_000 * 2 ** attempt) + Math.random() * 1_000);
-        }
-      }
-    }
-    throw lastErr;
+    const primary = req.model ?? this.defaultModel;
+    const models = [primary, ...parseModelList(process.env.GEMINI_LLM_FALLBACK_MODELS, "gemini-3.5-flash").filter((m) => m !== primary)];
+    return withGeminiRetry(models, async (model) => {
+      const call = buildGeminiJsonCall({ ...req, model }, this.defaultModel);
+      const res = await this.ai.models.generateContent(call);
+      return mapGeminiJsonResponse(res as GeminiLikeResponse, req);
+    });
   }
 }
-
-const GEMINI_MAX_ATTEMPTS = 4;
-/** Models tried in order when the primary one is overloaded (503) or rate limited. */
-const envFallbackModels = () =>
-  (process.env.GEMINI_LLM_FALLBACK_MODELS ?? "gemini-3.5-flash")
-    .split(",")
-    .map((m) => m.trim())
-    .filter(Boolean);
-
-function geminiErrorStatus(err: unknown): number | undefined {
-  const e = err as { status?: number; code?: number; message?: string };
-  if (typeof e?.status === "number") return e.status;
-  if (typeof e?.code === "number") return e.code;
-  const m = /"code":\s*(\d{3})/.exec(e?.message ?? "");
-  return m ? Number(m[1]) : undefined;
-}
-
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export const geminiLlmFactory: ProviderFactory<LlmProvider> = {
   id: "gemini",
