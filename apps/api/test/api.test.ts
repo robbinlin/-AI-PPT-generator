@@ -281,3 +281,23 @@ describe("providers", () => {
     expect(mockAvatars.json()[0].id).toBe("mock-teacher");
   });
 });
+
+describe("cors", () => {
+  it("allows the browser preflight for PUT/PATCH/DELETE from the editor origin", async () => {
+    const t = await createTestServer();
+    try {
+      for (const method of ["PUT", "PATCH", "DELETE"]) {
+        const res = await t.app.inject({
+          method: "OPTIONS",
+          url: "/projects/x/scenes/y/script",
+          headers: { origin: "http://localhost:5173", "access-control-request-method": method, "access-control-request-headers": "content-type" },
+        });
+        expect(res.statusCode).toBeLessThan(300);
+        expect(res.headers["access-control-allow-methods"]).toContain(method);
+        expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+      }
+    } finally {
+      await t.close();
+    }
+  });
+});

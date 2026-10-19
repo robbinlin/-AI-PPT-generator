@@ -245,9 +245,11 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       return revision;
     },
 
-    async synthesizeSpeech({ ctx, scene, script, settings, inputHash, outline }) {
+    async synthesizeSpeech({ ctx, scene, script, settings, inputHash, outline, progress }) {
+      const report = progress ?? (async () => {});
       const ownerId = await ownerOf(ctx);
       const tts = await withProvider(() => providers.tts(ownerId, settings.voice.providerId));
+      await report(0.1, "呼叫語音服務");
       const glossary = outline?.glossary ?? [];
       const res = await tts.synthesize({
         text: script.pronunciationText,
@@ -258,6 +260,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         pronunciation: glossary,
       });
       await usage(ctx, tts.id, res.usage);
+      await report(0.7, "儲存語音");
       throwIfAborted(ctx.signal);
       const { audio, mimeType, durationSec, timestamps } = res.data;
       const ext = AUDIO_EXT[mimeType] ?? "bin";
@@ -275,6 +278,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       // Without provider timestamps, snap cue boundaries to the pauses the TTS put at sentence ends.
       const audioLocal = ctx.storage.localPath?.(audioAsset.storageKey);
       const pauses = !timestamps?.length && audioLocal ? await detectPauses(audioLocal, { ffmpegBin: config.FFMPEG_BIN, signal: ctx.signal }) : [];
+      await report(0.85, "對齊字幕");
       const cues = buildCues({
         subtitleText: script.subtitleText,
         timestamps,

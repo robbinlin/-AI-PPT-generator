@@ -72,9 +72,25 @@ export class HttpApiClient implements ApiClient {
       init.headers = { ...init.headers, "Content-Type": "application/json" };
       init.body = JSON.stringify(body);
     }
-    const res = await this.fetchImpl(this.url(path), init);
-    if (!res.ok) throw await toApiError(res);
-    return res;
+    // "Failed to fetch" means the API was unreachable (not running, or restarting). Idempotent
+    // requests are retried a few times so a dev-server restart does not surface as a lost save.
+    const retriable = method !== "POST";
+    const delays = retriable ? [800, 1600, 3200] : [];
+    for (let attempt = 0; ; attempt++) {
+      let res: Response;
+      try {
+        res = await this.fetchImpl(this.url(path), init);
+      } catch (err) {
+        if (signal?.aborted) throw err;
+        if (attempt < delays.length) {
+          await new Promise((r) => setTimeout(r, delays[attempt]));
+          continue;
+        }
+        throw new Error(`無法連線到 API（${this.baseUrl}）。請確認後端伺服器正在執行。`);
+      }
+      if (!res.ok) throw await toApiError(res);
+      return res;
+    }
   }
 
   private async json<S extends z.ZodTypeAny>(schema: S, method: Method, path: string, body?: unknown): Promise<z.infer<S>> {

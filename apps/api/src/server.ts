@@ -85,7 +85,12 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<BuiltS
     deriveTexts: opts.deriveTexts ?? pipelineDeriveTexts,
   };
 
-  await app.register(cors, { origin: true, exposedHeaders: ["Content-Disposition", "Content-Range", "Accept-Ranges"] });
+  await app.register(cors, {
+    origin: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Accept", "Authorization", "Range"],
+    exposedHeaders: ["Content-Disposition", "Content-Range", "Accept-Ranges"],
+  });
   await app.register(multipart, { limits: { fileSize: config.MAX_UPLOAD_BYTES, files: 1 } });
 
   app.setErrorHandler((err, _req, reply) => {

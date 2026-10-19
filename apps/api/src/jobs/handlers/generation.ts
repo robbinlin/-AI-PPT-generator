@@ -52,6 +52,8 @@ export interface GenerationSeams {
     settings: ProjectSettings;
     inputHash: string;
     outline: OutlineRevision | undefined;
+    /** Reports progress within this scene (0..1) so single-page jobs still move. */
+    progress?: (stage: number, message: string) => Promise<void>;
   }): Promise<void>;
   /** TODO(providers): AvatarProvider.createTask with the audio asset URL; ctx.setProviderTaskId(taskId) BEFORE polling; store `avatar_video` asset. */
   generateAvatar(args: { ctx: JobContext; scene: Scene; audioAssetId: string; settings: ProjectSettings; inputHash: string }): Promise<void>;
@@ -80,6 +82,30 @@ export const unimplementedSeams: GenerationSeams = {
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
+
+/**
+ * Progress for multi-scene jobs is weighted by narration time, not page count, and the
+ * denominator is the whole deck: pages already done count as done, so "generate all" starts
+ * where it left off, while a single-page job spans 0..1 for that page alone.
+ */
+function progressPlan<T extends { id: string }>(all: T[], targets: T[], weightOf: (s: T) => number) {
+  const w = (s: T) => Math.max(1, weightOf(s) || 0);
+  const targetIds = new Set(targets.map((t) => t.id));
+  const single = targets.length === 1;
+  const scope = single ? targets : all;
+  const total = scope.reduce((a, s) => a + w(s), 0) || 1;
+  let done = single ? 0 : scope.filter((s) => !targetIds.has(s.id)).reduce((a, s) => a + w(s), 0);
+  return {
+    /** fraction before starting `scene` */
+    start: (scene: T) => done / total,
+    /** fraction at `stage` (0..1) inside `scene` */
+    within: (scene: T, stage: number) => (done + w(scene) * Math.min(1, Math.max(0, stage))) / total,
+    finish: (scene: T) => {
+      done += w(scene);
+      return done / total;
+    },
+  };
+}
 
 export function makeGenerationHandlers(seams: GenerationSeams) {
   const generateOutline: JobHandler<{ type: "generate_outline"; force: boolean }> = async (ctx) => {
@@ -113,12 +139,14 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
     const ids: string[] = [];
     // Scenes are processed in deck order so each prompt can see the script written just before it.
     const latestScript = new Map(Object.entries(detail.scripts).map(([sceneId, rev]) => [sceneId, rev.script]));
+    const alloc = detail.outline?.timeAllocation ?? {};
+    const plan = progressPlan(visibleScenes, targets, (s) => alloc[s.slideId] ?? Math.max(10, (slidesById.get(s.slideId)?.content.plainText.length ?? 0) / 8));
     for (let i = 0; i < targets.length; i++) {
       const scene = targets[i]!;
       const pos = visibleScenes.findIndex((s) => s.id === scene.id);
       const slide = slidesById.get(scene.slideId)!;
       const prevScene = pos > 0 ? visibleScenes[pos - 1] : undefined;
-      await ctx.emit(i / Math.max(1, targets.length), `生成第 ${slide.pageNumber} 頁講稿`);
+      await ctx.emit(plan.start(scene), `生成第 ${slide.pageNumber} 頁講稿`);
       const rev = await seams.generateScript({
         ctx,
         scene,
@@ -132,6 +160,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
       latestScript.set(scene.id, rev.script);
       ids.push(rev.id);
       ctx.publish({ kind: "script", script: rev });
+      await ctx.emit(plan.finish(scene), `第 ${slide.pageNumber} 頁講稿完成`);
     }
     return { scriptRevisionIds: ids, processed: targets.length, skipped: visibleScenes.length - targets.length };
   };
@@ -140,12 +169,22 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
     const { detail, visibleScenes } = await loadDetail(ctx);
     const withScript = visibleScenes.filter((s) => !s.muted && detail.scripts[s.id]);
     const targets = selectScenesToProcess(withScript, ctx.job.payload.sceneIds, ctx.job.payload.force, (s) => s.audio.status);
+    const plan = progressPlan(withScript, targets, (s) => s.durationSec ?? detail.scripts[s.id]?.estimatedDurationSec ?? detail.scripts[s.id]!.script.length / 4.5);
     for (let i = 0; i < targets.length; i++) {
       const scene = targets[i]!;
       const script = detail.scripts[scene.id]!;
       const inputHash = audioInputHash({ pronunciationText: script.pronunciationText, settings: detail.project.settings, glossaryReadings: detail.outline?.glossary });
-      await ctx.emit(i / Math.max(1, targets.length), `合成第 ${scene.index + 1} 段語音`);
-      await seams.synthesizeSpeech({ ctx, scene, script, settings: detail.project.settings, inputHash, outline: detail.outline });
+      await ctx.emit(plan.start(scene), `合成第 ${scene.index + 1} 段語音`);
+      await seams.synthesizeSpeech({
+        ctx,
+        scene,
+        script,
+        settings: detail.project.settings,
+        inputHash,
+        outline: detail.outline,
+        progress: (stage, message) => ctx.emit(plan.within(scene, stage), `第 ${scene.index + 1} 段：${message}`),
+      });
+      await ctx.emit(plan.finish(scene), `第 ${scene.index + 1} 段語音完成`);
     }
     return { processed: targets.length, skipped: withScript.length - targets.length };
   };
@@ -155,11 +194,13 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
     if (!detail.project.settings.avatar.enabled) throw new NonRetryableJobError("avatar is disabled in project settings");
     const withAudio = visibleScenes.filter((s) => !s.muted && s.audio.status === "ready" && s.audio.assetId);
     const targets = selectScenesToProcess(withAudio, ctx.job.payload.sceneIds, ctx.job.payload.force, (s) => s.avatar.status);
+    const plan = progressPlan(withAudio, targets, (s) => s.durationSec ?? 30);
     for (let i = 0; i < targets.length; i++) {
       const scene = targets[i]!;
       const inputHash = avatarInputHash({ audioAssetId: scene.audio.assetId!, settings: detail.project.settings });
-      await ctx.emit(i / Math.max(1, targets.length), `生成第 ${scene.index + 1} 段人像`);
+      await ctx.emit(plan.start(scene), `生成第 ${scene.index + 1} 段人像`);
       await seams.generateAvatar({ ctx, scene, audioAssetId: scene.audio.assetId!, settings: detail.project.settings, inputHash });
+      await ctx.emit(plan.finish(scene), `第 ${scene.index + 1} 段人像完成`);
     }
     return { processed: targets.length, skipped: withAudio.length - targets.length };
   };
