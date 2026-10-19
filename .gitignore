@@ -26,3 +26,6 @@ __pycache__/
 
 # agent worktrees
 .claude/worktrees/
+
+# stray screenshots from local browser runs
+/*.png
