@@ -7,13 +7,13 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm -r --filter './packages/**' --filter './apps/**' --filter './workers/render' build",
+    "build": "pnpm -r --filter \"./packages/**\" --filter \"./apps/**\" --filter \"./workers/render\" build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm build:libs && pnpm -r test",
     "dev:api": "pnpm --filter @lvs/api dev",
     "dev:web": "pnpm --filter @lvs/web dev",
-    "build:libs": "pnpm -r --filter './packages/**' --filter @lvs/render build"
+    "build:libs": "pnpm -r --filter \"./packages/**\" --filter @lvs/render build"
   },
   "devDependencies": {
     "typescript": "~5.8.3",
