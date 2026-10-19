@@ -174,7 +174,7 @@ describe("project lifecycle", () => {
     expect(reset.json().avatarLayout).toBeUndefined();
   });
 
-  it("generate_script without an outline fails non-retryably and reports it", async () => {
+  it("generate_script plans the outline first and fails non-retryably without a configured LLM key", async () => {
     const res = await t.app.inject({ method: "POST", url: `/projects/${projectId}/jobs`, payload: { type: "generate_script" } });
     expect(res.statusCode).toBe(202);
     const { job, estimate } = res.json() as { job: Job; estimate: { lines: unknown[] } };
@@ -184,7 +184,7 @@ describe("project lifecycle", () => {
     const [row] = await t.ctx.db.select().from(jobs).where(eq(jobs.id, job.id));
     expect(row?.status).toBe("failed");
     expect(row?.attempts).toBe(1); // configuration errors are non-retryable
-    expect(row?.error).toMatch(/no outline yet|API key configured/);
+    expect(row?.error).toMatch(/API key|not configured/i);
     const listed = (await t.app.inject({ method: "GET", url: `/projects/${projectId}/jobs?status=failed` })).json();
     expect(listed.some((j: Job) => j.id === job.id)).toBe(true);
   });

@@ -101,6 +101,11 @@ export async function createTestServer(opts: Partial<BuildServerOptions> & { par
     PROVIDER_KEY_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
     PUBLIC_BASE_URL: "http://api.test",
     DATABASE_URL: undefined,
+    // Tests must never pick up real provider keys from a developer's .env.
+    GEMINI_API_KEY: undefined,
+    ANTHROPIC_API_KEY: undefined,
+    ELEVENLABS_API_KEY: undefined,
+    HEYGEN_API_KEY: undefined,
   });
   const dbHandle = await createDb({ pgliteDir: ":memory:" });
   const parser = opts.parser ?? new FakeParserRunner();

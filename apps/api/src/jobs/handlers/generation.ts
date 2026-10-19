@@ -97,7 +97,18 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
   };
 
   const generateScript: JobHandler<{ type: "generate_script"; sceneIds?: string[]; force: boolean }> = async (ctx) => {
-    const { detail, visibleScenes, slidesById } = await loadDetail(ctx);
+    let { detail, visibleScenes, slidesById } = await loadDetail(ctx);
+    // The editor's single "產生講稿" button must work on a fresh project: plan the outline first
+    // when it is missing or no longer matches the slides/settings, then write the scripts.
+    const slidesInOrder = visibleScenes.map((sc) => slidesById.get(sc.slideId)!).filter(Boolean);
+    if (slidesInOrder.length === 0) throw new NonRetryableJobError("project has no slides");
+    const outlineHash = outlineInputHash(slidesInOrder, detail.project.settings);
+    if (!detail.outline || detail.outline.inputHash !== outlineHash) {
+      await ctx.emit(0.02, "規劃全篇大綱");
+      const outline = await seams.generateOutline({ ctx, slidesInOrder, settings: detail.project.settings, inputHash: outlineHash });
+      ctx.publish({ kind: "outline", outline });
+      ({ detail, visibleScenes, slidesById } = await loadDetail(ctx));
+    }
     const targets = selectScenesToProcess(visibleScenes, ctx.job.payload.sceneIds, ctx.job.payload.force, (s) => s.script.status);
     const ids: string[] = [];
     // Scenes are processed in deck order so each prompt can see the script written just before it.
