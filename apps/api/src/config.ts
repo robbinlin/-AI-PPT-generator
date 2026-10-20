@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import dotenv from "dotenv";
 
@@ -77,11 +77,19 @@ export type Config = z.infer<typeof EnvSchema> & {
 export function loadConfig(overrides: Partial<z.input<typeof EnvSchema>> = {}): Config {
   const env = EnvSchema.parse({ ...process.env, ...overrides });
   const warnings: string[] = [];
-  const assetUrlSecret = env.ASSET_URL_SECRET ?? randomBytes(32).toString("hex");
-  if (!env.ASSET_URL_SECRET) warnings.push("ASSET_URL_SECRET unset: signed asset URLs will not survive a restart");
+  // Secrets not given in .env are generated once and kept next to the database, so provider
+  // keys saved in the UI and signed URLs survive restarts (a per-process random key made every
+  // stored key unreadable after `git pull` + restart).
+  // `.env.example` ships these as empty strings, which must count as unset.
+  const envAssetSecret = env.ASSET_URL_SECRET || undefined;
+  const envKeyB64 = env.PROVIDER_KEY_ENCRYPTION_KEY || undefined;
+  const secretsFile = join(fromRoot(env.PGLITE_DIR), "..", "secrets.json");
+  const persisted = envAssetSecret && envKeyB64 ? {} : loadOrCreateSecrets(secretsFile, warnings);
+  const assetUrlSecret = envAssetSecret ?? persisted.assetUrlSecret ?? randomBytes(32).toString("hex");
+  const keyB64 = envKeyB64 ?? persisted.providerKeyEncryptionKey;
   let providerKeyEncryptionKey: Buffer;
-  if (env.PROVIDER_KEY_ENCRYPTION_KEY) {
-    providerKeyEncryptionKey = Buffer.from(env.PROVIDER_KEY_ENCRYPTION_KEY, "base64");
+  if (keyB64) {
+    providerKeyEncryptionKey = Buffer.from(keyB64, "base64");
     if (providerKeyEncryptionKey.length !== 32) {
       throw new Error("PROVIDER_KEY_ENCRYPTION_KEY must be 32 bytes, base64 encoded");
     }
@@ -100,4 +108,25 @@ export function loadConfig(overrides: Partial<z.input<typeof EnvSchema>> = {}): 
     throw new Error(`PARSER_CLI (${resolved.PARSER_CLI}) does not contain the lvs_parser package; set PARSER_CLI to workers/parser`);
   }
   return { ...resolved, assetUrlSecret, providerKeyEncryptionKey, warnings };
+}
+
+type PersistedSecrets = { assetUrlSecret?: string; providerKeyEncryptionKey?: string };
+
+function loadOrCreateSecrets(file: string, warnings: string[]): PersistedSecrets {
+  try {
+    if (existsSync(file)) {
+      const parsed = JSON.parse(readFileSync(file, "utf8")) as PersistedSecrets;
+      if (parsed.assetUrlSecret && parsed.providerKeyEncryptionKey) return parsed;
+    }
+    const fresh: PersistedSecrets = {
+      assetUrlSecret: randomBytes(32).toString("hex"),
+      providerKeyEncryptionKey: randomBytes(32).toString("base64"),
+    };
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(fresh, null, 2), { mode: 0o600 });
+    return fresh;
+  } catch (err) {
+    warnings.push(`could not persist secrets in ${file} (${(err as Error).message}); keys saved in the UI will not survive a restart`);
+    return {};
+  }
 }

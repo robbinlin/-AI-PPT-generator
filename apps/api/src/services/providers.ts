@@ -76,13 +76,24 @@ export class ProviderService {
     return d;
   }
 
+  private readable(ciphertext: string): boolean {
+    try {
+      this.crypto.decrypt(ciphertext);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private platformKey(d: ProviderDescriptor): string | undefined {
     return d.envKey ? (this.config[d.envKey] as string | undefined) || undefined : undefined;
   }
 
   async list(ownerId: string): Promise<ProviderInfo[]> {
     const stored = await this.db.select().from(providerKeys).where(eq(providerKeys.ownerId, ownerId));
-    const storedIds = new Set(stored.map((r) => r.providerId));
+    // A key encrypted under an older process key is useless: show the provider as unconfigured
+    // so the user knows to paste the key again instead of getting "no API key" at run time.
+    const storedIds = new Set(stored.filter((r) => this.readable(r.ciphertext)).map((r) => r.providerId));
     return this.catalogue().map((d) => ({
       id: d.id,
       kind: d.kind,

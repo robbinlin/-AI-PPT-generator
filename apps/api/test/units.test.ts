@@ -1,4 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { loadConfig } from "../src/config.js";
 import { describe, expect, it } from "vitest";
 import { ProjectSettings } from "@lvs/shared";
 import type { SceneRow, SlideRow } from "../src/db/schema.js";
@@ -40,6 +44,25 @@ describe("KeyCrypto", () => {
     expect(blob).not.toContain("sk-live");
     expect(c.decrypt(blob)).toBe("sk-live-abc");
     expect(() => new KeyCrypto(Buffer.alloc(32, 2)).decrypt(blob)).toThrow();
+  });
+});
+
+describe("loadConfig secrets", () => {
+  it("generates secrets once and reuses them on the next start", () => {
+    const dir = mkdtempSync(join(tmpdir(), "lvs-cfg-"));
+    // Empty strings mirror an untouched copy of .env.example and must behave like unset.
+    const overrides = { PGLITE_DIR: join(dir, "pglite"), ASSET_URL_SECRET: "", PROVIDER_KEY_ENCRYPTION_KEY: "", LOG_LEVEL: "silent" as const };
+    const a = loadConfig(overrides);
+    const b = loadConfig(overrides);
+    expect(a.providerKeyEncryptionKey.length).toBe(32);
+    expect(b.providerKeyEncryptionKey.equals(a.providerKeyEncryptionKey)).toBe(true);
+    expect(b.assetUrlSecret).toBe(a.assetUrlSecret);
+    expect(a.warnings.join(" ")).not.toMatch(/unreadable after restart/);
+    const onDisk = JSON.parse(readFileSync(join(dir, "secrets.json"), "utf8"));
+    expect(Buffer.from(onDisk.providerKeyEncryptionKey, "base64").equals(a.providerKeyEncryptionKey)).toBe(true);
+    // An explicit env value still wins over the persisted one.
+    const c = loadConfig({ ...overrides, PROVIDER_KEY_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString("base64") });
+    expect(c.providerKeyEncryptionKey.equals(Buffer.alloc(32, 9))).toBe(true);
   });
 });
 

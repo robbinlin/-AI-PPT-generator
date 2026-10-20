@@ -268,6 +268,14 @@ describe("providers", () => {
     const [row] = await t.ctx.db.select().from(providerKeys);
     expect(row?.ciphertext).not.toContain("sk-test-123");
     expect((await t.ctx.providers.credentials("dev", "elevenlabs")).apiKey).toBe("sk-test-123");
+    // A key encrypted under a different process key must read as "not configured", not as a run-time failure.
+    const { KeyCrypto } = await import("../src/services/providers.js");
+    await t.ctx.db
+      .update(providerKeys)
+      .set({ ciphertext: new KeyCrypto(Buffer.alloc(32, 5)).encrypt("sk-old") })
+      .where(eq(providerKeys.providerId, "elevenlabs"));
+    const stale = (await t.app.inject({ method: "GET", url: "/providers" })).json().find((p: { id: string }) => p.id === "elevenlabs");
+    expect(stale.configured).toBe(false);
     const del = await t.app.inject({ method: "DELETE", url: "/providers/elevenlabs/key" });
     expect(del.json().configured).toBe(false);
     const unknown = await t.app.inject({ method: "PUT", url: "/providers/nope/key", payload: { apiKey: "x" } });
