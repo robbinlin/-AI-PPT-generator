@@ -788,6 +788,13 @@ export class MockApiClient implements ApiClient {
     return this.setConfigured(providerId, false);
   }
 
+  async previewVoice(): Promise<Blob> {
+    await this.wait();
+    const dataUrl = toneWavDataUrl();
+    const bytes = Uint8Array.from(atob(dataUrl.split(",")[1] ?? ""), (c) => c.charCodeAt(0));
+    return new Blob([bytes], { type: "audio/wav" });
+  }
+
   async listVoices(providerId: string): Promise<VoiceOption[]> {
     await this.wait();
     return clone(MOCK_VOICES[providerId] ?? []);

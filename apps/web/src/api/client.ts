@@ -137,6 +137,11 @@ export class HttpApiClient implements ApiClient {
     return this.json(z.array(VoiceSchema), "GET", `/providers/${enc(providerId)}/voices`);
   }
 
+  async previewVoice(providerId: string, voiceId: string, language: "zh-TW" | "en"): Promise<Blob> {
+    const res = await this.send("POST", `/providers/${enc(providerId)}/voices/${enc(voiceId)}/preview?language=${language}`);
+    return res.blob();
+  }
+
   listAvatars(providerId: string) {
     return this.json(z.array(AvatarCharacterSchema), "GET", `/providers/${enc(providerId)}/avatars`);
   }

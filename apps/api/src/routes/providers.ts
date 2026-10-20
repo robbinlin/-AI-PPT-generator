@@ -21,6 +21,23 @@ export async function providerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     return tts.listVoices();
   });
 
+  /** Short sample so the user can hear a voice before committing to it. */
+  app.post<{ Params: { providerId: string; voiceId: string }; Querystring: { language?: string } }>(
+    "/providers/:providerId/voices/:voiceId/preview",
+    async (req, reply) => {
+      const { ownerId } = ctx.auth.resolve(req);
+      const tts = await ctx.providers.requireTts(ownerId, req.params.providerId);
+      const language = req.query.language === "en" ? "en" : "zh-TW";
+      const text =
+        language === "en"
+          ? "Hello, this is a sample of my voice. Today we will look at how high intensity interval training changes VO two max."
+          : "各位同學好，這是我的聲音示範。今天我們要看高強度間歇訓練對最大攝氧量的影響。";
+      const res = await tts.synthesize({ text, voiceId: req.params.voiceId, language });
+      reply.header("Cache-Control", "no-store");
+      return reply.type(res.data.mimeType).send(Buffer.from(res.data.audio));
+    },
+  );
+
   app.get<{ Params: { providerId: string } }>("/providers/:providerId/avatars", async (req) => {
     const { ownerId } = ctx.auth.resolve(req);
     const avatar = await ctx.providers.requireAvatar(ownerId, req.params.providerId);

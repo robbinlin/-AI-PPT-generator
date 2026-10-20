@@ -86,6 +86,8 @@ export interface ApiClient {
   setProviderKey(providerId: string, req: SetProviderKeyRequest): Promise<ProviderInfo>;
   deleteProviderKey(providerId: string): Promise<ProviderInfo>;
   listVoices(providerId: string): Promise<VoiceOption[]>;
+  /** Audio blob of a short sample sentence in the given voice. */
+  previewVoice(providerId: string, voiceId: string, language: "zh-TW" | "en"): Promise<Blob>;
   listAvatars(providerId: string): Promise<AvatarOption[]>;
 
   listProjects(): Promise<ProjectSummary[]>;

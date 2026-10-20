@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Loader2, Play, Square } from "lucide-react";
 import type {
   AspectRatio,
   Audience,
@@ -20,6 +21,9 @@ import type { AvatarOption, VoiceOption } from "../../api/types";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { t } from "../../i18n";
 import { useEditor } from "../../store/editorStore";
+import { toast } from "../../store/toastStore";
+import { errorMessage } from "../../api/types";
+import { Button } from "../ui/Button";
 import { Field, Select, Toggle, type Option } from "../ui/Field";
 import { ColorInput, CommitNumber, CommitRange, CommitText, SettingsSection } from "./settingsFields";
 
@@ -179,6 +183,7 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
             )}
           </Field>
         </div>
+        <VoicePreview providerId={s.voice.providerId} voiceId={s.voice.voiceId} language={s.language === "en" ? "en" : "zh-TW"} />
         <Field label={t.settings.speed}>
           <CommitRange
             label={t.settings.speed}
@@ -350,6 +355,57 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
           </Field>
         </div>
       </SettingsSection>
+    </div>
+  );
+}
+
+/** 試聽：synthesizes a short fixed sample with the selected voice and plays it in the browser. */
+function VoicePreview({ providerId, voiceId, language }: { providerId: string; voiceId: string; language: "zh-TW" | "en" }) {
+  const api = useApi();
+  const [state, setState] = useState<"idle" | "loading" | "playing">("idle");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const urlRef = useRef<string | null>(null);
+
+  const stop = () => {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    urlRef.current = null;
+    setState("idle");
+  };
+  useEffect(() => stop, []);
+  useEffect(() => {
+    stop();
+  }, [providerId, voiceId]);
+
+  const play = async () => {
+    if (state === "playing") return stop();
+    setState("loading");
+    try {
+      const blob = await api.previewVoice(providerId, voiceId, language);
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      urlRef.current = url;
+      audio.onended = stop;
+      audio.onerror = () => {
+        toast(t.settings.previewFailed, "error");
+        stop();
+      };
+      await audio.play();
+      setState("playing");
+    } catch (err) {
+      toast(`${t.settings.previewFailed}：${errorMessage(err)}`, "error");
+      stop();
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button size="sm" icon={state === "loading" ? Loader2 : state === "playing" ? Square : Play} disabled={state === "loading"} onClick={() => void play()}>
+        {state === "loading" ? t.settings.previewLoading : state === "playing" ? t.settings.previewStop : t.settings.previewVoice}
+      </Button>
+      <span className="text-[11px] text-neutral-500">{t.settings.previewHint}</span>
     </div>
   );
 }

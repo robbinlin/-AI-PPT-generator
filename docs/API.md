@@ -11,6 +11,7 @@ All DTOs are defined in `@lvs/shared` (`src/api.ts`); this file lists routes onl
 | PUT | `/providers/:providerId/key` | `SetProviderKeyRequest` | `ProviderInfo` |
 | DELETE | `/providers/:providerId/key` | – | `ProviderInfo` |
 | GET | `/providers/:providerId/voices` | – | `Voice[]` (tts providers; `400` when no key is configured) |
+| POST | `/providers/:providerId/voices/:voiceId/preview` | `?language=zh-TW\|en` | audio bytes (sample sentence) |
 | GET | `/providers/:providerId/avatars` | – | `AvatarCharacter[]` (avatar providers; `400` when no key is configured) |
 | GET | `/projects` | – | `Project[]` |
 | POST | `/projects` | `CreateProjectRequest` | `Project` |

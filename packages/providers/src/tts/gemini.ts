@@ -18,15 +18,25 @@ export const GEMINI_TTS_MODEL = "gemini-3.8-flash-tts";
 const envTtsModel = () => process.env.GEMINI_TTS_MODEL || GEMINI_TTS_MODEL;
 
 /** Prebuilt Gemini voices (all multilingual). Names are the provider's voice ids. */
+const L: Voice["languages"] = ["zh-TW", "en", "mixed"];
+/**
+ * Curated subset of Gemini's prebuilt voices with human-friendly labels. Gemini cannot change
+ * a voice's age or accent, so labels describe the timbre you actually get; child voices and
+ * regional accents need a provider with a voice library (ElevenLabs).
+ */
 export const GEMINI_VOICES: Voice[] = [
-  { id: "Kore", name: "Kore", languages: ["zh-TW", "en", "mixed"], gender: "female", tags: ["firm"] },
-  { id: "Aoede", name: "Aoede", languages: ["zh-TW", "en", "mixed"], gender: "female", tags: ["breezy"] },
-  { id: "Leda", name: "Leda", languages: ["zh-TW", "en", "mixed"], gender: "female", tags: ["youthful"] },
-  { id: "Zephyr", name: "Zephyr", languages: ["zh-TW", "en", "mixed"], gender: "female", tags: ["bright"] },
-  { id: "Puck", name: "Puck", languages: ["zh-TW", "en", "mixed"], gender: "male", tags: ["upbeat"] },
-  { id: "Charon", name: "Charon", languages: ["zh-TW", "en", "mixed"], gender: "male", tags: ["informative"] },
-  { id: "Fenrir", name: "Fenrir", languages: ["zh-TW", "en", "mixed"], gender: "male", tags: ["excitable"] },
-  { id: "Orus", name: "Orus", languages: ["zh-TW", "en", "mixed"], gender: "male", tags: ["firm"] },
+  { id: "Kore", name: "沉穩女聲（Kore）", languages: L, gender: "female", tags: ["firm", "adult"] },
+  { id: "Leda", name: "年輕女聲（Leda）", languages: L, gender: "female", tags: ["youthful"] },
+  { id: "Aoede", name: "輕快女聲（Aoede）", languages: L, gender: "female", tags: ["breezy"] },
+  { id: "Zephyr", name: "明亮女聲（Zephyr）", languages: L, gender: "female", tags: ["bright"] },
+  { id: "Sulafat", name: "溫暖女聲（Sulafat）", languages: L, gender: "female", tags: ["warm"] },
+  { id: "Gacrux", name: "成熟女聲（Gacrux）", languages: L, gender: "female", tags: ["mature"] },
+  { id: "Charon", name: "知性男聲（Charon）", languages: L, gender: "male", tags: ["informative"] },
+  { id: "Orus", name: "穩重男聲（Orus）", languages: L, gender: "male", tags: ["firm", "adult"] },
+  { id: "Puck", name: "活潑男聲（Puck）", languages: L, gender: "male", tags: ["upbeat"] },
+  { id: "Achird", name: "親切男聲（Achird）", languages: L, gender: "male", tags: ["friendly"] },
+  { id: "Iapetus", name: "清晰男聲（Iapetus）", languages: L, gender: "male", tags: ["clear"] },
+  { id: "Fenrir", name: "有力男聲（Fenrir）", languages: L, gender: "male", tags: ["excitable"] },
 ];
 
 export interface GeminiTtsCall {
