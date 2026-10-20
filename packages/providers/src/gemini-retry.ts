@@ -33,8 +33,17 @@ export async function withGeminiRetry<T>(models: string[], call: (model: string)
         lastErr = err;
         const status = geminiErrorStatus(err);
         if (!(status === 503 || status === 429 || status === 500)) throw err;
-        if (status === 429 && /per.?day|PerDay/i.test(String(err))) break;
-        if (attempt < GEMINI_MAX_ATTEMPTS - 1) await sleep(Math.min(30_000, 2_000 * 2 ** attempt) + Math.random() * 1_000);
+        if (status === 429 && /per.?day|PerDay/i.test(String(err))) {
+          console.warn(`[gemini] ${model}: daily quota exhausted, trying the next model`);
+          break;
+        }
+        if (attempt < GEMINI_MAX_ATTEMPTS - 1) {
+          const wait = Math.min(30_000, 2_000 * 2 ** attempt) + Math.random() * 1_000;
+          console.warn(`[gemini] ${model} returned ${status} (busy); retry ${attempt + 2}/${GEMINI_MAX_ATTEMPTS} in ${Math.round(wait / 1000)}s`);
+          await sleep(wait);
+        } else {
+          console.warn(`[gemini] ${model} still failing after ${GEMINI_MAX_ATTEMPTS} attempts; trying the next model`);
+        }
       }
     }
   }

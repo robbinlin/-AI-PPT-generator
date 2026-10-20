@@ -150,3 +150,28 @@ describe("JobRunner", () => {
     expect(max).toBe(2);
   });
 });
+
+import { createTestServer as _cts } from "./helpers.js";
+describe("orphan recovery", () => {
+  it("re-queues jobs left running by a previous process and lets them be cancelled", async () => {
+    const t = await _cts();
+    try {
+      const created = await t.app.inject({ method: "POST", url: "/projects", payload: { name: "orphan" } });
+      const projectId = created.json().id as string;
+      const res = await t.app.inject({ method: "POST", url: `/projects/${projectId}/jobs`, payload: { type: "export_script", format: "md" } });
+      const jobId = res.json().job.id as string;
+      // Simulate a crash mid-run: the row says running but no process owns it.
+      await t.ctx.db.update(jobs).set({ status: "running", progress: 0.3 }).where(eq(jobs.id, jobId));
+      await t.ctx.runner.recoverOrphans();
+      const [row] = await t.ctx.db.select().from(jobs).where(eq(jobs.id, jobId));
+      expect(row?.status).toBe("queued");
+      expect(row?.progress).toBe(0);
+      // A running orphan can also be cancelled directly.
+      await t.ctx.db.update(jobs).set({ status: "running" }).where(eq(jobs.id, jobId));
+      const cancelled = await t.ctx.runner.cancel(jobId);
+      expect(cancelled?.status).toBe("cancelled");
+    } finally {
+      await t.close();
+    }
+  });
+});

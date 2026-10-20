@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, lte, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 import type { Job, JobPayload, JobType, ProjectEvent } from "@lvs/shared";
 import type { Config } from "../config.js";
 import type { Db } from "../db/client.js";
@@ -57,7 +57,26 @@ export class JobRunner {
   start(): void {
     if (this.running) return;
     this.running = true;
-    void this.loop();
+    void this.recoverOrphans().finally(() => this.loop());
+  }
+
+  /**
+   * Jobs left in `running` by a previous process (crash, dev-server restart) would otherwise
+   * sit at their last progress forever and keep the editor's buttons disabled. Re-queue them;
+   * handlers are idempotent per scene, so completed scenes are skipped on the re-run.
+   */
+  async recoverOrphans(): Promise<void> {
+    const { db } = this.deps;
+    const rows = await db
+      .update(jobs)
+      .set({ status: "queued", progress: 0, progressMessage: "伺服器重新啟動，重新排隊", startedAt: null })
+      .where(eq(jobs.status, "running"))
+      .returning();
+    for (const row of rows) {
+      const job = toJob(row);
+      this.deps.logger?.warn({ jobId: job.id, type: job.type }, "re-queued job orphaned by a previous process");
+      this.deps.bus.publish(job.projectId, { kind: "job", job });
+    }
   }
 
   async stop(): Promise<void> {
@@ -115,7 +134,7 @@ export class JobRunner {
     const [row] = await db
       .update(jobs)
       .set({ status: "cancelled", finishedAt: new Date() })
-      .where(and(eq(jobs.id, jobId), eq(jobs.status, "queued")))
+      .where(and(eq(jobs.id, jobId), inArray(jobs.status, ["queued", "running"])))
       .returning();
     if (!row) {
       const [existing] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
