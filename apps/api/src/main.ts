@@ -9,6 +9,7 @@ const fatal = (kind: string) => (err: unknown) => {
   const msg = err instanceof Error ? (err.stack ?? err.message) : String(err);
   console.error(`[api] ${kind}:`, msg);
   if (/Aborted\(\)|RuntimeError/.test(msg)) console.error(`[api] ${PGLITE_HINT}`);
+  console.error("[api] exited. If this window shows no prompt (the dev watcher is still running), press Ctrl+C, then run `pnpm dev:api` again.");
   process.exit(1);
 };
 process.on("uncaughtException", fatal("uncaught exception"));
