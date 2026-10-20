@@ -23,12 +23,15 @@ export function parseModelList(value: string | undefined, fallback: string): str
 }
 
 /** Runs `call(model)` across `models` in order with retries; throws the last error. */
-export async function withGeminiRetry<T>(models: string[], call: (model: string) => Promise<T>): Promise<T> {
+export async function withGeminiRetry<T>(models: string[], call: (model: string) => Promise<T>, label = "call"): Promise<T> {
   let lastErr: unknown;
   for (const model of models) {
     for (let attempt = 0; attempt < GEMINI_MAX_ATTEMPTS; attempt++) {
+      const started = Date.now();
       try {
-        return await call(model);
+        const result = await call(model);
+        console.info(`[gemini] ${label} ${model} ok in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+        return result;
       } catch (err) {
         lastErr = err;
         const status = geminiErrorStatus(err);

@@ -103,11 +103,15 @@ export class GeminiLlmProvider implements LlmProvider {
       ? parseModelList(process.env.GEMINI_FAST_FALLBACK_MODELS, `gemini-3.1-flash-lite,${this.defaultModel}`)
       : parseModelList(process.env.GEMINI_LLM_FALLBACK_MODELS, "gemini-3.5-flash");
     const models = [primary, ...fallbacks.filter((m) => m !== primary)];
-    return withGeminiRetry(models, async (model) => {
-      const call = buildGeminiJsonCall({ ...req, model }, this.defaultModel);
-      const res = await this.ai.models.generateContent(call);
-      return mapGeminiJsonResponse(res as GeminiLikeResponse, req);
-    });
+    return withGeminiRetry(
+      models,
+      async (model) => {
+        const call = buildGeminiJsonCall({ ...req, model }, this.defaultModel);
+        const res = await this.ai.models.generateContent(call);
+        return mapGeminiJsonResponse(res as GeminiLikeResponse, req);
+      },
+      `llm(${req.reasoning ?? "high"})`,
+    );
   }
 }
 

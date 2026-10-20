@@ -15,7 +15,7 @@ pnpm install
 cp .env.example .env            # add GEMINI_API_KEY (or ANTHROPIC_API_KEY)
 python3 -m pip install -r workers/parser/requirements.txt
 pnpm build                      # builds shared schemas first
-pnpm dev:api                    # http://localhost:4000 (PGlite, local storage, no Docker needed)
+pnpm dev:api                    # builds the shared packages, then serves http://localhost:4000 (PGlite, no Docker needed)
 pnpm dev:web                    # http://localhost:5173
 ```
 
