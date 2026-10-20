@@ -93,6 +93,7 @@ import { thinkingConfigFor } from "../src/llm/gemini.js";
 describe("gemini thinking config", () => {
   it("maps the reasoning hint", () => {
     expect(thinkingConfigFor("none")).toEqual({ thinkingBudget: 0 });
+    expect(thinkingConfigFor("none", "gemini-3.5-flash-lite")).toEqual({ thinkingLevel: "LOW" });
     expect(thinkingConfigFor("low")).toEqual({ thinkingLevel: "LOW" });
     expect(thinkingConfigFor("high")).toBeUndefined();
     expect(thinkingConfigFor(undefined)).toBeUndefined();

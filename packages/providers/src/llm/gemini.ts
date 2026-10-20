@@ -26,13 +26,22 @@ export interface GeminiJsonCall {
  * Gemini 3.x models think before answering by default (≈1k hidden tokens, 2–3× the latency on a
  * script-sized prompt). Scripts don't need it; the outline benefits from a little.
  */
-export function thinkingConfigFor(reasoning: LlmJsonRequest<unknown>["reasoning"]): GeminiJsonCall["config"]["thinkingConfig"] | undefined {
+export function thinkingConfigFor(reasoning: LlmJsonRequest<unknown>["reasoning"], model = ""): GeminiJsonCall["config"]["thinkingConfig"] | undefined {
   const forced = process.env.GEMINI_THINKING;
   const level = forced === "none" || forced === "low" || forced === "high" ? forced : (reasoning ?? "high");
-  if (level === "none") return { thinkingBudget: 0 };
+  // The lite models reject thinkingBudget: 0 but accept the LOW level, which is already fast.
+  if (level === "none") return /lite/.test(model) ? { thinkingLevel: ThinkingLevel.LOW } : { thinkingBudget: 0 };
   if (level === "low") return { thinkingLevel: ThinkingLevel.LOW };
   return undefined;
 }
+
+/**
+ * Fast model for tasks that need no deliberation (per-slide scripts). On free-tier keys the
+ * flagship flash model is heavily throttled (40–140 s per call) while the lite models answer in
+ * ~2 s with comparable zh-TW prose, so "reasoning: none" requests are routed here by default.
+ */
+export const GEMINI_FAST_MODEL = "gemini-3.5-flash-lite";
+const envFastModel = () => process.env.GEMINI_FAST_MODEL || GEMINI_FAST_MODEL;
 
 export function buildGeminiJsonCall<T>(req: LlmJsonRequest<T>, defaultModel = GEMINI_DEFAULT_MODEL): GeminiJsonCall {
   const parts: GeminiJsonCall["contents"][number]["parts"] = [];
@@ -51,7 +60,7 @@ export function buildGeminiJsonCall<T>(req: LlmJsonRequest<T>, defaultModel = GE
       responseJsonSchema: zodToProviderSchema(req.schema, { strip: ["default", "additionalProperties"] }),
       ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
       ...(req.maxOutputTokens !== undefined ? { maxOutputTokens: req.maxOutputTokens } : {}),
-      ...(thinkingConfigFor(req.reasoning) ? { thinkingConfig: thinkingConfigFor(req.reasoning) } : {}),
+      ...(thinkingConfigFor(req.reasoning, req.model ?? defaultModel) ? { thinkingConfig: thinkingConfigFor(req.reasoning, req.model ?? defaultModel) } : {}),
     },
   };
 }
@@ -88,8 +97,12 @@ export class GeminiLlmProvider implements LlmProvider {
   }
 
   async generateJson<T>(req: LlmJsonRequest<T>): Promise<ProviderResult<T>> {
-    const primary = req.model ?? this.defaultModel;
-    const models = [primary, ...parseModelList(process.env.GEMINI_LLM_FALLBACK_MODELS, "gemini-3.5-flash").filter((m) => m !== primary)];
+    const fast = req.reasoning === "none" && !req.model;
+    const primary = req.model ?? (fast ? envFastModel() : this.defaultModel);
+    const fallbacks = fast
+      ? parseModelList(process.env.GEMINI_FAST_FALLBACK_MODELS, `gemini-3.1-flash-lite,${this.defaultModel}`)
+      : parseModelList(process.env.GEMINI_LLM_FALLBACK_MODELS, "gemini-3.5-flash");
+    const models = [primary, ...fallbacks.filter((m) => m !== primary)];
     return withGeminiRetry(models, async (model) => {
       const call = buildGeminiJsonCall({ ...req, model }, this.defaultModel);
       const res = await this.ai.models.generateContent(call);
