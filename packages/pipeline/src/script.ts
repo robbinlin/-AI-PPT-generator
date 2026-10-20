@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { LlmAttachment, LlmProvider, ProjectSettings, UsageDelta } from "@lvs/shared";
+import type { LlmAttachment, LlmProvider, ProjectSettings, UsageDelta, GlossaryEntry } from "@lvs/shared";
 import type { OutlineDraft } from "./outline.js";
 import { describeAudience, describeLanguage, describeMode, isZh, renderGlossary, renderSlideContent, slideBrief, type PipelineSlide } from "./prompts.js";
 import { derivePronunciationText, deriveSubtitleText, estimateSpeakingSeconds, targetLength } from "./texts.js";
@@ -48,9 +48,9 @@ export function buildScriptPrompt(input: GenerateSceneScriptInput): { system: st
     ? `你是一位${describeAudience(settings)}的課程講師，正在為一支投影片解說影片撰寫「單一頁」的口語講稿。
 整份影片的規劃（目標、章節、術語表）已經完成，你只負責這一頁，並讓它與前後頁自然銜接。
 你必須同時產出三份文字：
-1. script：給使用者閱讀與編輯的講稿，口語、自然、可直接朗讀。
+1. script：給使用者閱讀與編輯的講稿，口語、自然、可直接朗讀。術語一律用原本的寫法（VO₂max、ANOVA、η²），絕對不要把術語表的「讀法」寫進 script。
 2. pronunciationText：給語音合成引擎朗讀的版本，將術語依術語表讀法展開、統計符號與小數改為口語（例如 p < .05 → p 小於 零點零五、25% → 百分之二十五），其餘內容與 script 完全相同。
-3. subtitleText：給畫面字幕的版本，保留正式拼寫與符號（VO₂max、p < .05），與 script 相同但去除口語贅字。
+3. subtitleText：給畫面字幕的版本，保留正式拼寫與符號（VO₂max、p < .05），與 script 相同。
 語言：${describeLanguage(settings)}。`
     : `You are a lecturer for ${describeAudience(settings)} writing the spoken script for ONE slide of a narrated slide video.
 The deck-level plan (objectives, sections, glossary) is done; you only write this slide, connecting it naturally to its neighbours.
@@ -138,9 +138,9 @@ export function finalizeScriptTexts(
   raw: ScriptLlmOutput,
   input: Pick<GenerateSceneScriptInput, "outline" | "settings">,
 ): Omit<GenerateSceneScriptResult, "usage"> {
-  const script = raw.script.replace(/\r\n?/g, "\n").trim();
-  if (!script) throw new Error("model returned an empty script");
   const glossary = input.outline.glossary;
+  const script = restoreTermSpellings(raw.script.replace(/\r\n?/g, "\n").trim(), glossary);
+  if (!script) throw new Error("model returned an empty script");
   const lang = input.settings.language;
   const pronunciationText = derivePronunciationText(raw.pronunciationText.trim() || script, glossary, lang);
   // Subtitles must match what is spoken; models tend to condense their own subtitleText, so
@@ -148,4 +148,22 @@ export function finalizeScriptTexts(
   const subtitleText = deriveSubtitleText(script);
   const estimated = raw.estimatedDurationSec > 0 ? raw.estimatedDurationSec : estimateSpeakingSeconds(script, lang);
   return { script, pronunciationText, subtitleText, estimatedDurationSec: Math.round(estimated * 10) / 10 };
+}
+
+/**
+ * Smaller models sometimes paste a glossary *reading* ("V O two max") into the display script.
+ * Readings belong only in pronunciationText, so map any verbatim reading back to its term.
+ */
+export function restoreTermSpellings(script: string, glossary: GlossaryEntry[]): string {
+  let out = script;
+  for (const g of glossary) {
+    const reading = (g.reading ?? "").trim();
+    if (!reading || reading === g.term || reading.length < 3) continue;
+    // Only readings that look like spelled-out forms (letters/spaces/digits), not Chinese names
+    // such as 變異數分析, which are legitimate prose.
+    if (!/^[A-Za-z0-9 .\-]+$/.test(reading)) continue;
+    const re = new RegExp(reading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g");
+    out = out.replace(re, g.term);
+  }
+  return out;
 }
