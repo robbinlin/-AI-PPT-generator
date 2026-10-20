@@ -64,7 +64,9 @@ export { schema };
 
 const LOCK_FILE = ".lvs-api.lock";
 const LOCK_HEARTBEAT_MS = 5_000;
-const LOCK_STALE_MS = 30_000;
+const LOCK_STALE_MS = 20_000;
+/** Must exceed LOCK_STALE_MS so a predecessor that died just before we started always expires while we wait. */
+const LOCK_WAIT_MS = 45_000;
 
 /**
  * Creates `<dir>/.lvs-api.lock` and keeps its mtime fresh while this process runs. A lock whose
@@ -74,7 +76,8 @@ const LOCK_STALE_MS = 30_000;
  */
 async function acquireDirLock(dir: string): Promise<() => void> {
   const lockPath = join(dir, LOCK_FILE);
-  const deadline = Date.now() + 15_000;
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  let announced = false;
   for (;;) {
     let ageMs = Number.POSITIVE_INFINITY;
     let holder = "?";
@@ -87,6 +90,10 @@ async function acquireDirLock(dir: string): Promise<() => void> {
       }
     }
     if (ageMs > LOCK_STALE_MS || holder === String(process.pid)) break;
+    if (!announced) {
+      console.warn(`[api] waiting for the previous API process (pid ${holder}) to release ${dir} …`);
+      announced = true;
+    }
     if (Date.now() > deadline) {
       throw new Error(
         `PGlite data directory ${dir} is in use by another API process (pid ${holder}, heartbeat ${Math.round(ageMs / 1000)}s ago). ` +
