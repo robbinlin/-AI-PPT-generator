@@ -35,3 +35,16 @@ describe("extractTermCandidates", () => {
     expect(c).not.toContain("The");
   });
 });
+
+import { normalizeOutline } from "../src/outline.js";
+import { ProjectSettings } from "@lvs/shared";
+describe("normalizeOutline term spelling", () => {
+  it("snaps model terms back to the spelling used on the slides", () => {
+    const slides: PipelineSlide[] = [{ id: "a", index: 0, content: { pageNumber: 1, textBlocks: [], tables: [], images: [], charts: [], plainText: "VO₂max 與 HIIT", hasText: true, needsOcr: false, widthPt: 1, heightPt: 1, renderFidelity: "native" } }];
+    const out = normalizeOutline(
+      { objectives: [], summary: "", sections: [{ title: "x", slideNumbers: [1], keyPoints: [] }], glossary: [{ term: "VOmax", reading: "最大攝氧量", definition: "" }, { term: "hiit", reading: "高強度間歇訓練", definition: "" }], timeAllocation: [{ slideNumber: 1, seconds: 30 }] },
+      { slides, settings: ProjectSettings.parse({}) },
+    );
+    expect(out.glossary.map((g) => g.term)).toEqual(["VO₂max", "HIIT"]);
+  });
+});

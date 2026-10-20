@@ -146,10 +146,21 @@ export function normalizeOutline(raw: OutlineLlmOutput, input: Pick<GenerateOutl
 
   // glossary: merge seed (seed readings win when the model left them blank)
   const seedMap = new Map((input.glossarySeed ?? []).map((g) => [g.term, g]));
+  // Models sometimes drop subscripts or spacing ("VOmax" for "VO₂max"); snap terms back to the
+  // spelling that actually appears on the slides.
+  const canonical = new Map<string, string>();
+  const loose = new Map<string, string>();
+  for (const c of extractTermCandidates(slides)) {
+    canonical.set(termKey(c), c);
+    // Dropped subscripts/digits ("VOmax" for "VO₂max") still resolve through the digit-free key.
+    const lk = termKey(c).replace(/[0-9]/g, "");
+    if (lk.length >= 3 && !loose.has(lk)) loose.set(lk, c);
+  }
   const glossary: GlossaryEntry[] = [];
   const terms = new Set<string>();
   for (const g of [...raw.glossary, ...(input.glossarySeed ?? [])]) {
-    const term = g.term.trim();
+    const key = termKey(g.term);
+    const term = canonical.get(key) ?? (key.length >= 3 ? loose.get(key.replace(/[0-9]/g, "")) : undefined) ?? g.term.trim();
     if (!term || terms.has(term)) continue;
     terms.add(term);
     const seed = seedMap.get(term);
@@ -259,4 +270,12 @@ export function extractTermCandidates(slides: PipelineSlide[], max = 60): string
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, max)
     .map(([t]) => t);
+}
+
+/** Loose identity for a term: letters/digits only, subscript digits folded, case-insensitive. */
+function termKey(term: string): string {
+  return term
+    .replace(/[₀-₉]/g, (d) => String("₀₁₂₃₄₅₆₇₈₉".indexOf(d)))
+    .replace(/[^A-Za-z0-9ηρσμαβχ%]/g, "")
+    .toLowerCase();
 }

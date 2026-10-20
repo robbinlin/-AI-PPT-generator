@@ -301,3 +301,38 @@ describe("cors", () => {
     }
   });
 });
+
+describe("project isolation", () => {
+  it("parsing a document in one project never touches another project's slides, and a re-upload restores scripts", async () => {
+    const t = await createTestServer();
+    try {
+      const mk = async (name: string) => (await t.app.inject({ method: "POST", url: "/projects", payload: { name } })).json().id as string;
+      const upload = async (pid: string) => {
+        const res = await t.app.inject({ method: "POST", url: `/projects/${pid}/source`, ...multipart("deck.pdf", TINY_PDF, "application/pdf") });
+        expect(res.statusCode).toBe(200);
+        await t.ctx.runner.drain();
+      };
+      const a = await mk("A");
+      const b = await mk("B");
+      await upload(a);
+      let da = (await t.app.inject({ method: "GET", url: `/projects/${a}` })).json() as ProjectDetail;
+      const slidesA = da.slides.length;
+      expect(slidesA).toBeGreaterThan(0);
+      const sceneA = da.scenes[0]!;
+      await t.app.inject({ method: "PUT", url: `/projects/${a}/scenes/${sceneA.id}/script`, payload: { script: "A 專案第一頁的講稿" } });
+
+      await upload(b);
+      da = (await t.app.inject({ method: "GET", url: `/projects/${a}` })).json() as ProjectDetail;
+      expect(da.slides.length).toBe(slidesA);
+      expect(da.scripts[sceneA.id]?.script).toBe("A 專案第一頁的講稿");
+
+      // Re-uploading the same deck keeps the scene (matched by content hash) and its script.
+      await upload(a);
+      da = (await t.app.inject({ method: "GET", url: `/projects/${a}` })).json() as ProjectDetail;
+      expect(da.slides.length).toBe(slidesA);
+      expect(Object.values(da.scripts).some((s) => s.script === "A 專案第一頁的講稿")).toBe(true);
+    } finally {
+      await t.close();
+    }
+  });
+});

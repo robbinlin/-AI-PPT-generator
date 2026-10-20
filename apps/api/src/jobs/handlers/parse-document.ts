@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { asc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import { sha256Hex, SlideContent, type ParserManifest, type SceneAssetState } from "@lvs/shared";
 import { toScene, toSlide } from "../../db/mappers.js";
 import { assets, scenes, slides, sourceDocuments, type SceneRow, type SlideRow } from "../../db/schema.js";
@@ -150,8 +150,9 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
       const keptSceneIds = new Set(resultScenes.map((s) => s.id));
       const orphanScenes = oldScenes.filter((s) => !keptSceneIds.has(s.id)).map((s) => s.id);
       if (orphanScenes.length) await tx.delete(scenes).where(inArray(scenes.id, orphanScenes));
-      // Old slides (previous document versions) are no longer referenced by any scene.
-      await tx.delete(slides).where(ne(slides.sourceDocumentId, docId));
+      // Old slides of THIS project (previous document versions) are no longer referenced by any scene.
+      // The project filter is essential: without it every other project's slides would be wiped.
+      await tx.delete(slides).where(and(eq(slides.projectId, projectId), ne(slides.sourceDocumentId, docId)));
       await tx
         .update(sourceDocuments)
         .set({ parseStatus: "succeeded", pageCount: insertedSlides.length })
