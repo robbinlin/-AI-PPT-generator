@@ -8,6 +8,8 @@ import { ProjectSettings } from "@lvs/shared";
 import type { SceneRow, SlideRow } from "../src/db/schema.js";
 import { matchScenes, slideContentHash } from "../src/jobs/handlers/parse-document.js";
 import { audioInputHash, effectiveStatus, outlineInputHash, selectScenesToProcess } from "../src/jobs/hashes.js";
+import { HttpError } from "@lvs/providers";
+import { providerErrorMessage } from "../src/errors.js";
 import { KeyCrypto } from "../src/services/providers.js";
 import { estimateSpeakingSeconds, fallbackDeriveTexts } from "../src/services/scripts.js";
 import { AssetUrlSigner } from "../src/storage/signing.js";
@@ -127,5 +129,16 @@ describe("matchScenes", () => {
     const m2 = matchScenes(moved, [oldA, oldB]);
     expect(m2.get(moved[0]!.id)).toEqual({ scene: oldB.scene, kind: "same" });
     expect(m2.get(moved[1]!.id)).toEqual({ scene: oldA.scene, kind: "same" });
+  });
+});
+
+describe("providerErrorMessage", () => {
+  it("unwraps vendor error envelopes", () => {
+    const el = new HttpError(401, "https://api.elevenlabs.io/v1/x", JSON.stringify({ detail: { status: "invalid_api_key", message: "Invalid API key" } }));
+    expect(providerErrorMessage(el)).toBe("HTTP 401 invalid_api_key: Invalid API key");
+    const g = new HttpError(429, "https://g/x?key=k", JSON.stringify({ error: { message: "quota exceeded" } }));
+    expect(providerErrorMessage(g)).toBe("HTTP 429 quota exceeded");
+    expect(providerErrorMessage(new HttpError(502, "u", "<html>bad gateway</html>"))).toBe("HTTP 502 <html>bad gateway</html>");
+    expect(providerErrorMessage(new Error("boom"))).toBe("boom");
   });
 });

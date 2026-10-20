@@ -36,3 +36,32 @@ export class NotImplementedJobError extends NonRetryableJobError {
     this.name = "NotImplementedJobError";
   }
 }
+
+/**
+ * Human-readable reason for a failed provider call. Vendors wrap the useful text in different
+ * envelopes (ElevenLabs `{detail:{status,message}}`, Google `{error:{message}}`); surface that
+ * text with the HTTP status so the user sees "401 invalid api key" instead of "internal error".
+ */
+export function providerErrorMessage(err: unknown): string {
+  const e = err as { name?: string; status?: number; body?: string; message?: string };
+  if (e?.name === "HttpError" && typeof e.status === "number") {
+    let detail = (e.body ?? "").slice(0, 300);
+    try {
+      const parsed = JSON.parse(e.body ?? "") as { detail?: unknown; error?: unknown; message?: unknown };
+      const d = parsed.detail ?? parsed.error ?? parsed.message;
+      if (typeof d === "string") detail = d;
+      else if (d && typeof d === "object") {
+        const o = d as { message?: unknown; status?: unknown };
+        detail = [typeof o.status === "string" ? o.status : "", typeof o.message === "string" ? o.message : ""].filter(Boolean).join(": ");
+      }
+    } catch {
+      /* not JSON */
+    }
+    return `HTTP ${e.status}${detail ? ` ${detail}` : ""}`;
+  }
+  return e?.message || String(err);
+}
+
+/** Upstream vendor rejected or failed the request; the message carries the vendor's reason. */
+export const upstream = (providerId: string, err: unknown) =>
+  new ApiHttpError(502, "upstream", `${providerId}: ${providerErrorMessage(err)}`);

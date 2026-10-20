@@ -179,6 +179,8 @@ export const zhTW = {
     previewStop: "停止",
     previewHint: "用目前選擇的聲音念一段範例。",
     previewFailed: "試聽失敗",
+    voiceListFailed: "無法取得聲音清單",
+    avatarListFailed: "無法取得人像清單",
     speed: "語速",
     sentencePause: "句間停頓（秒）",
     avatarEnabled: "啟用虛擬人像",

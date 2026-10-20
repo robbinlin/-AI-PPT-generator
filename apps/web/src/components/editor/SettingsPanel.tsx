@@ -69,7 +69,10 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
   }, [api]);
   useEffect(() => {
     if (!voiceProvider) return;
-    api.listVoices(voiceProvider).then(setVoices, () => setVoices([]));
+    api.listVoices(voiceProvider).then(setVoices, (err: unknown) => {
+      setVoices([]);
+      toast(`${t.settings.voiceListFailed}：${errorMessage(err)}`, "error");
+    });
   }, [api, voiceProvider]);
   // Voice ids are provider-specific: after switching providers, a leftover id (e.g. Gemini's
   // "Kore" sent to ElevenLabs) makes every synthesis fail, so snap to the first voice offered.
@@ -81,7 +84,10 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
   }, [voices, currentVoiceId]);
   useEffect(() => {
     if (!avatarProvider) return setAvatars([]);
-    api.listAvatars(avatarProvider).then(setAvatars, () => setAvatars([]));
+    api.listAvatars(avatarProvider).then(setAvatars, (err: unknown) => {
+      setAvatars([]);
+      toast(`${t.settings.avatarListFailed}：${errorMessage(err)}`, "error");
+    });
   }, [api, avatarProvider]);
 
   if (!project) return null;

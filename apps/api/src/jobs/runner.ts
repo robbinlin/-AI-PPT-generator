@@ -5,7 +5,7 @@ import type { Config } from "../config.js";
 import type { Db } from "../db/client.js";
 import { toJob } from "../db/mappers.js";
 import { jobs, type JobRow } from "../db/schema.js";
-import { NonRetryableJobError } from "../errors.js";
+import { NonRetryableJobError, providerErrorMessage } from "../errors.js";
 import type { EventBus } from "../events/bus.js";
 import type { StorageService } from "../storage/types.js";
 import type { JobContext, JobHandler } from "./context.js";
@@ -253,7 +253,7 @@ export class JobRunner {
       const cancelled = ctrl.signal.aborted || e.name === "AbortError";
       const retryable = !cancelled && !(e instanceof NonRetryableJobError) && row.attempts < row.maxAttempts;
       // The stored error is shown to the user in the editor; keep the stack in the log only.
-      const message = (e.message || String(err)).slice(0, 2000);
+      const message = providerErrorMessage(err).slice(0, 2000);
       if (cancelled) {
         await db.update(jobs).set({ status: "cancelled", finishedAt: new Date(), error: null }).where(eq(jobs.id, row.id));
       } else if (retryable) {
