@@ -254,7 +254,6 @@ export class JobRunner {
       const retryable = !cancelled && !(e instanceof NonRetryableJobError) && row.attempts < row.maxAttempts;
       // The stored error is shown to the user in the editor; keep the stack in the log only.
       const message = (e.message || String(err)).slice(0, 2000);
-      logger?.debug({ jobId: row.id, stack: e.stack }, "job error detail");
       if (cancelled) {
         await db.update(jobs).set({ status: "cancelled", finishedAt: new Date(), error: null }).where(eq(jobs.id, row.id));
       } else if (retryable) {
@@ -266,7 +265,7 @@ export class JobRunner {
         logger?.warn({ jobId: row.id, attempt: row.attempts, delay, err: e.message }, "job failed, retrying");
       } else {
         await db.update(jobs).set({ status: "failed", error: message, finishedAt: new Date() }).where(eq(jobs.id, row.id));
-        logger?.error({ jobId: row.id, err: e.message }, "job failed");
+        logger?.error({ jobId: row.id, err: e.message, stack: e.stack }, "job failed");
       }
     } finally {
       this.active.delete(row.id);
