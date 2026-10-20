@@ -88,12 +88,18 @@ Return data matching the requested JSON structure. Write all text in ${describeL
         "summary: 3–5 sentences on the arc of the deck; objectives: 3–6 learning objectives.",
       ];
 
+  const candidates = extractTermCandidates(input.slides);
   const prompt = [
     zh ? "## 投影片內容" : "## Slide content",
     slidesText,
     "",
     zh ? "## 已知術語（請納入並補齊讀法）" : "## Known glossary (include and complete readings)",
     renderGlossary(seed, zh),
+    "",
+    zh
+      ? "## 候選術語（從投影片自動偵測；每一個都要出現在 glossary 並給讀法，另外補上你發現的其他術語與人名）"
+      : "## Term candidates (auto-detected; every one must appear in glossary with a reading, add any others you notice)",
+    candidates.length ? candidates.join("、") : zh ? "（無）" : "(none)",
     "",
     zh ? "## 規劃要求" : "## Planning requirements",
     ...rules.filter(Boolean).map((r) => `- ${r}`),
@@ -216,4 +222,41 @@ export async function generateOutline(input: GenerateOutlineInput): Promise<Gene
 export function normalizeReading(reading: string): string {
   const first = reading.split(/\s*(?:或|or)\s+/i)[0] ?? "";
   return first.replace(/([0-9０-９零一二三四五六七八九十百千點.]+)\s*趴/g, "百分之$1").trim();
+}
+
+const STOP_WORDS = new Set(["the", "and", "of", "to", "in", "for", "with", "on", "by", "vs", "et", "al", "is", "are", "or", "an", "a", "as", "at"]);
+
+/**
+ * Deterministically pulls abbreviations, symbols, statistics notation and proper names out of
+ * the slides so the glossary does not depend on how thorough the model feels like being.
+ */
+export function extractTermCandidates(slides: PipelineSlide[], max = 60): string[] {
+  const counts = new Map<string, number>();
+  const bump = (t: string) => counts.set(t, (counts.get(t) ?? 0) + 1);
+  const text = slides.map((s) => [s.content.plainText, s.content.notes ?? ""].join("\n")).join("\n");
+  const patterns: RegExp[] = [
+    // statistics notation: p < .05, F(4, 110) = 6.21, η² = .18, r = .62, 95% CI, t(38) = 2.45
+    /\b[pFtrdz]\s*\(?[\d, ]*\)?\s*[<>=≤≥]\s*-?\.?\d[\d.]*/g,
+    /[ηρσμαβχ]²?\s*=\s*-?\.?\d[\d.]*/g,
+    /\d{1,3}%\s*CI/g,
+    // units and ratios: mL/kg/min, L/min, kg·m⁻²
+    /\b[A-Za-zµ]{1,4}(?:\/[A-Za-zµ]{1,4}){1,3}\b/g,
+    // acronyms / mixed-case tokens with digits or subscripts: HIIT, MICT, VO₂max, ANOVA, SPSS, Tukey HSD
+    /\b[A-Z][A-Za-z]*[₀-₉0-9][A-Za-z₀-₉0-9]*\b|\b[A-Z]{2,}[a-z]*\b/g,
+    // capitalised names (authors): Gibala, Cohen's, Levene
+    /\b[A-Z][a-z]{2,}(?:'s)?\b/g,
+    // greek letters standing alone
+    /(?<![A-Za-z])[ηρσμαβχ]²?(?![A-Za-z])/g,
+  ];
+  for (const re of patterns) {
+    for (const m of text.matchAll(re)) {
+      const t = m[0].trim();
+      if (!t || STOP_WORDS.has(t.toLowerCase())) continue;
+      bump(t);
+    }
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, max)
+    .map(([t]) => t);
 }

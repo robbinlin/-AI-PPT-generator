@@ -15,3 +15,23 @@ describe("normalizeReading", () => {
     expect(normalizeReading(" V O two max ")).toBe("V O two max");
   });
 });
+
+import { extractTermCandidates } from "../src/outline.js";
+import type { PipelineSlide } from "../src/prompts.js";
+describe("extractTermCandidates", () => {
+  const slide = (text: string, notes = ""): PipelineSlide => ({
+    id: "s", index: 0,
+    content: { pageNumber: 1, textBlocks: [], tables: [], images: [], charts: [], plainText: text, notes, hasText: true, needsOcr: false, widthPt: 960, heightPt: 540, renderFidelity: "native" },
+  });
+  it("finds acronyms, notation, units and names", () => {
+    const c = extractTermCandidates([slide("HIIT 與 MICT 對 VO₂max 的影響；F(4, 110) = 6.21, p < .001, η² = .18；單位 mL/kg/min；95% CI", "Gibala 2012 的設計類似")]);
+    for (const t of ["HIIT", "MICT", "VO₂max", "mL/kg/min", "95% CI", "Gibala"]) expect(c).toContain(t);
+    expect(c.some((t) => t.startsWith("p <"))).toBe(true);
+    expect(c.some((t) => t.startsWith("η²"))).toBe(true);
+  });
+  it("ignores stop words and caps the list", () => {
+    const c = extractTermCandidates([slide("The AND of ABC DEF GHI")], 2);
+    expect(c).toHaveLength(2);
+    expect(c).not.toContain("The");
+  });
+});

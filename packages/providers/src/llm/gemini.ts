@@ -97,7 +97,10 @@ export class GeminiLlmProvider implements LlmProvider {
   }
 
   async generateJson<T>(req: LlmJsonRequest<T>): Promise<ProviderResult<T>> {
-    const fast = req.reasoning === "none" && !req.model;
+    // Which reasoning levels go to the fast model. On a throttled free-tier key the flagship model
+    // takes minutes per call, so planning ("low") uses the lite model too unless configured otherwise.
+    const fastFor = new Set(parseModelList(process.env.GEMINI_FAST_FOR, "none,low"));
+    const fast = !req.model && fastFor.has(req.reasoning ?? "high");
     const primary = req.model ?? (fast ? envFastModel() : this.defaultModel);
     const fallbacks = fast
       ? parseModelList(process.env.GEMINI_FAST_FALLBACK_MODELS, `gemini-3.1-flash-lite,${this.defaultModel}`)
