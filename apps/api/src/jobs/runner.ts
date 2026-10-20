@@ -69,7 +69,8 @@ export class JobRunner {
     const { db } = this.deps;
     const rows = await db
       .update(jobs)
-      .set({ status: "queued", progress: 0, progressMessage: "伺服器重新啟動，重新排隊", startedAt: null })
+      // A restart is not the job's fault: give the attempt back (the next claim adds one again).
+      .set({ status: "queued", progress: 0, progressMessage: "伺服器重新啟動，重新排隊", startedAt: null, attempts: sql`GREATEST(${jobs.attempts} - 1, 0)` })
       .where(eq(jobs.status, "running"))
       .returning();
     for (const row of rows) {
