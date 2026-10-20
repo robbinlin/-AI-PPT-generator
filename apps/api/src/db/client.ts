@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
@@ -63,37 +63,50 @@ export async function createDb(opts: DbOptions): Promise<DbHandle> {
 export { schema };
 
 const LOCK_FILE = ".lvs-api.lock";
+const LOCK_HEARTBEAT_MS = 5_000;
+const LOCK_STALE_MS = 30_000;
 
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Creates `<dir>/.lvs-api.lock` with our pid; waits up to ~15 s for a live predecessor to exit. */
+/**
+ * Creates `<dir>/.lvs-api.lock` and keeps its mtime fresh while this process runs. A lock whose
+ * mtime is older than LOCK_STALE_MS belongs to a dead process (pids are reused on Windows, so
+ * liveness is judged by the heartbeat, not the pid). A fresh lock means another API is really
+ * running: wait a little for it to shut down (dev-server restarts overlap), then refuse.
+ */
 async function acquireDirLock(dir: string): Promise<() => void> {
   const lockPath = join(dir, LOCK_FILE);
   const deadline = Date.now() + 15_000;
   for (;;) {
-    let holder: number | undefined;
+    let ageMs = Number.POSITIVE_INFINITY;
+    let holder = "?";
     if (existsSync(lockPath)) {
-      const raw = readFileSync(lockPath, "utf8").trim();
-      holder = Number(raw) || undefined;
+      try {
+        ageMs = Date.now() - statSync(lockPath).mtimeMs;
+        holder = readFileSync(lockPath, "utf8").trim();
+      } catch {
+        ageMs = Number.POSITIVE_INFINITY;
+      }
     }
-    if (holder === undefined || holder === process.pid || !pidAlive(holder)) break;
+    if (ageMs > LOCK_STALE_MS || holder === String(process.pid)) break;
     if (Date.now() > deadline) {
       throw new Error(
-        `PGlite data directory ${dir} is in use by another API process (pid ${holder}). ` +
-          "Stop it first, or point this instance at a different PGLITE_DIR / DATABASE_URL.",
+        `PGlite data directory ${dir} is in use by another API process (pid ${holder}, heartbeat ${Math.round(ageMs / 1000)}s ago). ` +
+          "Stop it first (close the other terminal running pnpm dev:api), or point this instance at a different PGLITE_DIR / DATABASE_URL.",
       );
     }
     await new Promise((r) => setTimeout(r, 250));
   }
   writeFileSync(lockPath, String(process.pid));
+  const beat = setInterval(() => {
+    try {
+      const now = new Date();
+      utimesSync(lockPath, now, now);
+    } catch {
+      /* directory removed; nothing to do */
+    }
+  }, LOCK_HEARTBEAT_MS);
+  beat.unref();
   return () => {
+    clearInterval(beat);
     try {
       if (readFileSync(lockPath, "utf8").trim() === String(process.pid)) rmSync(lockPath, { force: true });
     } catch {
