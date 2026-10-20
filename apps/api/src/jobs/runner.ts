@@ -206,6 +206,7 @@ export class JobRunner {
     const { db, bus, handlers, logger } = this.deps;
     const ctrl = new AbortController();
     this.active.set(row.id, ctrl);
+    logger?.info({ jobId: row.id, type: row.type, projectId: row.projectId, attempt: row.attempts }, "job started");
     const publishJob = async () => {
       const [fresh] = await db.select().from(jobs).where(eq(jobs.id, row.id)).limit(1);
       if (fresh) bus.publish(fresh.projectId, { kind: "job", job: toJob(fresh) });

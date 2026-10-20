@@ -180,7 +180,9 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       const llm = await withProvider(() => providers.llm(ownerId, settings.llmProviderId));
       const slides = await toPipelineSlides(ctx, slidesInOrder, config.OUTLINE_MAX_IMAGES);
       throwIfAborted(ctx.signal);
+      ctx.log.info("calling LLM for the outline", { provider: llm.id, model: llm.defaultModel, slides: slides.length, images: Math.min(slides.length, config.OUTLINE_MAX_IMAGES) });
       const { outline, usage: used } = await pipelineOutline({ llm, slides, settings, maxImages: config.OUTLINE_MAX_IMAGES, attachImages: config.OUTLINE_MAX_IMAGES > 0 });
+      ctx.log.info("outline received", { sections: outline.sections.length, glossary: outline.glossary.length });
       await usage(ctx, llm.id, used);
       const [latest] = await ctx.db
         .select({ version: outlineRevisions.version })
