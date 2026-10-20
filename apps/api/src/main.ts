@@ -17,8 +17,19 @@ process.on("unhandledRejection", fatal("unhandled rejection"));
 const config = loadConfig();
 const server = await buildServer({ config });
 
+let shuttingDown = false;
 const shutdown = async (signal: string) => {
-  server.app.log.info({ signal }, "shutting down");
+  if (shuttingDown) {
+    console.error("[api] forced exit");
+    process.exit(1);
+  }
+  shuttingDown = true;
+  server.app.log.info({ signal }, "shutting down (press Ctrl+C again to force)");
+  // Never hang on a provider call or an open SSE stream: exit after a bounded grace period.
+  setTimeout(() => {
+    console.error("[api] shutdown timed out; exiting");
+    process.exit(0);
+  }, 5000).unref();
   await server.close();
   process.exit(0);
 };

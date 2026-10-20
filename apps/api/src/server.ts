@@ -49,7 +49,9 @@ export interface BuiltServer {
 
 export async function buildServer(opts: BuildServerOptions = {}): Promise<BuiltServer> {
   const config = opts.config ?? loadConfig();
-  const app = Fastify({ logger: { level: config.LOG_LEVEL }, bodyLimit: 10 * 1024 * 1024 });
+  const app = Fastify({
+    // Lets close() cut idle keep-alive and SSE connections instead of waiting for them forever.
+    forceCloseConnections: true, logger: { level: config.LOG_LEVEL }, bodyLimit: 10 * 1024 * 1024 });
   for (const w of config.warnings) app.log.warn(w);
 
   const dbHandle = opts.dbHandle ?? (await createDb({ databaseUrl: config.DATABASE_URL, pgliteDir: config.PGLITE_DIR }));
