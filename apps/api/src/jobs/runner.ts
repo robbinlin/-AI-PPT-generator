@@ -252,7 +252,9 @@ export class JobRunner {
       const e = err as Error;
       const cancelled = ctrl.signal.aborted || e.name === "AbortError";
       const retryable = !cancelled && !(e instanceof NonRetryableJobError) && row.attempts < row.maxAttempts;
-      const message = (e.stack ?? e.message ?? String(err)).slice(0, 4000);
+      // The stored error is shown to the user in the editor; keep the stack in the log only.
+      const message = (e.message || String(err)).slice(0, 2000);
+      logger?.debug({ jobId: row.id, stack: e.stack }, "job error detail");
       if (cancelled) {
         await db.update(jobs).set({ status: "cancelled", finishedAt: new Date(), error: null }).where(eq(jobs.id, row.id));
       } else if (retryable) {

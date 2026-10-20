@@ -51,9 +51,12 @@ describe("elevenlabs tts", () => {
   it("builds the with-timestamps request", () => {
     const { url, body } = buildElevenLabsRequest({ ...req, speed: 1.5 });
     expect(url).toBe("/v1/text-to-speech/v1/with-timestamps?output_format=mp3_44100_128");
-    expect(body.language_code).toBe("zh");
+    // multilingual_v2 rejects language_code, so it is only sent to models that honour it
+    expect(body.language_code).toBeUndefined();
     expect(body.voice_settings.speed).toBe(1.2); // clamped
-    expect(buildElevenLabsRequest({ ...req, language: "mixed" }).body.language_code).toBeUndefined();
+    expect(buildElevenLabsRequest(req, "eleven_flash_v2_5").body.language_code).toBe("zh");
+    expect(buildElevenLabsRequest(req, "eleven_v3").body.language_code).toBe("zh");
+    expect(buildElevenLabsRequest({ ...req, language: "mixed" }, "eleven_flash_v2_5").body.language_code).toBeUndefined();
   });
   it("maps alignment to timestamps and duration", () => {
     const text = "Hi 你";
@@ -80,6 +83,37 @@ describe("elevenlabs tts", () => {
     });
     expect(v[0]).toEqual({ id: "a", name: "A", languages: ["zh-TW", "mixed"], gender: "female", previewUrl: "u", tags: ["taiwanese"] });
   });
+  it("puts the user's own voices first and labels them", () => {
+    const v = mapElevenLabsVoices({
+      voices: [
+        { voice_id: "p", name: "Rachel", category: "premade" },
+        { voice_id: "c", name: "我的分身", category: "cloned", is_owner: true },
+        { voice_id: "lib", name: "Lib", category: "professional", is_owner: false },
+      ],
+    });
+    expect(v.map((x) => x.id)).toEqual(["c", "lib", "p"]);
+    expect(v[0]!.name).toBe("我的聲音・我的分身");
+    expect(v[2]!.name).toBe("內建・Rachel");
+  });
+  it("walks every page of /v2/voices", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(url);
+      const second = url.includes("next_page_token=t2");
+      return new Response(
+        JSON.stringify({
+          voices: [{ voice_id: second ? "b" : "a", name: second ? "B" : "A" }],
+          has_more: !second,
+          next_page_token: second ? null : "t2",
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+    const p = new ElevenLabsTtsProvider({ apiKey: "k" }, { fetchImpl });
+    expect((await p.listVoices()).map((v) => v.id)).toEqual(["a", "b"]);
+    expect(urls).toHaveLength(2);
+    expect(urls[0]).toContain("/v2/voices?page_size=100");
+  });
   it("sends the key in the xi-api-key header, never the URL", async () => {
     let seen: { url: string; headers: Record<string, string> } | undefined;
     const fetchImpl = (async (url: string, init: RequestInit) => {
@@ -88,7 +122,7 @@ describe("elevenlabs tts", () => {
     }) as unknown as typeof fetch;
     const p = new ElevenLabsTtsProvider({ apiKey: "k-secret" }, { fetchImpl });
     expect(await p.listVoices()).toEqual([]);
-    expect(seen!.url).toBe("https://api.elevenlabs.io/v1/voices");
+    expect(seen!.url).toMatch(/^https:\/\/api\.elevenlabs\.io\/v2\/voices\?/);
     expect(seen!.headers["xi-api-key"]).toBe("k-secret");
   });
 });

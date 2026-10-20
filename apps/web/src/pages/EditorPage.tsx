@@ -14,6 +14,7 @@ import { useEditorKeyboard } from "../hooks/useEditorKeyboard";
 import { useScriptAutosave } from "../hooks/useScriptAutosave";
 import { fmt, t } from "../i18n";
 import { editorStore, useEditor } from "../store/editorStore";
+import { toast } from "../store/toastStore";
 
 export function EditorPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -53,6 +54,10 @@ export function EditorPage() {
       // There is no SourceDocument event: after a parse finishes, take a fresh snapshot.
       if (event.kind === "job" && event.job.type === "parse_document" && event.job.status === "succeeded") {
         void refresh().catch(() => undefined);
+      }
+      // A failed job otherwise only shows in the jobs drawer, which reads as "nothing happened".
+      if (event.kind === "job" && event.job.status === "failed") {
+        toast(fmt(t.jobs.failedToast, { type: t.jobs.types[event.job.type], message: event.job.error ?? "" }), "error");
       }
     });
 

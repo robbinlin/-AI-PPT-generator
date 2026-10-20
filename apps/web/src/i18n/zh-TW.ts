@@ -312,6 +312,7 @@ export const zhTW = {
       cancelled: "已取消",
     },
     enqueueFailed: "無法建立工作：{message}",
+    failedToast: "{type}失敗：{message}",
   },
   providers: {
     title: "服務供應商",

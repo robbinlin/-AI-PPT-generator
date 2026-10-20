@@ -71,6 +71,14 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
     if (!voiceProvider) return;
     api.listVoices(voiceProvider).then(setVoices, () => setVoices([]));
   }, [api, voiceProvider]);
+  // Voice ids are provider-specific: after switching providers, a leftover id (e.g. Gemini's
+  // "Kore" sent to ElevenLabs) makes every synthesis fail, so snap to the first voice offered.
+  const currentVoiceId = project?.settings.voice.voiceId;
+  useEffect(() => {
+    if (!project || voices.length === 0 || voices.some((v) => v.id === currentVoiceId)) return;
+    void actions.updateProject({ settings: { voice: { ...project.settings.voice, voiceId: voices[0]!.id } } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voices, currentVoiceId]);
   useEffect(() => {
     if (!avatarProvider) return setAvatars([]);
     api.listAvatars(avatarProvider).then(setAvatars, () => setAvatars([]));
