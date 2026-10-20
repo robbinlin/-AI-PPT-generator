@@ -83,6 +83,8 @@ describe.skipIf(!toolsPresent)("end-to-end on the sample deck (mock providers)",
       ELEVENLABS_API_KEY: undefined,
       HEYGEN_API_KEY: undefined,
       AVATAR_POLL_INTERVAL_MS: 10,
+      // Sequential so the continuity assertion (each prompt sees the previous script) is deterministic.
+      SCRIPT_CONCURRENCY: 1,
       OUTLINE_MAX_IMAGES: 2,
       SCRIPT_ATTACH_IMAGE: false,
     });

@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { parseModelList, withGeminiRetry } from "../gemini-retry.js";
 import type { LlmJsonRequest, LlmProvider, ProviderCredentials, ProviderFactory, ProviderResult } from "@lvs/shared";
 import { extractJsonText, zodToProviderSchema } from "../jsonschema.js";
@@ -18,7 +18,20 @@ export interface GeminiJsonCall {
     responseJsonSchema: Record<string, unknown>;
     temperature?: number;
     maxOutputTokens?: number;
+    thinkingConfig?: { thinkingBudget?: number; thinkingLevel?: ThinkingLevel };
   };
+}
+
+/**
+ * Gemini 3.x models think before answering by default (≈1k hidden tokens, 2–3× the latency on a
+ * script-sized prompt). Scripts don't need it; the outline benefits from a little.
+ */
+export function thinkingConfigFor(reasoning: LlmJsonRequest<unknown>["reasoning"]): GeminiJsonCall["config"]["thinkingConfig"] | undefined {
+  const forced = process.env.GEMINI_THINKING;
+  const level = forced === "none" || forced === "low" || forced === "high" ? forced : (reasoning ?? "high");
+  if (level === "none") return { thinkingBudget: 0 };
+  if (level === "low") return { thinkingLevel: ThinkingLevel.LOW };
+  return undefined;
 }
 
 export function buildGeminiJsonCall<T>(req: LlmJsonRequest<T>, defaultModel = GEMINI_DEFAULT_MODEL): GeminiJsonCall {
@@ -38,6 +51,7 @@ export function buildGeminiJsonCall<T>(req: LlmJsonRequest<T>, defaultModel = GE
       responseJsonSchema: zodToProviderSchema(req.schema, { strip: ["default", "additionalProperties"] }),
       ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
       ...(req.maxOutputTokens !== undefined ? { maxOutputTokens: req.maxOutputTokens } : {}),
+      ...(thinkingConfigFor(req.reasoning) ? { thinkingConfig: thinkingConfigFor(req.reasoning) } : {}),
     },
   };
 }

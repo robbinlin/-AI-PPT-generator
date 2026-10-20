@@ -36,6 +36,12 @@ export interface LlmJsonRequest<T> {
   model?: string;
   temperature?: number;
   maxOutputTokens?: number;
+  /**
+   * How much the model should deliberate before answering. "none" disables extended thinking
+   * (fast; right for per-slide scripts), "low" keeps a little (outline planning), "high" leaves
+   * the provider default. Providers without the knob ignore it.
+   */
+  reasoning?: "none" | "low" | "high";
 }
 
 export interface LlmProvider {

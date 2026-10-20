@@ -60,6 +60,8 @@ const EnvSchema = z.object({
   OUTLINE_MAX_IMAGES: z.coerce.number().int().min(0).default(12),
   /** Attach the slide image to each per-slide script prompt. */
   SCRIPT_ATTACH_IMAGE: z.coerce.boolean().default(true),
+  /** Slides scripted concurrently. Continuity comes from the outline and neighbouring slides; the previous script is passed when already written. */
+  SCRIPT_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(3),
   /** Polling cadence for external avatar tasks. */
   AVATAR_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
   /** Lifetime of the signed audio URL handed to avatar providers (they queue for a while). */

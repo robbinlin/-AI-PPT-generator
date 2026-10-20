@@ -207,6 +207,7 @@ export async function generateOutline(input: GenerateOutlineInput): Promise<Gene
     schema: OutlineLlmOutput,
     ...(attachments.length ? { attachments } : {}),
     temperature: 0.3,
+    reasoning: "low",
   });
   return { outline: normalizeOutline(res.data, input), usage: res.usage };
 }

@@ -124,6 +124,7 @@ export async function generateSceneScript(input: GenerateSceneScriptInput): Prom
     schema: ScriptLlmOutput,
     ...(attachments.length ? { attachments } : {}),
     temperature: 0.5,
+    reasoning: "none",
   });
   const finished = finalizeScriptTexts(res.data, input);
   return { ...finished, usage: res.usage };

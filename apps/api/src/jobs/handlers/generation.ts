@@ -141,26 +141,41 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
     const latestScript = new Map(Object.entries(detail.scripts).map(([sceneId, rev]) => [sceneId, rev.script]));
     const alloc = detail.outline?.timeAllocation ?? {};
     const plan = progressPlan(visibleScenes, targets, (s) => alloc[s.slideId] ?? Math.max(10, (slidesById.get(s.slideId)?.content.plainText.length ?? 0) / 8));
-    for (let i = 0; i < targets.length; i++) {
-      const scene = targets[i]!;
-      const pos = visibleScenes.findIndex((s) => s.id === scene.id);
-      const slide = slidesById.get(scene.slideId)!;
-      const prevScene = pos > 0 ? visibleScenes[pos - 1] : undefined;
-      await ctx.emit(plan.start(scene), `生成第 ${slide.pageNumber} 頁講稿`);
-      const rev = await seams.generateScript({
-        ctx,
-        scene,
-        slide,
-        prev: prevScene ? slidesById.get(prevScene.slideId) : undefined,
-        next: pos < visibleScenes.length - 1 ? slidesById.get(visibleScenes[pos + 1]!.slideId) : undefined,
-        outline: detail.outline,
-        settings: detail.project.settings,
-        previousScript: prevScene ? latestScript.get(prevScene.id) : undefined,
-      });
-      latestScript.set(scene.id, rev.script);
-      ids.push(rev.id);
-      ctx.publish({ kind: "script", script: rev });
-      await ctx.emit(plan.finish(scene), `第 ${slide.pageNumber} 頁講稿完成`);
+    // Pages are written a few at a time (SCRIPT_CONCURRENCY). Each prompt still sees the outline,
+    // the neighbouring slides and, when it is already written, the previous page's script.
+    const concurrency = Math.max(1, Math.min(ctx.config.SCRIPT_CONCURRENCY ?? 3, targets.length));
+    const results = new Map<string, string>();
+    let cursor = 0;
+    const worker = async () => {
+      for (;;) {
+        const i = cursor++;
+        if (i >= targets.length) return;
+        if (ctx.signal.aborted) return;
+        const scene = targets[i]!;
+        const pos = visibleScenes.findIndex((s) => s.id === scene.id);
+        const slide = slidesById.get(scene.slideId)!;
+        const prevScene = pos > 0 ? visibleScenes[pos - 1] : undefined;
+        await ctx.emit(plan.start(scene), `生成第 ${slide.pageNumber} 頁講稿`);
+        const rev = await seams.generateScript({
+          ctx,
+          scene,
+          slide,
+          prev: prevScene ? slidesById.get(prevScene.slideId) : undefined,
+          next: pos < visibleScenes.length - 1 ? slidesById.get(visibleScenes[pos + 1]!.slideId) : undefined,
+          outline: detail.outline,
+          settings: detail.project.settings,
+          previousScript: prevScene ? latestScript.get(prevScene.id) : undefined,
+        });
+        latestScript.set(scene.id, rev.script);
+        results.set(scene.id, rev.id);
+        ctx.publish({ kind: "script", script: rev });
+        await ctx.emit(plan.finish(scene), `第 ${slide.pageNumber} 頁講稿完成`);
+      }
+    };
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    for (const scene of targets) {
+      const id = results.get(scene.id);
+      if (id) ids.push(id);
     }
     return { scriptRevisionIds: ids, processed: targets.length, skipped: visibleScenes.length - targets.length };
   };
