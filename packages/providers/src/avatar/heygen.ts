@@ -34,10 +34,15 @@ const envEngine = (): HeyGenEngine | undefined => {
   return e === "avatar_iii" || e === "avatar_iv" || e === "avatar_v" ? e : undefined;
 };
 
+/** HEYGEN_REMOVE_BACKGROUND=0 disables matting (then the look's own scene stays behind the avatar). */
+const envRemoveBackground = (): boolean => !/^(0|false|no)$/i.test(process.env.HEYGEN_REMOVE_BACKGROUND ?? "");
+
 export interface HeyGenGenerateBody {
   type: "avatar";
   avatar_id: string;
   engine?: { type: HeyGenEngine };
+  /** Matte the avatar onto `background`; verified to yield a clean chroma-green plate for the render worker. */
+  remove_background?: boolean;
   audio_asset_id?: string;
   audio_url?: string;
   script?: string;
@@ -50,7 +55,12 @@ export interface HeyGenGenerateBody {
   callback_id?: string;
 }
 
-export function buildHeyGenGenerateBody(req: AvatarCreateRequest, audioAssetId?: string, engine = envEngine()): HeyGenGenerateBody {
+export function buildHeyGenGenerateBody(
+  req: AvatarCreateRequest,
+  audioAssetId?: string,
+  engine = envEngine(),
+  removeBackground = envRemoveBackground(),
+): HeyGenGenerateBody {
   if (!audioAssetId && !req.audioUrl && !req.text) throw new Error("heygen: audio or text required");
   if (req.text && !audioAssetId && !req.audioUrl && !req.voiceId) throw new Error("heygen: voiceId required with text input");
   const source: Partial<HeyGenGenerateBody> = audioAssetId
@@ -62,6 +72,7 @@ export function buildHeyGenGenerateBody(req: AvatarCreateRequest, audioAssetId?:
     type: "avatar",
     avatar_id: req.avatarId,
     ...(engine ? { engine: { type: engine } } : {}),
+    ...(removeBackground ? { remove_background: true } : {}),
     ...source,
     aspect_ratio: HEYGEN_ASPECT[req.aspectRatio],
     resolution: "720p",
@@ -141,6 +152,11 @@ export function mapHeyGenLooks(res: HeyGenLooksResponse, ownership: "private" | 
   }));
 }
 
+function isMattingRejection(err: unknown): boolean {
+  const e = err as { status?: number; body?: string };
+  return e?.status === 400 && /matting|remove_background|background/i.test(e.body ?? "");
+}
+
 // ---------------------------------------------------------------- provider --
 
 export class HeyGenAvatarProvider implements AvatarProvider {
@@ -203,13 +219,24 @@ export class HeyGenAvatarProvider implements AvatarProvider {
 
   async createTask(req: AvatarCreateRequest): Promise<{ taskId: string }> {
     const assetId = req.audio ? await this.uploadAudio(req.audio.data, req.audio.mimeType, req.audio.fileName) : undefined;
-    const res = await fetchJson<HeyGenGenerateResponse>(`${this.baseUrl}/v3/videos`, {
-      ...this.fetchOpts,
-      method: "POST",
-      headers: this.headers(),
-      body: JSON.stringify(buildHeyGenGenerateBody(req, assetId)),
-    });
-    return mapHeyGenGenerateResponse(res);
+    const post = (body: HeyGenGenerateBody) =>
+      fetchJson<HeyGenGenerateResponse>(`${this.baseUrl}/v3/videos`, {
+        ...this.fetchOpts,
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify(body),
+      });
+    const body = buildHeyGenGenerateBody(req, assetId);
+    try {
+      return mapHeyGenGenerateResponse(await post(body));
+    } catch (err) {
+      // Looks without matting support reject remove_background; keep their own backdrop instead.
+      if (body.remove_background && isMattingRejection(err)) {
+        const { remove_background: _rb, ...plain } = body;
+        return mapHeyGenGenerateResponse(await post(plain));
+      }
+      throw err;
+    }
   }
 
   async getTask(taskId: string): Promise<AvatarTaskStatus> {

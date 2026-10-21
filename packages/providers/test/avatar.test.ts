@@ -13,7 +13,9 @@ import { MockAvatarProvider } from "../src/avatar/mock.js";
 describe("heygen mapping (v3)", () => {
   it("builds an avatar video body from an uploaded asset, a url, or text", () => {
     const b = buildHeyGenGenerateBody({ avatarId: "av1", aspectRatio: "16:9", audioUrl: "https://x/a.wav", clientReference: "job-1" }, "asset-9");
-    expect(b).toMatchObject({ type: "avatar", avatar_id: "av1", audio_asset_id: "asset-9", aspect_ratio: "16:9", resolution: "720p", output_format: "mp4" });
+    expect(b).toMatchObject({ type: "avatar", avatar_id: "av1", audio_asset_id: "asset-9", aspect_ratio: "16:9", resolution: "720p", output_format: "mp4", remove_background: true });
+    expect(buildHeyGenGenerateBody({ avatarId: "av1", aspectRatio: "16:9", audioUrl: "u" }, undefined, "avatar_iii", false)).toMatchObject({ engine: { type: "avatar_iii" } });
+    expect(buildHeyGenGenerateBody({ avatarId: "av1", aspectRatio: "16:9", audioUrl: "u" }, undefined, undefined, false).remove_background).toBeUndefined();
     expect(b.audio_url).toBeUndefined();
     expect(b.background).toEqual({ type: "color", value: "#00FF00" });
     expect(b.callback_id).toBe("job-1");
@@ -53,7 +55,10 @@ describe("heygen mapping (v3)", () => {
         return new Response(JSON.stringify({ data: { asset_id: "as1", url: "https://files/x.mp3" } }));
       }
       if (url.endsWith("/v3/videos")) {
-        expect(JSON.parse(init.body as string)).toMatchObject({ type: "avatar", audio_asset_id: "as1" });
+        const body = JSON.parse(init.body as string);
+        expect(body).toMatchObject({ type: "avatar", audio_asset_id: "as1" });
+        // First attempt asks for matting; this look rejects it, so the retry must drop the flag.
+        if (body.remove_background) return new Response(JSON.stringify({ error: { code: "invalid", message: "avatar does not support matting" } }), { status: 400 });
         return new Response(JSON.stringify({ data: { video_id: "v9", status: "waiting" } }));
       }
       if (url.includes("/v3/videos/v9") && init.method !== "DELETE") return new Response(JSON.stringify({ data: { id: "v9", status: "processing" } }));
@@ -84,8 +89,9 @@ describe("heygen mapping (v3)", () => {
     const looks = await p.listAvatars();
     expect(looks.map((l) => l.id)).toEqual(["private-1", "public-1", "public-2"]);
     expect(looks[0]!.kind).toBe("personal");
-    expect(seen.slice(0, 4)).toEqual([
+    expect(seen.slice(0, 5)).toEqual([
       "POST https://api.heygen.com/v3/assets hg",
+      "POST https://api.heygen.com/v3/videos hg",
       "POST https://api.heygen.com/v3/videos hg",
       "GET https://api.heygen.com/v3/videos/v9 hg",
       "DELETE https://api.heygen.com/v3/videos/v9 hg",
