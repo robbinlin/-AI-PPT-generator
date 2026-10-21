@@ -66,7 +66,11 @@ export class ProviderService {
   }
 
   catalogue(): ProviderDescriptor[] {
-    return this.registry.listProviders().map((p) => ({ ...p, envKey: ENV_KEYS[p.id] }));
+    return this.registry
+      .listProviders()
+      // Mock providers only output placeholders; users must never see them as real options.
+      .filter((p) => p.id !== "mock" || this.config.EXPOSE_MOCK_PROVIDERS)
+      .map((p) => ({ ...p, envKey: ENV_KEYS[p.id] }));
   }
 
   /** First descriptor with this id; pass `kind` when the id is shared across kinds (gemini). */

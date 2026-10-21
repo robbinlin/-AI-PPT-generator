@@ -74,6 +74,29 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
       toast(`${t.settings.voiceListFailed}：${errorMessage(err)}`, "error");
     });
   }, [api, voiceProvider]);
+  // Provider ids may point at something no longer offered (e.g. the hidden mock provider) or be
+  // unset: snap each kind to the first configured provider so generation never targets a ghost.
+  useEffect(() => {
+    if (!project || providers.length === 0) return;
+    const pick = (kind: ProviderInfo["kind"], current: string | undefined) => {
+      const list = providers.filter((p) => p.kind === kind);
+      if (current && list.some((p) => p.id === current)) return undefined;
+      return (list.find((p) => p.configured) ?? list[0])?.id;
+    };
+    const s0 = project.settings;
+    const llm = pick("llm", s0.llmProviderId);
+    const tts = pick("tts", s0.voice.providerId);
+    const av = s0.avatar.enabled ? pick("avatar", s0.avatar.providerId) : undefined;
+    if (!llm && !tts && !av) return;
+    void actions.updateProject({
+      settings: {
+        ...(llm ? { llmProviderId: llm } : {}),
+        ...(tts ? { voice: { ...s0.voice, providerId: tts } } : {}),
+        ...(av ? { avatar: { ...s0.avatar, providerId: av } } : {}),
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providers, project?.settings.llmProviderId, project?.settings.voice.providerId, project?.settings.avatar.providerId, project?.settings.avatar.enabled]);
   // Same for avatar ids once the provider's list is known.
   const currentAvatarId = project?.settings.avatar.avatarId;
   useEffect(() => {

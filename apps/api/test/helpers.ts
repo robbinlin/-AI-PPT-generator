@@ -100,6 +100,7 @@ export async function createTestServer(opts: Partial<BuildServerOptions> & { par
     ASSET_URL_SECRET: "test-secret",
     PROVIDER_KEY_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
     PUBLIC_BASE_URL: "http://api.test",
+    EXPOSE_MOCK_PROVIDERS: true,
     DATABASE_URL: undefined,
     // Tests must never pick up real provider keys from a developer's .env.
     GEMINI_API_KEY: undefined,
