@@ -94,13 +94,18 @@ export class ProviderService {
     // A key encrypted under an older process key is useless: show the provider as unconfigured
     // so the user knows to paste the key again instead of getting "no API key" at run time.
     const storedIds = new Set(stored.filter((r) => this.readable(r.ciphertext)).map((r) => r.providerId));
-    return this.catalogue().map((d) => ({
-      id: d.id,
-      kind: d.kind,
-      displayName: d.displayName,
-      requiresApiKey: d.requiresApiKey,
-      configured: !d.requiresApiKey || !!this.platformKey(d) || storedIds.has(d.id),
-    }));
+    return this.catalogue().map((d) => {
+      // A user key wins over the platform key (see credentials()), so report it first.
+      const keySource = !d.requiresApiKey ? undefined : storedIds.has(d.id) ? "user" : this.platformKey(d) ? "platform" : undefined;
+      return {
+        id: d.id,
+        kind: d.kind,
+        displayName: d.displayName,
+        requiresApiKey: d.requiresApiKey,
+        configured: !d.requiresApiKey || keySource !== undefined,
+        ...(keySource ? { keySource } : {}),
+      } satisfies ProviderInfo;
+    });
   }
 
   async info(ownerId: string, providerId: string, kind?: ProviderKind): Promise<ProviderInfo> {

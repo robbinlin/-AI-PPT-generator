@@ -773,7 +773,13 @@ export class MockApiClient implements ApiClient {
     const matches = this.providers.filter((p) => p.id === providerId);
     const first = matches[0];
     if (!first) throw new ApiRequestError("Unknown provider", 404, "not_found");
-    for (const p of matches) p.configured = configured || !p.requiresApiKey;
+    for (const p of matches) {
+      p.configured = configured || !p.requiresApiKey;
+      if (p.requiresApiKey) {
+        if (configured) p.keySource = "user";
+        else delete p.keySource;
+      }
+    }
     return clone(first);
   }
 

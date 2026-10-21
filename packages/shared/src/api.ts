@@ -97,6 +97,8 @@ export const ProviderInfo = z.object({
   requiresApiKey: z.boolean(),
   /** True when a platform key or a user key is configured. */
   configured: z.boolean(),
+  /** Where the active key comes from: the server's .env ("platform") or the user's saved key ("user"). */
+  keySource: z.enum(["platform", "user"]).optional(),
 });
 export type ProviderInfo = z.infer<typeof ProviderInfo>;
 

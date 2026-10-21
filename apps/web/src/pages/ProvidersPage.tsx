@@ -103,7 +103,7 @@ function ProviderRow({ provider, onUpdated }: { provider: ProviderInfo; onUpdate
       <td className="border-b border-neutral-800/70 px-4 py-3 text-neutral-300">{t.providers.kinds[provider.kind]}</td>
       <td className="border-b border-neutral-800/70 px-4 py-3">
         {provider.configured ? (
-          <Badge tone="success">{t.providers.configured}</Badge>
+          <Badge tone="success">{provider.keySource === "platform" ? t.providers.configuredPlatform : t.providers.configured}</Badge>
         ) : (
           <Badge tone="warning">{t.providers.notConfigured}</Badge>
         )}
@@ -125,10 +125,13 @@ function ProviderRow({ provider, onUpdated }: { provider: ProviderInfo; onUpdate
             <Button type="submit" size="sm" icon={KeyRound} disabled={busy || !key.trim()}>
               {t.common.save}
             </Button>
-            {provider.configured && (
+            {provider.keySource === "user" && (
               <Button size="sm" variant="ghost" icon={Trash2} disabled={busy} onClick={remove}>
                 {t.common.remove}
               </Button>
+            )}
+            {provider.keySource === "platform" && !message && (
+              <span className="text-xs text-neutral-500">{t.providers.platformHint}</span>
             )}
             {message && (
               <span className={`text-xs ${message.tone === "ok" ? "text-emerald-400" : "text-rose-300"}`}>{message.text}</span>
