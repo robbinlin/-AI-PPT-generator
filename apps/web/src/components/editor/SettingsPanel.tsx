@@ -313,6 +313,18 @@ export function SettingsPanel({
           voiceId={s.voice.voiceId}
           language={s.language === "en" ? "en" : "zh-TW"}
         />
+        {providers.find((p) => p.kind === "tts" && p.id === s.voice.providerId)
+          ?.customVoices && (
+          <VoiceUploader
+            providerId={s.voice.providerId}
+            voices={voices}
+            selectedId={s.voice.voiceId}
+            onChanged={(list, selectId) => {
+              setVoices(list);
+              if (selectId !== undefined) setVoice({ voiceId: selectId });
+            }}
+          />
+        )}
         <Field label={t.settings.speed}>
           <CommitRange
             label={t.settings.speed}
@@ -694,6 +706,99 @@ function CharacterUploader({
           {t.settings.uploadCharacterHint}
         </p>
       </div>
+    </div>
+  );
+}
+
+/** Upload / delete a reference clip of the user's own voice for providers that clone voices (本機語音). */
+function VoiceUploader({
+  providerId,
+  voices,
+  selectedId,
+  onChanged,
+}: {
+  providerId: string;
+  voices: VoiceOption[];
+  selectedId: string;
+  onChanged: (list: VoiceOption[], selectId?: string) => void;
+}) {
+  const api = useApi();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const selected = voices.find((v) => v.id === selectedId);
+  const isCustom = !!selected && selected.name.startsWith("我的聲音");
+
+  const upload = async (file: File) => {
+    setProgress(0);
+    try {
+      const created = await api.uploadVoice(providerId, file, {
+        onProgress: setProgress,
+      });
+      const list = await api.listVoices(providerId);
+      onChanged(list, list.find((v) => v.id === created.id)?.id ?? created.id);
+      toast(t.settings.voiceUploaded);
+    } catch (err) {
+      toast(`${t.settings.voiceUploadFailed}：${errorMessage(err)}`, "error");
+    } finally {
+      setProgress(null);
+    }
+  };
+
+  const remove = async () => {
+    if (
+      !selected ||
+      !window.confirm(
+        fmt(t.settings.deleteVoiceConfirm, { name: selected.name }),
+      )
+    )
+      return;
+    try {
+      await api.deleteVoice(providerId, selected.id);
+      const list = await api.listVoices(providerId);
+      onChanged(list, list[0]?.id ?? "");
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    }
+  };
+
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <input
+          ref={fileInput}
+          type="file"
+          accept="audio/wav,audio/mpeg,audio/mp4,audio/x-m4a,audio/webm,.wav,.mp3,.m4a,.webm"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) void upload(f);
+          }}
+        />
+        <Button
+          size="sm"
+          icon={Upload}
+          disabled={progress !== null}
+          onClick={() => fileInput.current?.click()}
+        >
+          {progress === null
+            ? t.settings.uploadVoice
+            : `${t.settings.uploadingVoice} ${Math.round(progress * 100)}%`}
+        </Button>
+        {isCustom && (
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={Trash2}
+            onClick={() => void remove()}
+          >
+            {t.settings.deleteVoice}
+          </Button>
+        )}
+      </div>
+      <p className="text-[11px] text-neutral-500">
+        {t.settings.uploadVoiceHint}
+      </p>
     </div>
   );
 }

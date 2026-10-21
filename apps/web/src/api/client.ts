@@ -186,6 +186,75 @@ export class HttpApiClient implements ApiClient {
     return res.blob();
   }
 
+  uploadVoice(
+    providerId: string,
+    file: File,
+    options: UploadOptions & { name?: string; transcript?: string } = {},
+  ) {
+    return this.uploadMultipart(
+      `/providers/${enc(providerId)}/voices`,
+      file,
+      VoiceSchema,
+      options,
+      {
+        name: options.name ?? file.name.replace(/\.[^.]+$/, ""),
+        ...(options.transcript ? { transcript: options.transcript } : {}),
+      },
+    );
+  }
+
+  async deleteVoice(providerId: string, voiceId: string): Promise<void> {
+    await this.send(
+      "DELETE",
+      `/providers/${enc(providerId)}/voices/${enc(voiceId)}`,
+    );
+  }
+
+  /** XHR multipart upload with progress; resolves with the parsed JSON body. */
+  private uploadMultipart<T>(
+    path: string,
+    file: File,
+    schema: {
+      safeParse: (d: unknown) => {
+        success: boolean;
+        data?: T;
+        error?: unknown;
+      };
+    },
+    options: UploadOptions,
+    fields: Record<string, string>,
+  ) {
+    return new Promise<T>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", this.url(path));
+      xhr.setRequestHeader("Accept", "application/json");
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable) options.onProgress?.(ev.loaded / ev.total);
+      };
+      xhr.onerror = () =>
+        reject(new ApiRequestError("Network error", 0, "network_error"));
+      xhr.onload = () => {
+        let data: unknown;
+        try {
+          data = JSON.parse(xhr.responseText);
+        } catch {
+          data = undefined;
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          reject(errorFromBody(xhr.status, xhr.statusText, data));
+          return;
+        }
+        const parsed = schema.safeParse(data);
+        if (parsed.success) resolve(parsed.data as T);
+        else reject(parsed.error);
+      };
+      const form = new FormData();
+      form.append("file", file, file.name);
+      for (const [k, v] of Object.entries(fields)) form.append(k, v);
+      xhr.send(form);
+    });
+  }
+
   uploadAvatarCharacter(
     providerId: string,
     file: File,

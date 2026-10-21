@@ -103,6 +103,8 @@ export const ProviderInfo = z.object({
   hint: z.string().optional(),
   /** Avatar providers that accept the user's own photo/video as a character. */
   customCharacters: z.boolean().optional(),
+  /** TTS providers that accept a reference clip of the user's own voice. */
+  customVoices: z.boolean().optional(),
 });
 export type ProviderInfo = z.infer<typeof ProviderInfo>;
 

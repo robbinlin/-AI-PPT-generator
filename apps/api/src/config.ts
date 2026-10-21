@@ -64,6 +64,8 @@ const EnvSchema = z.object({
   SCRIPT_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(3),
   /** Address of the self-hosted avatar service (workers/avatar-local). */
   LOCAL_AVATAR_URL: z.string().default("http://127.0.0.1:8765"),
+  /** Address of the self-hosted TTS service (workers/tts-local). */
+  LOCAL_TTS_URL: z.string().default("http://127.0.0.1:8766"),
   /** Show the offline "mock" providers in the catalogue (tests and demos only; they produce placeholder output). */
   EXPOSE_MOCK_PROVIDERS: z.coerce.boolean().default(false),
   /** Polling cadence for external avatar tasks. */

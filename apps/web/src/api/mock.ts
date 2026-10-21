@@ -970,6 +970,28 @@ export class MockApiClient implements ApiClient {
     return this.setConfigured(providerId, false);
   }
 
+  private customVoices: VoiceOption[] = [];
+
+  async uploadVoice(
+    _providerId: string,
+    file: File,
+    options: { name?: string } = {},
+  ): Promise<VoiceOption> {
+    await this.wait();
+    const v: VoiceOption = {
+      id: `custom-voice-${this.customVoices.length + 1}`,
+      name: `我的聲音・${options.name ?? file.name.replace(/\.[^.]+$/, "")}`,
+      languages: ["zh-TW", "en", "mixed"],
+    };
+    this.customVoices.unshift(v);
+    return clone(v);
+  }
+
+  async deleteVoice(_providerId: string, voiceId: string): Promise<void> {
+    await this.wait();
+    this.customVoices = this.customVoices.filter((v) => v.id !== voiceId);
+  }
+
   private customCharacters: AvatarOption[] = [];
 
   async uploadAvatarCharacter(
@@ -1011,7 +1033,7 @@ export class MockApiClient implements ApiClient {
 
   async listVoices(providerId: string): Promise<VoiceOption[]> {
     await this.wait();
-    return clone(MOCK_VOICES[providerId] ?? []);
+    return clone([...this.customVoices, ...(MOCK_VOICES[providerId] ?? [])]);
   }
 
   async listAvatars(providerId: string): Promise<AvatarOption[]> {

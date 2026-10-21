@@ -69,6 +69,8 @@ export interface TtsCapabilities {
   maxChars: number;
   /** Output container the provider returns, e.g. "audio/mpeg", "audio/wav", "audio/L16;rate=24000". */
   outputMimeType: string;
+  /** The user can upload a reference clip of their own voice (see `createVoice`). */
+  customVoices?: boolean;
 }
 
 export interface TtsRequest {
@@ -94,6 +96,11 @@ export interface TtsProvider {
   readonly capabilities: TtsCapabilities;
   listVoices(): Promise<Voice[]>;
   synthesize(req: TtsRequest): Promise<ProviderResult<TtsResult>>;
+  /** Self-hosted providers: is the service reachable, and if not (or degraded), what should the user do? */
+  probe?(): Promise<{ ok: boolean; hint?: string }>;
+  /** Providers with `capabilities.customVoices`. */
+  createVoice?(input: { data: Uint8Array; mimeType: string; fileName: string; name: string; transcript?: string }): Promise<Voice>;
+  deleteVoice?(id: string): Promise<void>;
 }
 
 // ------------------------------------------------------------- Avatar ------

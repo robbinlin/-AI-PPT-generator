@@ -88,6 +88,9 @@ export interface ApiClient {
   listVoices(providerId: string): Promise<VoiceOption[]>;
   /** Audio blob of a short sample sentence in the given voice. */
   previewVoice(providerId: string, voiceId: string, language: "zh-TW" | "en"): Promise<Blob>;
+  /** Providers with customVoices: upload a reference clip of the user's own voice. */
+  uploadVoice(providerId: string, file: File, options?: UploadOptions & { name?: string; transcript?: string }): Promise<VoiceOption>;
+  deleteVoice(providerId: string, voiceId: string): Promise<void>;
   /** Providers with customCharacters: upload the user's own photo/video as an avatar character. */
   uploadAvatarCharacter(providerId: string, file: File, options?: UploadOptions): Promise<AvatarOption>;
   deleteAvatarCharacter(providerId: string, characterId: string): Promise<void>;

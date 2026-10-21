@@ -34,3 +34,11 @@ __pycache__/
 workers/avatar-local/.venv*/
 workers/avatar-local/vendor/
 data/avatar-local/
+
+# local TTS worker (virtualenvs, vendored engines + weights, generated audio)
+workers/tts-local/.venv*/
+workers/tts-local/engines/*/.venv/
+workers/tts-local/engines/*/models/
+workers/tts-local/engines/*/vendor/
+data/tts-local/
+*.egg-info/

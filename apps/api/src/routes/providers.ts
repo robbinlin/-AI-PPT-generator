@@ -53,6 +53,74 @@ export async function providerRoutes(
     },
   );
 
+  /** Upload a reference clip of the user's own voice (providers with customVoices). */
+  app.post<{ Params: { providerId: string } }>(
+    "/providers/:providerId/voices",
+    async (req, reply) => {
+      const { ownerId } = ctx.auth.resolve(req);
+      const tts = await ctx.providers.requireTts(
+        ownerId,
+        req.params.providerId,
+      );
+      if (!tts.createVoice)
+        throw badRequest(
+          `provider ${req.params.providerId} does not accept custom voices`,
+        );
+      const part = await req.file();
+      if (!part) throw badRequest("multipart field `file` is required");
+      const data = await part.toBuffer();
+      if (part.file.truncated)
+        throw badRequest(`file exceeds ${ctx.config.MAX_UPLOAD_BYTES} bytes`);
+      const fields = part.fields as Record<
+        string,
+        { value?: unknown } | undefined
+      >;
+      const str = (k: string) =>
+        typeof fields[k]?.value === "string"
+          ? (fields[k]!.value as string).trim()
+          : "";
+      const name = str("name") || part.filename.replace(/\.[^.]+$/, "");
+      const transcript = str("transcript");
+      try {
+        reply.code(201);
+        return await tts.createVoice({
+          data,
+          mimeType: part.mimetype,
+          fileName: part.filename,
+          name,
+          ...(transcript ? { transcript } : {}),
+        });
+      } catch (err) {
+        req.log.warn(
+          { err, providerId: req.params.providerId },
+          "voice upload failed",
+        );
+        throw upstream(req.params.providerId, err);
+      }
+    },
+  );
+
+  app.delete<{ Params: { providerId: string; voiceId: string } }>(
+    "/providers/:providerId/voices/:voiceId",
+    async (req, reply) => {
+      const { ownerId } = ctx.auth.resolve(req);
+      const tts = await ctx.providers.requireTts(
+        ownerId,
+        req.params.providerId,
+      );
+      if (!tts.deleteVoice)
+        throw badRequest(
+          `provider ${req.params.providerId} does not accept custom voices`,
+        );
+      try {
+        await tts.deleteVoice(req.params.voiceId);
+      } catch (err) {
+        throw upstream(req.params.providerId, err);
+      }
+      return reply.code(204).send();
+    },
+  );
+
   /** Short sample so the user can hear a voice before committing to it. */
   app.post<{
     Params: { providerId: string; voiceId: string };

@@ -299,6 +299,16 @@ describe("providers", () => {
     expect(delChar.statusCode).toBe(204);
     const rejected = await t.app.inject({ method: "POST", url: "/providers/heygen/characters", payload: up.payload, headers: up.headers });
     expect(rejected.statusCode).toBe(400); // no key configured in tests -> 400 from requireAvatar
+    // Custom voices (self-hosted / mock TTS): upload a reference clip, list, delete.
+    const ttsInfo = (await t.app.inject({ method: "GET", url: "/providers" })).json().find((p: { id: string; kind: string }) => p.id === "mock" && p.kind === "tts");
+    expect(ttsInfo.customVoices).toBe(true);
+    const wav = multipart("my-voice.wav", Buffer.from("RIFF"), "audio/wav");
+    const voice = await t.app.inject({ method: "POST", url: "/providers/mock/voices", payload: wav.payload, headers: wav.headers });
+    expect(voice.statusCode).toBe(201);
+    expect(voice.json()).toMatchObject({ name: "我的聲音・my-voice" });
+    const voicesNow = (await t.app.inject({ method: "GET", url: "/providers/mock/voices" })).json();
+    expect(voicesNow[0].id).toBe(voice.json().id);
+    expect((await t.app.inject({ method: "DELETE", url: `/providers/mock/voices/${voice.json().id}` })).statusCode).toBe(204);
     const mockAvatars = await t.app.inject({ method: "GET", url: "/providers/mock/avatars" });
     expect(mockAvatars.json()[0].id).toBe("mock-teacher");
   });

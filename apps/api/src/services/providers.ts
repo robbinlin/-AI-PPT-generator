@@ -35,8 +35,12 @@ const ENV_KEYS: Record<string, keyof Config> = {
 
 /** Self-hosted providers get their service address from config instead of a key. */
 const BASE_URLS: Record<string, keyof Config> = {
-  local: "LOCAL_AVATAR_URL",
+  "avatar:local": "LOCAL_AVATAR_URL",
+  "tts:local": "LOCAL_TTS_URL",
 };
+
+/** TTS providers that take a reference clip of the user's own voice. */
+const CUSTOM_VOICE_PROVIDERS = new Set(["local", "mock"]);
 
 /** Avatar providers that take the user's own photo/video as a character. */
 const CUSTOM_CHARACTER_PROVIDERS = new Set(["local", "mock"]);
@@ -157,6 +161,9 @@ export class ProviderService {
           ...(d.kind === "avatar" && CUSTOM_CHARACTER_PROVIDERS.has(d.id)
             ? { customCharacters: true }
             : {}),
+          ...(d.kind === "tts" && CUSTOM_VOICE_PROVIDERS.has(d.id)
+            ? { customVoices: true }
+            : {}),
         } satisfies ProviderInfo;
       }),
     );
@@ -178,7 +185,7 @@ export class ProviderService {
       const instance = this.instantiate(
         d.kind,
         d.id,
-        await this.credentials("", d.id),
+        await this.credentials("", d.id, d.kind),
       );
       if (
         instance &&
@@ -250,10 +257,12 @@ export class ProviderService {
   async credentials(
     ownerId: string,
     providerId: string,
+    kind?: ProviderKind,
   ): Promise<{ apiKey?: string; baseUrl?: string }> {
-    const d = this.descriptor(providerId);
-    const baseUrl = BASE_URLS[providerId]
-      ? (this.config[BASE_URLS[providerId]!] as string | undefined)
+    const d = this.descriptor(providerId, kind);
+    const urlKey = BASE_URLS[`${d.kind}:${providerId}`];
+    const baseUrl = urlKey
+      ? (this.config[urlKey] as string | undefined)
       : undefined;
     const withBase = (c: { apiKey?: string }) =>
       baseUrl ? { ...c, baseUrl } : c;
@@ -284,7 +293,7 @@ export class ProviderService {
     make: (creds: { apiKey?: string; baseUrl?: string }) => P,
   ): Promise<P> {
     const d = this.descriptor(id, kind);
-    const creds = await this.credentials(ownerId, id);
+    const creds = await this.credentials(ownerId, id, kind);
     if (d.requiresApiKey && !creds.apiKey)
       throw new ProviderNotConfiguredError(kind, id);
     return make(creds);
