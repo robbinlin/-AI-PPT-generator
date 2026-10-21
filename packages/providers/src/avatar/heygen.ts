@@ -27,9 +27,17 @@ export const HEYGEN_ASPECT: Record<AspectRatio, "16:9" | "9:16" | "1:1"> = { "16
 /** Chroma-key green; the render worker keys it out when the provider has no alpha. */
 export const HEYGEN_CHROMA_BACKGROUND = "#00FF00";
 
+/** Overridable with HEYGEN_ENGINE (avatar_iv default; avatar_iii is the cheaper talking-photo engine). */
+export type HeyGenEngine = "avatar_iv" | "avatar_iii" | "avatar_v";
+const envEngine = (): HeyGenEngine | undefined => {
+  const e = process.env.HEYGEN_ENGINE;
+  return e === "avatar_iii" || e === "avatar_iv" || e === "avatar_v" ? e : undefined;
+};
+
 export interface HeyGenGenerateBody {
   type: "avatar";
   avatar_id: string;
+  engine?: { type: HeyGenEngine };
   audio_asset_id?: string;
   audio_url?: string;
   script?: string;
@@ -42,7 +50,7 @@ export interface HeyGenGenerateBody {
   callback_id?: string;
 }
 
-export function buildHeyGenGenerateBody(req: AvatarCreateRequest, audioAssetId?: string): HeyGenGenerateBody {
+export function buildHeyGenGenerateBody(req: AvatarCreateRequest, audioAssetId?: string, engine = envEngine()): HeyGenGenerateBody {
   if (!audioAssetId && !req.audioUrl && !req.text) throw new Error("heygen: audio or text required");
   if (req.text && !audioAssetId && !req.audioUrl && !req.voiceId) throw new Error("heygen: voiceId required with text input");
   const source: Partial<HeyGenGenerateBody> = audioAssetId
@@ -53,6 +61,7 @@ export function buildHeyGenGenerateBody(req: AvatarCreateRequest, audioAssetId?:
   return {
     type: "avatar",
     avatar_id: req.avatarId,
+    ...(engine ? { engine: { type: engine } } : {}),
     ...source,
     aspect_ratio: HEYGEN_ASPECT[req.aspectRatio],
     resolution: "720p",
