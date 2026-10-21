@@ -88,6 +88,11 @@ export interface ApiClient {
   listVoices(providerId: string): Promise<VoiceOption[]>;
   /** Audio blob of a short sample sentence in the given voice. */
   previewVoice(providerId: string, voiceId: string, language: "zh-TW" | "en"): Promise<Blob>;
+  /** Providers with customCharacters: upload the user's own photo/video as an avatar character. */
+  uploadAvatarCharacter(providerId: string, file: File, options?: UploadOptions): Promise<AvatarOption>;
+  deleteAvatarCharacter(providerId: string, characterId: string): Promise<void>;
+  /** URL of a character's preview image (served through the API). */
+  avatarCharacterPreviewUrl(providerId: string, characterId: string): string;
   listAvatars(providerId: string): Promise<AvatarOption[]>;
 
   listProjects(): Promise<ProjectSummary[]>;

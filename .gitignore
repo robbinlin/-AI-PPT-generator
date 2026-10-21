@@ -29,3 +29,8 @@ __pycache__/
 
 # stray screenshots from local browser runs
 /*.png
+
+# local avatar worker (virtualenvs, vendored MuseTalk + weights, generated clips)
+workers/avatar-local/.venv*/
+workers/avatar-local/vendor/
+data/avatar-local/

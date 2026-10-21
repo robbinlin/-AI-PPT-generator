@@ -158,6 +158,11 @@ function ProviderRow({
         ) : (
           <Badge tone="warning">{t.providers.notConfigured}</Badge>
         )}
+        {provider.hint && (
+          <p className="mt-1 max-w-xs text-xs text-neutral-500">
+            {provider.hint}
+          </p>
+        )}
       </td>
       <td className="border-b border-neutral-800/70 px-4 py-3">
         {provider.requiresApiKey ? (

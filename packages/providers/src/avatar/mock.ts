@@ -41,7 +41,9 @@ export class MockAvatarProvider implements AvatarProvider {
     maxDurationSec: 600,
     aspectRatios: ["16:9", "9:16", "1:1"],
     billingUnit: "avatar_seconds",
+    customCharacters: true,
   };
+  readonly characters: AvatarCharacter[] = [...MOCK_AVATARS];
   readonly tasks = new Map<string, { req: AvatarCreateRequest; polls: number; cancelled: boolean }>();
   private readonly pollsUntilDone: number;
   private readonly ffmpegBin: string;
@@ -55,7 +57,19 @@ export class MockAvatarProvider implements AvatarProvider {
   }
 
   async listAvatars(): Promise<AvatarCharacter[]> {
-    return MOCK_AVATARS;
+    return this.characters;
+  }
+
+  async createCharacter(input: { data: Uint8Array; mimeType: string; fileName: string; name: string }): Promise<AvatarCharacter> {
+    if (!/^(image|video)\//.test(input.mimeType)) throw new Error("mock avatar: character must be an image or video");
+    const c: AvatarCharacter = { id: `mock-char-${++this.seq}`, name: input.name, kind: "personal" };
+    this.characters.push(c);
+    return c;
+  }
+
+  async deleteCharacter(id: string): Promise<void> {
+    const i = this.characters.findIndex((c) => c.id === id);
+    if (i >= 0) this.characters.splice(i, 1);
   }
 
   async createTask(req: AvatarCreateRequest): Promise<{ taskId: string }> {
@@ -105,5 +119,7 @@ export class MockAvatarProvider implements AvatarProvider {
 }
 
 export function mockAvatarFactory(opts: MockAvatarOptions = {}): ProviderFactory<AvatarProvider> {
-  return { id: "mock", displayName: "Mock Avatar", requiresApiKey: false, create: () => new MockAvatarProvider(opts) };
+  // One instance per factory so uploaded characters and tasks survive across API requests.
+  let instance: MockAvatarProvider | undefined;
+  return { id: "mock", displayName: "Mock Avatar", requiresApiKey: false, create: () => (instance ??= new MockAvatarProvider(opts)) };
 }

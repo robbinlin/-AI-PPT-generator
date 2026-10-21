@@ -285,6 +285,20 @@ describe("providers", () => {
     const mockVoices = await t.app.inject({ method: "GET", url: "/providers/mock/voices" });
     expect(mockVoices.statusCode).toBe(200);
     expect(mockVoices.json().length).toBeGreaterThan(0);
+    // Custom characters (self-hosted / mock avatar providers): upload, list, preview, delete.
+    const mockInfo = (await t.app.inject({ method: "GET", url: "/providers" })).json().find((p: { id: string; kind: string }) => p.id === "mock" && p.kind === "avatar");
+    expect(mockInfo.customCharacters).toBe(true);
+    const png = Buffer.from("89504e470d0a1a0a", "hex");
+    const up = multipart("me.png", png, "image/png");
+    const created = await t.app.inject({ method: "POST", url: "/providers/mock/characters", payload: up.payload, headers: up.headers });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ name: "me", kind: "personal" });
+    const listed = (await t.app.inject({ method: "GET", url: "/providers/mock/avatars" })).json();
+    expect(listed.some((a: { id: string }) => a.id === created.json().id)).toBe(true);
+    const delChar = await t.app.inject({ method: "DELETE", url: `/providers/mock/characters/${created.json().id}` });
+    expect(delChar.statusCode).toBe(204);
+    const rejected = await t.app.inject({ method: "POST", url: "/providers/heygen/characters", payload: up.payload, headers: up.headers });
+    expect(rejected.statusCode).toBe(400); // no key configured in tests -> 400 from requireAvatar
     const mockAvatars = await t.app.inject({ method: "GET", url: "/providers/mock/avatars" });
     expect(mockAvatars.json()[0].id).toBe("mock-teacher");
   });

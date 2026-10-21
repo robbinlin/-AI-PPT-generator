@@ -1,0 +1,26 @@
+[project]
+name = "lvs-avatar"
+version = "0.1.0"
+description = "Lecture Video Studio local avatar worker: lip-synced talking-head clips on your own GPU (MuseTalk) or a no-ML passthrough"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+  "python-multipart>=0.0.9",
+  "numpy>=1.23",
+  "opencv-python-headless>=4.9",
+  "soundfile>=0.12",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "httpx>=0.27"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["lvs_avatar*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

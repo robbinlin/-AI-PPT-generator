@@ -30,6 +30,7 @@ import {
   UploadSourceResponse,
   VoiceSchema,
   type ApiClient,
+  type AvatarOption,
   type AssetUrlResponse as AssetUrl,
   type EstimateType,
   type ProjectEventListener,
@@ -44,7 +45,15 @@ export function apiBaseUrl(): string {
   return (fromEnv && fromEnv.trim()) || DEFAULT_API_URL;
 }
 
-const EVENT_KINDS: ReadonlyArray<ProjectEvent["kind"]> = ["job", "scene", "script", "asset", "slides", "outline", "project"];
+const EVENT_KINDS: ReadonlyArray<ProjectEvent["kind"]> = [
+  "job",
+  "scene",
+  "script",
+  "asset",
+  "slides",
+  "outline",
+  "project",
+];
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -65,8 +74,16 @@ export class HttpApiClient implements ApiClient {
     return `${this.baseUrl.replace(/\/$/, "")}${path}`;
   }
 
-  private async send(method: Method, path: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
-    const init: RequestInit = { method, headers: { Accept: "application/json" } };
+  private async send(
+    method: Method,
+    path: string,
+    body?: unknown,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    const init: RequestInit = {
+      method,
+      headers: { Accept: "application/json" },
+    };
     if (signal) init.signal = signal;
     if (body !== undefined) {
       init.headers = { ...init.headers, "Content-Type": "application/json" };
@@ -86,14 +103,21 @@ export class HttpApiClient implements ApiClient {
           await new Promise((r) => setTimeout(r, delays[attempt]));
           continue;
         }
-        throw new Error(`無法連線到 API（${this.baseUrl}）。請確認後端伺服器正在執行。`);
+        throw new Error(
+          `無法連線到 API（${this.baseUrl}）。請確認後端伺服器正在執行。`,
+        );
       }
       if (!res.ok) throw await toApiError(res);
       return res;
     }
   }
 
-  private async json<S extends z.ZodTypeAny>(schema: S, method: Method, path: string, body?: unknown): Promise<z.infer<S>> {
+  private async json<S extends z.ZodTypeAny>(
+    schema: S,
+    method: Method,
+    path: string,
+    body?: unknown,
+  ): Promise<z.infer<S>> {
     const res = await this.send(method, path, body);
     const data: unknown = await res.json();
     return schema.parse(data);
@@ -126,24 +150,100 @@ export class HttpApiClient implements ApiClient {
   }
 
   setProviderKey(providerId: string, req: SetProviderKeyRequest) {
-    return this.json(ProviderInfo, "PUT", `/providers/${enc(providerId)}/key`, req);
+    return this.json(
+      ProviderInfo,
+      "PUT",
+      `/providers/${enc(providerId)}/key`,
+      req,
+    );
   }
 
   deleteProviderKey(providerId: string) {
-    return this.json(ProviderInfo, "DELETE", `/providers/${enc(providerId)}/key`);
+    return this.json(
+      ProviderInfo,
+      "DELETE",
+      `/providers/${enc(providerId)}/key`,
+    );
   }
 
   listVoices(providerId: string) {
-    return this.json(z.array(VoiceSchema), "GET", `/providers/${enc(providerId)}/voices`);
+    return this.json(
+      z.array(VoiceSchema),
+      "GET",
+      `/providers/${enc(providerId)}/voices`,
+    );
   }
 
-  async previewVoice(providerId: string, voiceId: string, language: "zh-TW" | "en"): Promise<Blob> {
-    const res = await this.send("POST", `/providers/${enc(providerId)}/voices/${enc(voiceId)}/preview?language=${language}`);
+  async previewVoice(
+    providerId: string,
+    voiceId: string,
+    language: "zh-TW" | "en",
+  ): Promise<Blob> {
+    const res = await this.send(
+      "POST",
+      `/providers/${enc(providerId)}/voices/${enc(voiceId)}/preview?language=${language}`,
+    );
     return res.blob();
   }
 
+  uploadAvatarCharacter(
+    providerId: string,
+    file: File,
+    options: UploadOptions = {},
+  ) {
+    return new Promise<AvatarOption>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", this.url(`/providers/${enc(providerId)}/characters`));
+      xhr.setRequestHeader("Accept", "application/json");
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable) options.onProgress?.(ev.loaded / ev.total);
+      };
+      xhr.onerror = () =>
+        reject(new ApiRequestError("Network error", 0, "network_error"));
+      xhr.onload = () => {
+        let data: unknown;
+        try {
+          data = JSON.parse(xhr.responseText);
+        } catch {
+          data = undefined;
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          reject(errorFromBody(xhr.status, xhr.statusText, data));
+          return;
+        }
+        const parsed = AvatarCharacterSchema.safeParse(data);
+        if (parsed.success) resolve(parsed.data);
+        else reject(parsed.error);
+      };
+      const form = new FormData();
+      form.append("file", file, file.name);
+      form.append("name", file.name.replace(/\.[^.]+$/, ""));
+      xhr.send(form);
+    });
+  }
+
+  async deleteAvatarCharacter(
+    providerId: string,
+    characterId: string,
+  ): Promise<void> {
+    await this.send(
+      "DELETE",
+      `/providers/${enc(providerId)}/characters/${enc(characterId)}`,
+    );
+  }
+
+  avatarCharacterPreviewUrl(providerId: string, characterId: string): string {
+    return this.url(
+      `/providers/${enc(providerId)}/characters/${enc(characterId)}/preview`,
+    );
+  }
+
   listAvatars(providerId: string) {
-    return this.json(z.array(AvatarCharacterSchema), "GET", `/providers/${enc(providerId)}/avatars`);
+    return this.json(
+      z.array(AvatarCharacterSchema),
+      "GET",
+      `/providers/${enc(providerId)}/avatars`,
+    );
   }
 
   // -------------------------------------------------------------- projects
@@ -179,7 +279,8 @@ export class HttpApiClient implements ApiClient {
       xhr.upload.onprogress = (ev) => {
         if (ev.lengthComputable) options.onProgress?.(ev.loaded / ev.total);
       };
-      xhr.onerror = () => reject(new ApiRequestError("Network error", 0, "network_error"));
+      xhr.onerror = () =>
+        reject(new ApiRequestError("Network error", 0, "network_error"));
       xhr.onload = () => {
         let data: unknown;
         try {
@@ -204,61 +305,117 @@ export class HttpApiClient implements ApiClient {
   // ------------------------------------------------------- slides / scenes
 
   reorderSlides(projectId: string, req: ReorderSlidesRequest) {
-    return this.json(ReorderSlidesResponse, "POST", `/projects/${enc(projectId)}/slides/reorder`, req);
+    return this.json(
+      ReorderSlidesResponse,
+      "POST",
+      `/projects/${enc(projectId)}/slides/reorder`,
+      req,
+    );
   }
 
   setSlideHidden(projectId: string, slideId: string, hidden: boolean) {
-    return this.json(Slide, "PATCH", `/projects/${enc(projectId)}/slides/${enc(slideId)}`, { hidden });
+    return this.json(
+      Slide,
+      "PATCH",
+      `/projects/${enc(projectId)}/slides/${enc(slideId)}`,
+      { hidden },
+    );
   }
 
   updateScene(projectId: string, sceneId: string, req: UpdateSceneRequest) {
-    return this.json(Scene, "PATCH", `/projects/${enc(projectId)}/scenes/${enc(sceneId)}`, req);
+    return this.json(
+      Scene,
+      "PATCH",
+      `/projects/${enc(projectId)}/scenes/${enc(sceneId)}`,
+      req,
+    );
   }
 
   updateScript(projectId: string, sceneId: string, req: UpdateScriptRequest) {
-    return this.json(ScriptRevision, "PUT", `/projects/${enc(projectId)}/scenes/${enc(sceneId)}/script`, req);
+    return this.json(
+      ScriptRevision,
+      "PUT",
+      `/projects/${enc(projectId)}/scenes/${enc(sceneId)}/script`,
+      req,
+    );
   }
 
   listScriptRevisions(projectId: string, sceneId: string) {
-    return this.json(z.array(ScriptRevision), "GET", `/projects/${enc(projectId)}/scenes/${enc(sceneId)}/scripts`);
+    return this.json(
+      z.array(ScriptRevision),
+      "GET",
+      `/projects/${enc(projectId)}/scenes/${enc(sceneId)}/scripts`,
+    );
   }
 
   // ------------------------------------------------------------------ jobs
 
   enqueueJob(projectId: string, req: EnqueueJobRequest) {
-    return this.json(EnqueueJobResponse, "POST", `/projects/${enc(projectId)}/jobs`, req);
+    return this.json(
+      EnqueueJobResponse,
+      "POST",
+      `/projects/${enc(projectId)}/jobs`,
+      req,
+    );
   }
 
   listJobs(projectId: string, status?: JobStatus) {
     const q = status ? `?status=${enc(status)}` : "";
-    return this.json(z.array(Job), "GET", `/projects/${enc(projectId)}/jobs${q}`);
+    return this.json(
+      z.array(Job),
+      "GET",
+      `/projects/${enc(projectId)}/jobs${q}`,
+    );
   }
 
   cancelJob(projectId: string, jobId: string) {
-    return this.json(Job, "POST", `/projects/${enc(projectId)}/jobs/${enc(jobId)}/cancel`);
+    return this.json(
+      Job,
+      "POST",
+      `/projects/${enc(projectId)}/jobs/${enc(jobId)}/cancel`,
+    );
   }
 
   // ------------------------------------------------------ estimate / export
 
   getEstimate(projectId: string, type: EstimateType) {
-    return this.json(CostEstimate, "GET", `/projects/${enc(projectId)}/estimate?type=${enc(type)}`);
+    return this.json(
+      CostEstimate,
+      "GET",
+      `/projects/${enc(projectId)}/estimate?type=${enc(type)}`,
+    );
   }
 
-  async exportScript(projectId: string, format: ScriptExportFormat): Promise<Blob> {
-    const res = await this.send("GET", `/projects/${enc(projectId)}/export/script?format=${enc(format)}`);
+  async exportScript(
+    projectId: string,
+    format: ScriptExportFormat,
+  ): Promise<Blob> {
+    const res = await this.send(
+      "GET",
+      `/projects/${enc(projectId)}/export/script?format=${enc(format)}`,
+    );
     return res.blob();
   }
 
   async getAssetUrl(projectId: string, assetId: string): Promise<AssetUrl> {
-    const out = await this.json(AssetUrlResponse, "GET", `/projects/${enc(projectId)}/assets/${enc(assetId)}/url`);
+    const out = await this.json(
+      AssetUrlResponse,
+      "GET",
+      `/projects/${enc(projectId)}/assets/${enc(assetId)}/url`,
+    );
     // Signed URLs may be relative to the API origin.
-    return { ...out, url: out.url.startsWith("/") ? this.url(out.url) : out.url };
+    return {
+      ...out,
+      url: out.url.startsWith("/") ? this.url(out.url) : out.url,
+    };
   }
 
   // ---------------------------------------------------------------- events
 
   subscribe(projectId: string, listener: ProjectEventListener): () => void {
-    const source = new EventSource(this.url(`/projects/${enc(projectId)}/events`));
+    const source = new EventSource(
+      this.url(`/projects/${enc(projectId)}/events`),
+    );
     const handle = (ev: MessageEvent<string>) => {
       let data: unknown;
       try {
@@ -268,12 +425,16 @@ export class HttpApiClient implements ApiClient {
       }
       // Servers may send `data` with or without the discriminator; fill it from the SSE event name.
       const withKind =
-        data && typeof data === "object" && !("kind" in data) && ev.type !== "message"
+        data &&
+        typeof data === "object" &&
+        !("kind" in data) &&
+        ev.type !== "message"
           ? { kind: ev.type, ...(data as Record<string, unknown>) }
           : data;
       const parsed = ProjectEvent.safeParse(withKind);
       if (parsed.success) listener(parsed.data);
-      else console.warn("Ignoring malformed project event", parsed.error.issues);
+      else
+        console.warn("Ignoring malformed project event", parsed.error.issues);
     };
     for (const kind of EVENT_KINDS) source.addEventListener(kind, handle);
     source.onmessage = handle;
@@ -291,11 +452,19 @@ async function toApiError(res: Response): Promise<ApiRequestError> {
   return errorFromBody(res.status, res.statusText, body);
 }
 
-function errorFromBody(status: number, statusText: string, body: unknown): ApiRequestError {
+function errorFromBody(
+  status: number,
+  statusText: string,
+  body: unknown,
+): ApiRequestError {
   const parsed = ApiError.safeParse(body);
   if (parsed.success) {
     const { code, message, details } = parsed.data.error;
     return new ApiRequestError(message, status, code, details);
   }
-  return new ApiRequestError(`${status} ${statusText}`.trim(), status, "http_error");
+  return new ApiRequestError(
+    `${status} ${statusText}`.trim(),
+    status,
+    "http_error",
+  );
 }

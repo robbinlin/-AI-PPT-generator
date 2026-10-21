@@ -13,6 +13,7 @@
     "test": "pnpm build:libs && pnpm -r test",
     "dev:api": "pnpm build:libs && pnpm --filter @lvs/api dev",
     "dev:web": "pnpm --filter @lvs/shared build && pnpm --filter @lvs/web dev",
+    "dev:avatar": "node workers/avatar-local/start.mjs",
     "build:libs": "pnpm -r --filter \"./packages/**\" --filter @lvs/render build"
   },
   "devDependencies": {

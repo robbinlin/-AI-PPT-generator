@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Play, Square } from "lucide-react";
+import { Loader2, Play, Square, Trash2, Upload } from "lucide-react";
 import type {
   AspectRatio,
   Audience,
@@ -19,43 +19,82 @@ import type {
 import { useApi } from "../../api/context";
 import type { AvatarOption, VoiceOption } from "../../api/types";
 import type { EditorActions } from "../../hooks/useEditorActions";
-import { t } from "../../i18n";
+import { fmt, t } from "../../i18n";
 import { useEditor } from "../../store/editorStore";
 import { toast } from "../../store/toastStore";
 import { errorMessage } from "../../api/types";
 import { Button } from "../ui/Button";
 import { Field, Select, Toggle, type Option } from "../ui/Field";
-import { ColorInput, CommitNumber, CommitRange, CommitText, SettingsSection } from "./settingsFields";
+import {
+  ColorInput,
+  CommitNumber,
+  CommitRange,
+  CommitText,
+  SettingsSection,
+} from "./settingsFields";
 
 type SettingsPatch = NonNullable<UpdateProjectRequest["settings"]>;
 
-const AUDIENCES: Audience[] = ["undergraduate", "graduate", "general", "custom"];
+const AUDIENCES: Audience[] = [
+  "undergraduate",
+  "graduate",
+  "general",
+  "custom",
+];
 const MODES: ScriptMode[] = ["faithful", "extended", "summary"];
 const LANGUAGES: Language[] = ["zh-TW", "en", "mixed"];
 const BOUNDARIES: ContentBoundary[] = ["source_only", "allow_external"];
-const ANCHORS: AvatarAnchor[] = ["bottom-right", "bottom-left", "top-right", "top-left", "right", "left"];
+const ANCHORS: AvatarAnchor[] = [
+  "bottom-right",
+  "bottom-left",
+  "top-right",
+  "top-left",
+  "right",
+  "left",
+];
 const TRANSITIONS: Transition[] = ["none", "fade"];
 const RATIOS: AspectRatio[] = ["16:9", "9:16", "1:1"];
 
-function opts<V extends string>(values: readonly V[], labels: Readonly<Record<V, string>>): Option<V>[] {
+function opts<V extends string>(
+  values: readonly V[],
+  labels: Readonly<Record<V, string>>,
+): Option<V>[] {
   return values.map((value) => ({ value, label: labels[value] }));
 }
 
-function providerOptions(providers: ProviderInfo[], kind: ProviderInfo["kind"], current: string | undefined): Option<string>[] {
+function providerOptions(
+  providers: ProviderInfo[],
+  kind: ProviderInfo["kind"],
+  current: string | undefined,
+): Option<string>[] {
   const list = providers
     .filter((p) => p.kind === kind)
-    .map((p) => ({ value: p.id, label: p.configured ? p.displayName : `${p.displayName} ${t.settings.notConfigured}` }));
-  if (current && !list.some((o) => o.value === current)) list.unshift({ value: current, label: current });
+    .map((p) => ({
+      value: p.id,
+      label: p.configured
+        ? p.displayName
+        : `${p.displayName} ${t.settings.notConfigured}`,
+    }));
+  if (current && !list.some((o) => o.value === current))
+    list.unshift({ value: current, label: current });
   return list;
 }
 
-function withCurrent<T extends { id: string; name: string }>(items: T[], current: string | undefined): Option<string>[] {
+function withCurrent<T extends { id: string; name: string }>(
+  items: T[],
+  current: string | undefined,
+): Option<string>[] {
   const list = items.map((i) => ({ value: i.id, label: i.name }));
-  if (current && !list.some((o) => o.value === current)) list.unshift({ value: current, label: current });
+  if (current && !list.some((o) => o.value === current))
+    list.unshift({ value: current, label: current });
   return list;
 }
 
-export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updateProject"> }) {
+export function SettingsPanel({
+  actions,
+}: {
+  actions: Pick<EditorActions, "updateProject">;
+}) {
   const api = useApi();
   const project = useEditor((s) => s.detail?.project);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
@@ -86,7 +125,9 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
     const s0 = project.settings;
     const llm = pick("llm", s0.llmProviderId);
     const tts = pick("tts", s0.voice.providerId);
-    const av = s0.avatar.enabled ? pick("avatar", s0.avatar.providerId) : undefined;
+    const av = s0.avatar.enabled
+      ? pick("avatar", s0.avatar.providerId)
+      : undefined;
     if (!llm && !tts && !av) return;
     void actions.updateProject({
       settings: {
@@ -96,20 +137,44 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providers, project?.settings.llmProviderId, project?.settings.voice.providerId, project?.settings.avatar.providerId, project?.settings.avatar.enabled]);
+  }, [
+    providers,
+    project?.settings.llmProviderId,
+    project?.settings.voice.providerId,
+    project?.settings.avatar.providerId,
+    project?.settings.avatar.enabled,
+  ]);
   // Same for avatar ids once the provider's list is known.
   const currentAvatarId = project?.settings.avatar.avatarId;
   useEffect(() => {
-    if (!project || avatars.length === 0 || avatars.some((a) => a.id === currentAvatarId)) return;
-    void actions.updateProject({ settings: { avatar: { ...project.settings.avatar, avatarId: avatars[0]!.id } } });
+    if (
+      !project ||
+      avatars.length === 0 ||
+      avatars.some((a) => a.id === currentAvatarId)
+    )
+      return;
+    void actions.updateProject({
+      settings: {
+        avatar: { ...project.settings.avatar, avatarId: avatars[0]!.id },
+      },
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [avatars, currentAvatarId]);
   // Voice ids are provider-specific: after switching providers, a leftover id (e.g. Gemini's
   // "Kore" sent to ElevenLabs) makes every synthesis fail, so snap to the first voice offered.
   const currentVoiceId = project?.settings.voice.voiceId;
   useEffect(() => {
-    if (!project || voices.length === 0 || voices.some((v) => v.id === currentVoiceId)) return;
-    void actions.updateProject({ settings: { voice: { ...project.settings.voice, voiceId: voices[0]!.id } } });
+    if (
+      !project ||
+      voices.length === 0 ||
+      voices.some((v) => v.id === currentVoiceId)
+    )
+      return;
+    void actions.updateProject({
+      settings: {
+        voice: { ...project.settings.voice, voiceId: voices[0]!.id },
+      },
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voices, currentVoiceId]);
   useEffect(() => {
@@ -122,21 +187,29 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
 
   if (!project) return null;
   const s = project.settings;
-  const patch = (settings: SettingsPatch) => void actions.updateProject({ settings });
+  const patch = (settings: SettingsPatch) =>
+    void actions.updateProject({ settings });
   const style = s.subtitles.style;
   const layout = s.avatar.layout;
   // Nested sections are sent whole: the shared schema's deepPartial() stops at defaulted
   // objects, so a partial nested object would be re-filled with defaults server-side.
-  const setVoice = (p: Partial<VoiceSettings>) => patch({ voice: { ...s.voice, ...p } });
-  const setAvatar = (p: Partial<AvatarSettings>) => patch({ avatar: { ...s.avatar, ...p } });
-  const setLayout = (p: Partial<AvatarLayout>) => setAvatar({ layout: { ...layout, ...p } });
-  const setSubtitles = (p: Partial<SubtitleSettings>) => patch({ subtitles: { ...s.subtitles, ...p } });
-  const setStyle = (p: Partial<SubtitleStyle>) => setSubtitles({ style: { ...style, ...p } });
+  const setVoice = (p: Partial<VoiceSettings>) =>
+    patch({ voice: { ...s.voice, ...p } });
+  const setAvatar = (p: Partial<AvatarSettings>) =>
+    patch({ avatar: { ...s.avatar, ...p } });
+  const setLayout = (p: Partial<AvatarLayout>) =>
+    setAvatar({ layout: { ...layout, ...p } });
+  const setSubtitles = (p: Partial<SubtitleSettings>) =>
+    patch({ subtitles: { ...s.subtitles, ...p } });
+  const setStyle = (p: Partial<SubtitleStyle>) =>
+    setSubtitles({ style: { ...style, ...p } });
   const pct = (v: number) => `${Math.round(v * 100)}%`;
 
   return (
     <div className="pb-6">
-      <p className="px-4 pt-3 text-[11px] text-neutral-500">{t.settings.savedHint}</p>
+      <p className="px-4 pt-3 text-[11px] text-neutral-500">
+        {t.settings.savedHint}
+      </p>
 
       <SettingsSection title={t.settings.sectionScript}>
         <div className="grid grid-cols-2 gap-3">
@@ -148,10 +221,18 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
             />
           </Field>
           <Field label={t.settings.mode}>
-            <Select value={s.mode} options={opts(MODES, t.options.mode)} onChange={(mode) => patch({ mode })} />
+            <Select
+              value={s.mode}
+              options={opts(MODES, t.options.mode)}
+              onChange={(mode) => patch({ mode })}
+            />
           </Field>
           <Field label={t.settings.language}>
-            <Select value={s.language} options={opts(LANGUAGES, t.languages)} onChange={(language) => patch({ language })} />
+            <Select
+              value={s.language}
+              options={opts(LANGUAGES, t.languages)}
+              onChange={(language) => patch({ language })}
+            />
           </Field>
           <Field label={t.settings.targetDuration}>
             <CommitNumber
@@ -227,7 +308,11 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
             )}
           </Field>
         </div>
-        <VoicePreview providerId={s.voice.providerId} voiceId={s.voice.voiceId} language={s.language === "en" ? "en" : "zh-TW"} />
+        <VoicePreview
+          providerId={s.voice.providerId}
+          voiceId={s.voice.voiceId}
+          language={s.language === "en" ? "en" : "zh-TW"}
+        />
         <Field label={t.settings.speed}>
           <CommitRange
             label={t.settings.speed}
@@ -253,13 +338,21 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
       </SettingsSection>
 
       <SettingsSection title={t.settings.sectionAvatar}>
-        <Toggle label={t.settings.avatarEnabled} checked={s.avatar.enabled} onChange={(enabled) => setAvatar({ enabled })} />
+        <Toggle
+          label={t.settings.avatarEnabled}
+          checked={s.avatar.enabled}
+          onChange={(enabled) => setAvatar({ enabled })}
+        />
         <div className="grid grid-cols-2 gap-3">
           <Field label={t.settings.avatarProvider}>
             <Select
               value={s.avatar.providerId ?? ""}
               placeholder={t.settings.selectPlaceholder}
-              options={providerOptions(providers, "avatar", s.avatar.providerId)}
+              options={providerOptions(
+                providers,
+                "avatar",
+                s.avatar.providerId,
+              )}
               onChange={(providerId) => setAvatar({ providerId })}
             />
           </Field>
@@ -279,6 +372,21 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
               />
             )}
           </Field>
+        </div>
+        {providers.find(
+          (p) => p.kind === "avatar" && p.id === s.avatar.providerId,
+        )?.customCharacters && (
+          <CharacterUploader
+            providerId={s.avatar.providerId!}
+            avatars={avatars}
+            selectedId={s.avatar.avatarId}
+            onChanged={(list, selectId) => {
+              setAvatars(list);
+              if (selectId !== undefined) setAvatar({ avatarId: selectId });
+            }}
+          />
+        )}
+        <div className="grid grid-cols-2 gap-3">
           <Field label={t.settings.shape}>
             <Select
               value={layout.shape}
@@ -316,7 +424,11 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
             onCommit={(margin) => setLayout({ margin })}
           />
         </Field>
-        <Toggle label={t.settings.visible} checked={layout.visible} onChange={(visible) => setLayout({ visible })} />
+        <Toggle
+          label={t.settings.visible}
+          checked={layout.visible}
+          onChange={(visible) => setLayout({ visible })}
+        />
       </SettingsSection>
 
       <SettingsSection title={t.settings.sectionSubtitles}>
@@ -347,11 +459,17 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
               value={style.maxCharsPerLine}
               min={8}
               max={80}
-              onCommit={(v) => v !== undefined && setStyle({ maxCharsPerLine: v })}
+              onCommit={(v) =>
+                v !== undefined && setStyle({ maxCharsPerLine: v })
+              }
             />
           </Field>
           <Field label={t.settings.color}>
-            <ColorInput label={t.settings.color} value={style.color} onCommit={(color) => setStyle({ color })} />
+            <ColorInput
+              label={t.settings.color}
+              value={style.color}
+              onCommit={(color) => setStyle({ color })}
+            />
           </Field>
           <Field label={t.settings.background}>
             <ColorInput
@@ -404,7 +522,15 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
 }
 
 /** 試聽：synthesizes a short fixed sample with the selected voice and plays it in the browser. */
-function VoicePreview({ providerId, voiceId, language }: { providerId: string; voiceId: string; language: "zh-TW" | "en" }) {
+function VoicePreview({
+  providerId,
+  voiceId,
+  language,
+}: {
+  providerId: string;
+  voiceId: string;
+  language: "zh-TW" | "en";
+}) {
   const api = useApi();
   const [state, setState] = useState<"idle" | "loading" | "playing">("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -446,10 +572,128 @@ function VoicePreview({ providerId, voiceId, language }: { providerId: string; v
 
   return (
     <div className="flex items-center gap-2">
-      <Button size="sm" icon={state === "loading" ? Loader2 : state === "playing" ? Square : Play} disabled={state === "loading"} onClick={() => void play()}>
-        {state === "loading" ? t.settings.previewLoading : state === "playing" ? t.settings.previewStop : t.settings.previewVoice}
+      <Button
+        size="sm"
+        icon={
+          state === "loading" ? Loader2 : state === "playing" ? Square : Play
+        }
+        disabled={state === "loading"}
+        onClick={() => void play()}
+      >
+        {state === "loading"
+          ? t.settings.previewLoading
+          : state === "playing"
+            ? t.settings.previewStop
+            : t.settings.previewVoice}
       </Button>
-      <span className="text-[11px] text-neutral-500">{t.settings.previewHint}</span>
+      <span className="text-[11px] text-neutral-500">
+        {t.settings.previewHint}
+      </span>
+    </div>
+  );
+}
+
+/** Upload / delete the user's own photo or clip for providers that accept custom characters (本機人像). */
+function CharacterUploader({
+  providerId,
+  avatars,
+  selectedId,
+  onChanged,
+}: {
+  providerId: string;
+  avatars: AvatarOption[];
+  selectedId: string | undefined;
+  onChanged: (list: AvatarOption[], selectId?: string) => void;
+}) {
+  const api = useApi();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const selected = avatars.find((a) => a.id === selectedId);
+
+  const upload = async (file: File) => {
+    setProgress(0);
+    try {
+      const created = await api.uploadAvatarCharacter(providerId, file, {
+        onProgress: setProgress,
+      });
+      const list = await api.listAvatars(providerId);
+      onChanged(list, created.id);
+      toast(t.settings.characterUploaded);
+    } catch (err) {
+      toast(
+        `${t.settings.characterUploadFailed}：${errorMessage(err)}`,
+        "error",
+      );
+    } finally {
+      setProgress(null);
+    }
+  };
+
+  const remove = async () => {
+    if (
+      !selected ||
+      !window.confirm(
+        fmt(t.settings.deleteCharacterConfirm, { name: selected.name }),
+      )
+    )
+      return;
+    try {
+      await api.deleteAvatarCharacter(providerId, selected.id);
+      const list = await api.listAvatars(providerId);
+      onChanged(list, list[0]?.id ?? "");
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    }
+  };
+
+  return (
+    <div className="flex items-start gap-3">
+      {selected?.kind === "personal" && (
+        <img
+          src={api.avatarCharacterPreviewUrl(providerId, selected.id)}
+          alt={selected.name}
+          className="size-14 shrink-0 rounded-md object-cover ring-1 ring-neutral-700"
+          onError={(e) => (e.currentTarget.style.visibility = "hidden")}
+        />
+      )}
+      <div className="flex min-w-0 flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/jpeg,image/png,video/mp4,video/quicktime"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) void upload(f);
+            }}
+          />
+          <Button
+            size="sm"
+            icon={Upload}
+            disabled={progress !== null}
+            onClick={() => fileInput.current?.click()}
+          >
+            {progress === null
+              ? t.settings.uploadCharacter
+              : `${t.settings.uploadingCharacter} ${Math.round(progress * 100)}%`}
+          </Button>
+          {selected?.kind === "personal" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={Trash2}
+              onClick={() => void remove()}
+            >
+              {t.settings.deleteCharacter}
+            </Button>
+          )}
+        </div>
+        <p className="text-[11px] text-neutral-500">
+          {t.settings.uploadCharacterHint}
+        </p>
+      </div>
     </div>
   );
 }

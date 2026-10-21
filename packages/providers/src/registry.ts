@@ -6,6 +6,7 @@ import { elevenLabsTtsFactory } from "./tts/elevenlabs.js";
 import { geminiTtsFactory } from "./tts/gemini.js";
 import { mockTtsFactory } from "./tts/mock.js";
 import { heyGenAvatarFactory } from "./avatar/heygen.js";
+import { localAvatarFactory } from "./avatar/local.js";
 import { mockAvatarFactory } from "./avatar/mock.js";
 
 export type ProviderKind = "llm" | "tts" | "avatar";
@@ -77,4 +78,5 @@ export const defaultRegistry = new ProviderRegistry()
   .registerTts(elevenLabsTtsFactory)
   .registerTts(mockTtsFactory)
   .registerAvatar(heyGenAvatarFactory)
+  .registerAvatar(localAvatarFactory)
   .registerAvatar(mockAvatarFactory());

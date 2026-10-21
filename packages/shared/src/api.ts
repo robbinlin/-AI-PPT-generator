@@ -99,6 +99,10 @@ export const ProviderInfo = z.object({
   configured: z.boolean(),
   /** Where the active key comes from: the server's .env ("platform") or the user's saved key ("user"). */
   keySource: z.enum(["platform", "user"]).optional(),
+  /** Self-hosted providers: why it is not usable right now, or how it is degraded. */
+  hint: z.string().optional(),
+  /** Avatar providers that accept the user's own photo/video as a character. */
+  customCharacters: z.boolean().optional(),
 });
 export type ProviderInfo = z.infer<typeof ProviderInfo>;
 

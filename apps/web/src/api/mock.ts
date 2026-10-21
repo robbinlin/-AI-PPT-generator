@@ -24,7 +24,11 @@ import {
   type UpdateSceneRequest,
   type UpdateScriptRequest,
 } from "@lvs/shared";
-import { computeTotalDuration, estimateSpeechSeconds, sortByIndex } from "../lib/scenes";
+import {
+  computeTotalDuration,
+  estimateSpeechSeconds,
+  sortByIndex,
+} from "../lib/scenes";
 import { toneWavDataUrl } from "../lib/wav";
 import {
   DEMO_PROJECT_NAME,
@@ -45,7 +49,11 @@ import {
   mockScriptFor,
   type FixtureSlide,
 } from "./mockFixture";
-import { avatarPlaceholderSvg, renderSlideArt, type SlideRenderer } from "./mockImages";
+import {
+  avatarPlaceholderSvg,
+  renderSlideArt,
+  type SlideRenderer,
+} from "./mockImages";
 import {
   ApiRequestError,
   type ApiClient,
@@ -109,14 +117,16 @@ const THUMB_H = 180;
 const FAR_FUTURE = "2099-01-01T00:00:00.000Z";
 
 function uuid(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+    return crypto.randomUUID();
   const hex = randomHex(32);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
 function randomHex(len: number): string {
   let out = "";
-  for (let i = 0; i < len; i++) out += Math.floor(Math.random() * 16).toString(16);
+  for (let i = 0; i < len; i++)
+    out += Math.floor(Math.random() * 16).toString(16);
   return out;
 }
 
@@ -137,7 +147,8 @@ function isObject(v: unknown): v is Record<string, unknown> {
 }
 
 function deepMerge(base: unknown, patch: unknown): unknown {
-  if (!isObject(base) || !isObject(patch)) return patch === undefined ? base : patch;
+  if (!isObject(base) || !isObject(patch))
+    return patch === undefined ? base : patch;
   const out: Record<string, unknown> = { ...base };
   for (const [k, v] of Object.entries(patch)) {
     if (v === undefined) continue;
@@ -195,7 +206,8 @@ export class MockApiClient implements ApiClient {
   // =================================================================== infra
 
   private async wait(): Promise<void> {
-    if (this.latencyMs > 0) await new Promise((r) => setTimeout(r, this.latencyMs));
+    if (this.latencyMs > 0)
+      await new Promise((r) => setTimeout(r, this.latencyMs));
   }
 
   private state(projectId: string): ProjectState {
@@ -217,7 +229,10 @@ export class MockApiClient implements ApiClient {
   }
 
   private recompute(ps: ProjectState): void {
-    ps.detail.totalDurationSec = computeTotalDuration(ps.detail.slides, ps.detail.scenes);
+    ps.detail.totalDurationSec = computeTotalDuration(
+      ps.detail.slides,
+      ps.detail.scenes,
+    );
   }
 
   private scene(ps: ProjectState, sceneId: string): Scene {
@@ -232,7 +247,10 @@ export class MockApiClient implements ApiClient {
 
   private addAsset(
     ps: ProjectState,
-    asset: Omit<Asset, "id" | "projectId" | "createdAt" | "storageKey" | "producedBy"> & {
+    asset: Omit<
+      Asset,
+      "id" | "projectId" | "createdAt" | "storageKey" | "producedBy"
+    > & {
       producedBy?: Asset["producedBy"];
     },
     url: () => string,
@@ -274,7 +292,14 @@ export class MockApiClient implements ApiClient {
 
   private makeProject(name: string, settings: unknown): Project {
     const ts = nowIso();
-    return { id: uuid(), ownerId: "dev", name, settings: ProjectSettings.parse(settings ?? {}), createdAt: ts, updatedAt: ts };
+    return {
+      id: uuid(),
+      ownerId: "dev",
+      name,
+      settings: ProjectSettings.parse(settings ?? {}),
+      createdAt: ts,
+      updatedAt: ts,
+    };
   }
 
   private seed(): void {
@@ -315,14 +340,22 @@ export class MockApiClient implements ApiClient {
     this.touch(ps);
 
     // A job that is already running when the editor opens: scripts for pages 4–6.
-    this.startJob(ps, { type: "generate_script", sceneIds: scenes.slice(3).map((s) => s.id), force: false });
+    this.startJob(ps, {
+      type: "generate_script",
+      sceneIds: scenes.slice(3).map((s) => s.id),
+      force: false,
+    });
 
     // A second, empty project to demo the upload drop zone.
     const empty = this.makeProject("未命名的專案", { language: "zh-TW" });
     this.projects.set(empty.id, this.newProjectState(empty));
   }
 
-  private makeSource(ps: ProjectState, filename: string, sizeBytes: number): SourceDocument {
+  private makeSource(
+    ps: ProjectState,
+    filename: string,
+    sizeBytes: number,
+  ): SourceDocument {
     const ext = filename.split(".").pop()?.toLowerCase();
     const kind = ext === "pdf" ? "pdf" : ext === "ppt" ? "ppt" : "pptx";
     const mime =
@@ -346,7 +379,11 @@ export class MockApiClient implements ApiClient {
     };
   }
 
-  private buildSlides(ps: ProjectState, source: SourceDocument, pages: FixtureSlide[]): void {
+  private buildSlides(
+    ps: ProjectState,
+    source: SourceDocument,
+    pages: FixtureSlide[],
+  ): void {
     const projectId = ps.detail.project.id;
     ps.detail.slides = [];
     ps.detail.scenes = [];
@@ -356,12 +393,24 @@ export class MockApiClient implements ApiClient {
       const art = { pageNumber, title: page.title, bullets: page.bullets, hue };
       const image = this.addAsset(
         ps,
-        { kind: "slide_image", mimeType: "image/png", sizeBytes: 180_000, width: SLIDE_W, height: SLIDE_H },
+        {
+          kind: "slide_image",
+          mimeType: "image/png",
+          sizeBytes: 180_000,
+          width: SLIDE_W,
+          height: SLIDE_H,
+        },
         () => this.renderSlide({ ...art, width: SLIDE_W, height: SLIDE_H }),
       );
       const thumb = this.addAsset(
         ps,
-        { kind: "thumbnail", mimeType: "image/png", sizeBytes: 14_000, width: THUMB_W, height: THUMB_H },
+        {
+          kind: "thumbnail",
+          mimeType: "image/png",
+          sizeBytes: 14_000,
+          width: THUMB_W,
+          height: THUMB_H,
+        },
         () => this.renderSlide({ ...art, width: THUMB_W, height: THUMB_H }),
       );
       const plainText = [page.title, ...page.bullets].join("\n");
@@ -380,7 +429,11 @@ export class MockApiClient implements ApiClient {
           title: page.title,
           textBlocks: [
             { text: page.title, role: "title", level: 0 },
-            ...page.bullets.map((b) => ({ text: b, role: "bullet" as const, level: 0 })),
+            ...page.bullets.map((b) => ({
+              text: b,
+              role: "bullet" as const,
+              level: 0,
+            })),
           ],
           ...(page.notes ? { notes: page.notes } : {}),
           tables: [],
@@ -415,7 +468,9 @@ export class MockApiClient implements ApiClient {
     const idFor = (page: number) => slides[page - 1]?.id;
     const sections = FIXTURE_SECTIONS.map((s) => ({
       title: s.title,
-      slideIds: s.pages.map(idFor).filter((id): id is string => id !== undefined),
+      slideIds: s.pages
+        .map(idFor)
+        .filter((id): id is string => id !== undefined),
       keyPoints: s.keyPoints,
     }));
     const timeAllocation: Record<string, number> = {};
@@ -434,7 +489,12 @@ export class MockApiClient implements ApiClient {
     };
   }
 
-  private addRevision(ps: ProjectState, scene: Scene, script: string, source: "ai" | "user"): ScriptRevision {
+  private addRevision(
+    ps: ProjectState,
+    scene: Scene,
+    script: string,
+    source: "ai" | "user",
+  ): ScriptRevision {
     const history = (ps.revisions[scene.id] ??= []);
     const glossary = ps.detail.outline?.glossary ?? FIXTURE_GLOSSARY;
     const rev: ScriptRevision = {
@@ -446,7 +506,10 @@ export class MockApiClient implements ApiClient {
       subtitleText: deriveSubtitle(script),
       source,
       contentHash: randomHex(64),
-      estimatedDurationSec: estimateSpeechSeconds(script, ps.detail.project.settings.language),
+      estimatedDurationSec: estimateSpeechSeconds(
+        script,
+        ps.detail.project.settings.language,
+      ),
       createdAt: nowIso(),
       ...(ps.detail.outline ? { outlineRevisionId: ps.detail.outline.id } : {}),
     };
@@ -457,7 +520,9 @@ export class MockApiClient implements ApiClient {
   }
 
   private markDownstreamStale(scene: Scene, fields: AssetField[]): void {
-    for (const f of fields) if (scene[f].status === "ready") scene[f] = { ...scene[f], status: "stale" };
+    for (const f of fields)
+      if (scene[f].status === "ready")
+        scene[f] = { ...scene[f], status: "stale" };
   }
 
   // ======================================================== job completion
@@ -466,33 +531,70 @@ export class MockApiClient implements ApiClient {
     const slide = this.slideOf(ps, scene);
     const fixture: FixtureSlide = {
       title: slide?.content.title ?? `第 ${scene.index + 1} 頁`,
-      bullets: slide?.content.textBlocks.filter((b) => b.role === "bullet").map((b) => b.text) ?? [],
+      bullets:
+        slide?.content.textBlocks
+          .filter((b) => b.role === "bullet")
+          .map((b) => b.text) ?? [],
     };
-    const rev = this.addRevision(ps, scene, mockScriptFor(fixture, scene.index + 1), "ai");
+    const rev = this.addRevision(
+      ps,
+      scene,
+      mockScriptFor(fixture, scene.index + 1),
+      "ai",
+    );
     scene.script = { status: "ready", inputHash: randomHex(64), jobId };
     this.markDownstreamStale(scene, ["audio", "subtitle", "avatar"]);
     this.emit(ps, { kind: "script", script: rev });
     this.emit(ps, { kind: "scene", scene });
   }
 
-  private finishAudio(ps: ProjectState, scene: Scene, jobId: string | undefined, emit = true): void {
+  private finishAudio(
+    ps: ProjectState,
+    scene: Scene,
+    jobId: string | undefined,
+    emit = true,
+  ): void {
     const durationSec = 1;
     const freq = 330 + scene.index * 55;
-    const producedBy = jobId ? { jobId, providerId: ps.detail.project.settings.voice.providerId } : {};
+    const producedBy = jobId
+      ? { jobId, providerId: ps.detail.project.settings.voice.providerId }
+      : {};
     const audio = this.addAsset(
       ps,
-      { kind: "audio", mimeType: "audio/wav", sizeBytes: 32_044, durationSec, inputHash: randomHex(64), producedBy },
+      {
+        kind: "audio",
+        mimeType: "audio/wav",
+        sizeBytes: 32_044,
+        durationSec,
+        inputHash: randomHex(64),
+        producedBy,
+      },
       () => toneWavDataUrl(freq, durationSec),
     );
     const text = ps.detail.scripts[scene.id]?.subtitleText ?? "";
     const srt = `1\n${srtTime(0)} --> ${srtTime(durationSec)}\n${text}\n`;
     const subtitle = this.addAsset(
       ps,
-      { kind: "subtitle", mimeType: "application/x-subrip", sizeBytes: srt.length, inputHash: randomHex(64), producedBy },
+      {
+        kind: "subtitle",
+        mimeType: "application/x-subrip",
+        sizeBytes: srt.length,
+        inputHash: randomHex(64),
+        producedBy,
+      },
       () => textDataUrl(srt, "application/x-subrip"),
     );
-    scene.audio = { status: "ready", assetId: audio.id, inputHash: audio.inputHash, ...(jobId ? { jobId } : {}) };
-    scene.subtitle = { status: "ready", assetId: subtitle.id, inputHash: subtitle.inputHash };
+    scene.audio = {
+      status: "ready",
+      assetId: audio.id,
+      inputHash: audio.inputHash,
+      ...(jobId ? { jobId } : {}),
+    };
+    scene.subtitle = {
+      status: "ready",
+      assetId: subtitle.id,
+      inputHash: subtitle.inputHash,
+    };
     scene.durationSec = durationSec;
     this.markDownstreamStale(scene, ["avatar"]);
     this.recompute(ps);
@@ -513,23 +615,39 @@ export class MockApiClient implements ApiClient {
         sizeBytes: 600,
         durationSec: scene.durationSec ?? 1,
         inputHash: randomHex(64),
-        producedBy: { jobId, ...(settings.avatar.providerId ? { providerId: settings.avatar.providerId } : {}) },
+        producedBy: {
+          jobId,
+          ...(settings.avatar.providerId
+            ? { providerId: settings.avatar.providerId }
+            : {}),
+        },
       },
       () => avatarPlaceholderSvg(200 + scene.index * 20),
     );
-    scene.avatar = { status: "ready", assetId: asset.id, inputHash: asset.inputHash, jobId };
+    scene.avatar = {
+      status: "ready",
+      assetId: asset.id,
+      inputHash: asset.inputHash,
+      jobId,
+    };
     this.emit(ps, { kind: "asset", asset });
     this.emit(ps, { kind: "scene", scene });
   }
 
-  private finishRender(ps: ProjectState, jobId: string): Record<string, unknown> {
+  private finishRender(
+    ps: ProjectState,
+    jobId: string,
+  ): Record<string, unknown> {
     const visible = this.visibleScenes(ps);
     let t = 0;
     const cues: string[] = [];
     visible.forEach((scene) => {
       const text = ps.detail.scripts[scene.id]?.subtitleText;
       const d = (scene.durationSec ?? 2) + scene.tailPauseSec;
-      if (text) cues.push(`${cues.length + 1}\n${srtTime(t)} --> ${srtTime(t + d - scene.tailPauseSec)}\n${text}\n`);
+      if (text)
+        cues.push(
+          `${cues.length + 1}\n${srtTime(t)} --> ${srtTime(t + d - scene.tailPauseSec)}\n${text}\n`,
+        );
       t += d;
     });
     const srtText = cues.join("\n");
@@ -544,11 +662,19 @@ export class MockApiClient implements ApiClient {
         height: 1080,
         producedBy: { jobId },
       },
-      () => textDataUrl("This is a placeholder produced by the mock API; the real API renders an MP4 here.\n"),
+      () =>
+        textDataUrl(
+          "This is a placeholder produced by the mock API; the real API renders an MP4 here.\n",
+        ),
     );
     const srt = this.addAsset(
       ps,
-      { kind: "subtitle", mimeType: "application/x-subrip", sizeBytes: srtText.length, producedBy: { jobId } },
+      {
+        kind: "subtitle",
+        mimeType: "application/x-subrip",
+        sizeBytes: srtText.length,
+        producedBy: { jobId },
+      },
       () => textDataUrl(srtText, "application/x-subrip"),
     );
     this.emit(ps, { kind: "asset", asset: video });
@@ -557,7 +683,9 @@ export class MockApiClient implements ApiClient {
   }
 
   private visibleScenes(ps: ProjectState): Scene[] {
-    const hidden = new Set(ps.detail.slides.filter((s) => s.hidden).map((s) => s.id));
+    const hidden = new Set(
+      ps.detail.slides.filter((s) => s.hidden).map((s) => s.id),
+    );
     return sortByIndex(ps.detail.scenes).filter((s) => !hidden.has(s.slideId));
   }
 
@@ -579,7 +707,12 @@ export class MockApiClient implements ApiClient {
     ps.detail.activeJobs.push(job);
     const plan = this.planFor(ps, job);
     this.emit(ps, { kind: "job", job });
-    const runner: Runner = { job, plan, next: 0, timer: setInterval(() => this.tick(ps, runner), this.tickMs) };
+    const runner: Runner = {
+      job,
+      plan,
+      next: 0,
+      timer: setInterval(() => this.tick(ps, runner), this.tickMs),
+    };
     this.runners.set(job.id, runner);
     return job;
   }
@@ -618,26 +751,39 @@ export class MockApiClient implements ApiClient {
     const p = job.payload;
     switch (p.type) {
       case "generate_script": {
-        const targets = this.targets(ps, p.sceneIds, p.force, (s) => ["missing", "stale", "failed"].includes(s.script.status));
-        return this.perScenePlan(ps, job, "script", targets, "撰寫講稿", (s) => this.finishScript(ps, s, job.id));
+        const targets = this.targets(ps, p.sceneIds, p.force, (s) =>
+          ["missing", "stale", "failed"].includes(s.script.status),
+        );
+        return this.perScenePlan(ps, job, "script", targets, "撰寫講稿", (s) =>
+          this.finishScript(ps, s, job.id),
+        );
       }
       case "synthesize_speech": {
         const targets = this.targets(
           ps,
           p.sceneIds,
           p.force,
-          (s) => s.script.status === "ready" && !s.muted && ["missing", "stale", "failed"].includes(s.audio.status),
+          (s) =>
+            s.script.status === "ready" &&
+            !s.muted &&
+            ["missing", "stale", "failed"].includes(s.audio.status),
         ).filter((s) => ps.detail.scripts[s.id]);
-        return this.perScenePlan(ps, job, "audio", targets, "合成語音", (s) => this.finishAudio(ps, s, job.id));
+        return this.perScenePlan(ps, job, "audio", targets, "合成語音", (s) =>
+          this.finishAudio(ps, s, job.id),
+        );
       }
       case "generate_avatar": {
         const targets = this.targets(
           ps,
           p.sceneIds,
           p.force,
-          (s) => s.audio.status === "ready" && ["missing", "stale", "failed"].includes(s.avatar.status),
+          (s) =>
+            s.audio.status === "ready" &&
+            ["missing", "stale", "failed"].includes(s.avatar.status),
         ).filter((s) => s.audio.status === "ready");
-        return this.perScenePlan(ps, job, "avatar", targets, "產生人像", (s) => this.finishAvatar(ps, s, job.id));
+        return this.perScenePlan(ps, job, "avatar", targets, "產生人像", (s) =>
+          this.finishAvatar(ps, s, job.id),
+        );
       }
       case "render_video": {
         const steps: PlanStep[] = this.visibleScenes(ps).map((s) => ({
@@ -667,10 +813,18 @@ export class MockApiClient implements ApiClient {
         return {
           steps: [{ message: "匯出講稿", run: () => undefined }],
           onDone: () => {
-            const text = this.scriptExportText(ps, p.format === "md" ? "md" : "txt");
+            const text = this.scriptExportText(
+              ps,
+              p.format === "md" ? "md" : "txt",
+            );
             const asset = this.addAsset(
               ps,
-              { kind: "script_export", mimeType: "text/plain", sizeBytes: text.length, producedBy: { jobId: job.id } },
+              {
+                kind: "script_export",
+                mimeType: "text/plain",
+                sizeBytes: text.length,
+                producedBy: { jobId: job.id },
+              },
               () => textDataUrl(text),
             );
             this.emit(ps, { kind: "asset", asset });
@@ -680,7 +834,12 @@ export class MockApiClient implements ApiClient {
     }
   }
 
-  private targets(ps: ProjectState, sceneIds: string[] | undefined, force: boolean, needs: (s: Scene) => boolean): Scene[] {
+  private targets(
+    ps: ProjectState,
+    sceneIds: string[] | undefined,
+    force: boolean,
+    needs: (s: Scene) => boolean,
+  ): Scene[] {
     const all = sortByIndex(ps.detail.scenes);
     if (sceneIds) return all.filter((s) => sceneIds.includes(s.id));
     return force ? all : all.filter(needs);
@@ -726,23 +885,36 @@ export class MockApiClient implements ApiClient {
 
   private parsePlan(ps: ProjectState, sourceDocumentId: string): JobPlan {
     const pageCount = 5;
-    const steps: PlanStep[] = [{ message: "檢查檔案格式", run: () => undefined }];
-    for (let i = 1; i <= pageCount; i++) steps.push({ message: `轉換頁面 ${i}/${pageCount}`, run: () => undefined });
+    const steps: PlanStep[] = [
+      { message: "檢查檔案格式", run: () => undefined },
+    ];
+    for (let i = 1; i <= pageCount; i++)
+      steps.push({
+        message: `轉換頁面 ${i}/${pageCount}`,
+        run: () => undefined,
+      });
     steps.push({
       message: "擷取文字與備忘稿",
       run: () => {
         const source = ps.detail.sourceDocument;
         if (!source || source.id !== sourceDocumentId) return;
         const base = source.filename.replace(/\.[^.]+$/, "");
-        const pages: FixtureSlide[] = Array.from({ length: pageCount }, (_, i) => ({
-          title: i === 0 ? base : `${base}（第 ${i + 1} 頁）`,
-          bullets: ["重點一", "重點二", "重點三"],
-        }));
+        const pages: FixtureSlide[] = Array.from(
+          { length: pageCount },
+          (_, i) => ({
+            title: i === 0 ? base : `${base}（第 ${i + 1} 頁）`,
+            bullets: ["重點一", "重點二", "重點三"],
+          }),
+        );
         this.buildSlides(ps, source, pages);
         source.parseStatus = "succeeded";
         source.pageCount = pageCount;
         this.touch(ps);
-        this.emit(ps, { kind: "slides", slides: ps.detail.slides, scenes: ps.detail.scenes });
+        this.emit(ps, {
+          kind: "slides",
+          slides: ps.detail.slides,
+          scenes: ps.detail.scenes,
+        });
         this.emit(ps, { kind: "project", project: ps.detail.project });
       },
     });
@@ -783,9 +955,13 @@ export class MockApiClient implements ApiClient {
     return clone(first);
   }
 
-  async setProviderKey(providerId: string, req: SetProviderKeyRequest): Promise<ProviderInfo> {
+  async setProviderKey(
+    providerId: string,
+    req: SetProviderKeyRequest,
+  ): Promise<ProviderInfo> {
     await this.wait();
-    if (!req.apiKey.trim()) throw new ApiRequestError("API key is empty", 400, "invalid_request");
+    if (!req.apiKey.trim())
+      throw new ApiRequestError("API key is empty", 400, "invalid_request");
     return this.setConfigured(providerId, true);
   }
 
@@ -794,10 +970,42 @@ export class MockApiClient implements ApiClient {
     return this.setConfigured(providerId, false);
   }
 
+  private customCharacters: AvatarOption[] = [];
+
+  async uploadAvatarCharacter(
+    _providerId: string,
+    file: File,
+  ): Promise<AvatarOption> {
+    await this.wait();
+    const c: AvatarOption = {
+      id: `custom-${this.customCharacters.length + 1}`,
+      name: file.name.replace(/\.[^.]+$/, ""),
+      kind: "personal",
+    };
+    this.customCharacters.push(c);
+    return clone(c);
+  }
+
+  async deleteAvatarCharacter(
+    _providerId: string,
+    characterId: string,
+  ): Promise<void> {
+    await this.wait();
+    this.customCharacters = this.customCharacters.filter(
+      (c) => c.id !== characterId,
+    );
+  }
+
+  avatarCharacterPreviewUrl(): string {
+    return "";
+  }
+
   async previewVoice(): Promise<Blob> {
     await this.wait();
     const dataUrl = toneWavDataUrl();
-    const bytes = Uint8Array.from(atob(dataUrl.split(",")[1] ?? ""), (c) => c.charCodeAt(0));
+    const bytes = Uint8Array.from(atob(dataUrl.split(",")[1] ?? ""), (c) =>
+      c.charCodeAt(0),
+    );
     return new Blob([bytes], { type: "audio/wav" });
   }
 
@@ -808,7 +1016,10 @@ export class MockApiClient implements ApiClient {
 
   async listAvatars(providerId: string): Promise<AvatarOption[]> {
     await this.wait();
-    return clone(MOCK_AVATARS[providerId] ?? []);
+    return clone([
+      ...this.customCharacters,
+      ...(MOCK_AVATARS[providerId] ?? []),
+    ]);
   }
 
   // ============================================================ projects
@@ -818,7 +1029,9 @@ export class MockApiClient implements ApiClient {
     return [...this.projects.values()]
       .map((ps) => ({
         ...clone(ps.detail.project),
-        ...(ps.detail.sourceDocument ? { pageCount: ps.detail.slides.length } : {}),
+        ...(ps.detail.sourceDocument
+          ? { pageCount: ps.detail.slides.length }
+          : {}),
       }))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
@@ -835,7 +1048,10 @@ export class MockApiClient implements ApiClient {
     return clone(this.state(projectId).detail);
   }
 
-  async updateProject(projectId: string, req: UpdateProjectRequest): Promise<Project> {
+  async updateProject(
+    projectId: string,
+    req: UpdateProjectRequest,
+  ): Promise<Project> {
     await this.wait();
     const ps = this.state(projectId);
     const project = ps.detail.project;
@@ -851,13 +1067,21 @@ export class MockApiClient implements ApiClient {
   }
 
   /** Mirrors the API's hash rules for the settings that affect per-scene assets. */
-  private invalidateForSettings(ps: ProjectState, before: ProjectSettings, after: ProjectSettings): void {
-    const voiceChanged = JSON.stringify(before.voice) !== JSON.stringify(after.voice) || before.language !== after.language;
+  private invalidateForSettings(
+    ps: ProjectState,
+    before: ProjectSettings,
+    after: ProjectSettings,
+  ): void {
+    const voiceChanged =
+      JSON.stringify(before.voice) !== JSON.stringify(after.voice) ||
+      before.language !== after.language;
     const avatarChanged =
       before.avatar.providerId !== after.avatar.providerId ||
       before.avatar.avatarId !== after.avatar.avatarId ||
       before.aspectRatio !== after.aspectRatio;
-    const subtitleChanged = before.subtitles.style.maxCharsPerLine !== after.subtitles.style.maxCharsPerLine;
+    const subtitleChanged =
+      before.subtitles.style.maxCharsPerLine !==
+      after.subtitles.style.maxCharsPerLine;
     if (!voiceChanged && !avatarChanged && !subtitleChanged) return;
     for (const scene of ps.detail.scenes) {
       const fields: AssetField[] = [];
@@ -866,7 +1090,8 @@ export class MockApiClient implements ApiClient {
       if (subtitleChanged) fields.push("subtitle");
       const beforeJson = JSON.stringify(scene);
       this.markDownstreamStale(scene, fields);
-      if (JSON.stringify(scene) !== beforeJson) this.emit(ps, { kind: "scene", scene });
+      if (JSON.stringify(scene) !== beforeJson)
+        this.emit(ps, { kind: "scene", scene });
     }
   }
 
@@ -883,10 +1108,18 @@ export class MockApiClient implements ApiClient {
 
   // ============================================================== source
 
-  async uploadSource(projectId: string, file: File, options: UploadOptions = {}): Promise<UploadSourceResponse> {
+  async uploadSource(
+    projectId: string,
+    file: File,
+    options: UploadOptions = {},
+  ): Promise<UploadSourceResponse> {
     const ps = this.state(projectId);
     if (!/\.(pptx|ppt|pdf)$/i.test(file.name)) {
-      throw new ApiRequestError("Unsupported file type", 415, "unsupported_media_type");
+      throw new ApiRequestError(
+        "Unsupported file type",
+        415,
+        "unsupported_media_type",
+      );
     }
     for (let i = 1; i <= 4; i++) {
       await new Promise((r) => setTimeout(r, Math.max(20, this.latencyMs / 2)));
@@ -894,7 +1127,10 @@ export class MockApiClient implements ApiClient {
     }
     const source = this.makeSource(ps, file.name, file.size);
     ps.detail.sourceDocument = source;
-    const job = this.startJob(ps, { type: "parse_document", sourceDocumentId: source.id });
+    const job = this.startJob(ps, {
+      type: "parse_document",
+      sourceDocumentId: source.id,
+    });
     source.parseJobId = job.id;
     this.touch(ps);
     return clone({ sourceDocument: source, job });
@@ -902,12 +1138,22 @@ export class MockApiClient implements ApiClient {
 
   // ====================================================== slides/scenes
 
-  async reorderSlides(projectId: string, req: ReorderSlidesRequest): Promise<ReorderSlidesResponse> {
+  async reorderSlides(
+    projectId: string,
+    req: ReorderSlidesRequest,
+  ): Promise<ReorderSlidesResponse> {
     await this.wait();
     const ps = this.state(projectId);
     const { slides, scenes } = ps.detail;
-    if (req.slideIds.length !== slides.length || !slides.every((s) => req.slideIds.includes(s.id))) {
-      throw new ApiRequestError("slideIds must list every slide exactly once", 400, "invalid_request");
+    if (
+      req.slideIds.length !== slides.length ||
+      !slides.every((s) => req.slideIds.includes(s.id))
+    ) {
+      throw new ApiRequestError(
+        "slideIds must list every slide exactly once",
+        400,
+        "invalid_request",
+      );
     }
     req.slideIds.forEach((id, index) => {
       const slide = slides.find((s) => s.id === id);
@@ -918,22 +1164,38 @@ export class MockApiClient implements ApiClient {
     ps.detail.slides = sortByIndex(slides);
     ps.detail.scenes = sortByIndex(scenes);
     this.touch(ps);
-    this.emit(ps, { kind: "slides", slides: ps.detail.slides, scenes: ps.detail.scenes });
+    this.emit(ps, {
+      kind: "slides",
+      slides: ps.detail.slides,
+      scenes: ps.detail.scenes,
+    });
     return clone({ slides: ps.detail.slides, scenes: ps.detail.scenes });
   }
 
-  async setSlideHidden(projectId: string, slideId: string, hidden: boolean): Promise<Slide> {
+  async setSlideHidden(
+    projectId: string,
+    slideId: string,
+    hidden: boolean,
+  ): Promise<Slide> {
     await this.wait();
     const ps = this.state(projectId);
     const slide = ps.detail.slides.find((s) => s.id === slideId);
     if (!slide) throw new ApiRequestError("Slide not found", 404, "not_found");
     slide.hidden = hidden;
     this.touch(ps);
-    this.emit(ps, { kind: "slides", slides: ps.detail.slides, scenes: ps.detail.scenes });
+    this.emit(ps, {
+      kind: "slides",
+      slides: ps.detail.slides,
+      scenes: ps.detail.scenes,
+    });
     return clone(slide);
   }
 
-  async updateScene(projectId: string, sceneId: string, req: UpdateSceneRequest): Promise<Scene> {
+  async updateScene(
+    projectId: string,
+    sceneId: string,
+    req: UpdateSceneRequest,
+  ): Promise<Scene> {
     await this.wait();
     const ps = this.state(projectId);
     const scene = this.scene(ps, sceneId);
@@ -948,16 +1210,24 @@ export class MockApiClient implements ApiClient {
     return clone(scene);
   }
 
-  async updateScript(projectId: string, sceneId: string, req: UpdateScriptRequest): Promise<ScriptRevision> {
+  async updateScript(
+    projectId: string,
+    sceneId: string,
+    req: UpdateScriptRequest,
+  ): Promise<ScriptRevision> {
     await this.wait();
     const ps = this.state(projectId);
     const scene = this.scene(ps, sceneId);
     const latest = ps.detail.scripts[sceneId];
     if (latest && latest.script === req.script) return clone(latest);
     const rev = this.addRevision(ps, scene, req.script, "user");
-    if (req.pronunciationText !== undefined) rev.pronunciationText = req.pronunciationText;
+    if (req.pronunciationText !== undefined)
+      rev.pronunciationText = req.pronunciationText;
     if (req.subtitleText !== undefined) rev.subtitleText = req.subtitleText;
-    scene.script = { status: req.script.trim() ? "ready" : "missing", inputHash: randomHex(64) };
+    scene.script = {
+      status: req.script.trim() ? "ready" : "missing",
+      inputHash: randomHex(64),
+    };
     this.markDownstreamStale(scene, ["audio", "subtitle", "avatar"]);
     this.touch(ps);
     this.emit(ps, { kind: "script", script: rev });
@@ -965,7 +1235,10 @@ export class MockApiClient implements ApiClient {
     return clone(rev);
   }
 
-  async listScriptRevisions(projectId: string, sceneId: string): Promise<ScriptRevision[]> {
+  async listScriptRevisions(
+    projectId: string,
+    sceneId: string,
+  ): Promise<ScriptRevision[]> {
     await this.wait();
     const ps = this.state(projectId);
     return clone([...(ps.revisions[sceneId] ?? [])].reverse());
@@ -973,11 +1246,18 @@ export class MockApiClient implements ApiClient {
 
   // ================================================================ jobs
 
-  async enqueueJob(projectId: string, req: EnqueueJobRequest): Promise<EnqueueJobResponse> {
+  async enqueueJob(
+    projectId: string,
+    req: EnqueueJobRequest,
+  ): Promise<EnqueueJobResponse> {
     await this.wait();
     const ps = this.state(projectId);
     const estimateType: EstimateType | undefined =
-      req.type === "synthesize_speech" || req.type === "generate_avatar" || req.type === "render_video" ? req.type : undefined;
+      req.type === "synthesize_speech" ||
+      req.type === "generate_avatar" ||
+      req.type === "render_video"
+        ? req.type
+        : undefined;
     const estimate = estimateType ? this.estimate(ps, estimateType) : undefined;
     const job = this.startJob(ps, req);
     return clone({ job, ...(estimate ? { estimate } : {}) });
@@ -1016,10 +1296,22 @@ export class MockApiClient implements ApiClient {
     if (type === "synthesize_speech") {
       const chars = scenes
         .filter((s) => !s.muted && s.audio.status !== "ready")
-        .reduce((n, s) => n + Array.from(ps.detail.scripts[s.id]?.pronunciationText ?? "").length, 0);
+        .reduce(
+          (n, s) =>
+            n +
+            Array.from(ps.detail.scripts[s.id]?.pronunciationText ?? "").length,
+          0,
+        );
       const cost = round(chars * MOCK_PRICES.ttsPerChar);
       return {
-        lines: [{ providerId: settings.voice.providerId, unit: "chars", quantity: chars, estimatedCost: cost }],
+        lines: [
+          {
+            providerId: settings.voice.providerId,
+            unit: "chars",
+            quantity: chars,
+            estimatedCost: cost,
+          },
+        ],
         total: cost,
         currency: "USD",
       };
@@ -1027,52 +1319,99 @@ export class MockApiClient implements ApiClient {
     if (type === "generate_avatar") {
       const seconds = scenes
         .filter((s) => !s.muted && s.avatar.status !== "ready")
-        .reduce((n, s) => n + (s.durationSec ?? ps.detail.scripts[s.id]?.estimatedDurationSec ?? 0), 0);
+        .reduce(
+          (n, s) =>
+            n +
+            (s.durationSec ??
+              ps.detail.scripts[s.id]?.estimatedDurationSec ??
+              0),
+          0,
+        );
       const cost = round(seconds * MOCK_PRICES.avatarPerSecond);
       const providerId = settings.avatar.providerId ?? "avatar";
       return {
-        lines: [{ providerId, unit: "avatar_seconds", quantity: seconds, estimatedCost: cost }],
+        lines: [
+          {
+            providerId,
+            unit: "avatar_seconds",
+            quantity: seconds,
+            estimatedCost: cost,
+          },
+        ],
         total: cost,
         currency: "USD",
       };
     }
     const seconds = ps.detail.totalDurationSec;
     return {
-      lines: [{ providerId: "render", unit: "render_seconds", quantity: seconds, estimatedCost: 0 }],
+      lines: [
+        {
+          providerId: "render",
+          unit: "render_seconds",
+          quantity: seconds,
+          estimatedCost: 0,
+        },
+      ],
       total: 0,
       currency: "USD",
     };
   }
 
-  async getEstimate(projectId: string, type: EstimateType): Promise<CostEstimate> {
+  async getEstimate(
+    projectId: string,
+    type: EstimateType,
+  ): Promise<CostEstimate> {
     await this.wait();
     return this.estimate(this.state(projectId), type);
   }
 
-  private scriptExportText(ps: ProjectState, format: ScriptExportFormat): string {
-    const lines: string[] = format === "md" ? [`# ${ps.detail.project.name}`, ""] : [ps.detail.project.name, ""];
+  private scriptExportText(
+    ps: ProjectState,
+    format: ScriptExportFormat,
+  ): string {
+    const lines: string[] =
+      format === "md"
+        ? [`# ${ps.detail.project.name}`, ""]
+        : [ps.detail.project.name, ""];
     for (const scene of this.visibleScenes(ps)) {
       const slide = this.slideOf(ps, scene);
       const title = `第 ${scene.index + 1} 頁${slide?.content.title ? `：${slide.content.title}` : ""}`;
       const text = ps.detail.scripts[scene.id]?.script ?? "";
-      lines.push(format === "md" ? `## ${title}` : `【${title}】`, "", text, "");
+      lines.push(
+        format === "md" ? `## ${title}` : `【${title}】`,
+        "",
+        text,
+        "",
+      );
     }
     return lines.join("\n");
   }
 
-  async exportScript(projectId: string, format: ScriptExportFormat): Promise<Blob> {
+  async exportScript(
+    projectId: string,
+    format: ScriptExportFormat,
+  ): Promise<Blob> {
     await this.wait();
     const text = this.scriptExportText(this.state(projectId), format);
-    return new Blob([text], { type: format === "md" ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8" });
+    return new Blob([text], {
+      type:
+        format === "md"
+          ? "text/markdown;charset=utf-8"
+          : "text/plain;charset=utf-8",
+    });
   }
 
-  async getAssetUrl(projectId: string, assetId: string): Promise<AssetUrlResponse> {
+  async getAssetUrl(
+    projectId: string,
+    assetId: string,
+  ): Promise<AssetUrlResponse> {
     await this.wait();
     const ps = this.state(projectId);
     let url = ps.urlCache.get(assetId);
     if (!url) {
       const factory = ps.urlFactories.get(assetId);
-      if (!factory) throw new ApiRequestError("Asset not found", 404, "not_found");
+      if (!factory)
+        throw new ApiRequestError("Asset not found", 404, "not_found");
       url = factory();
       ps.urlCache.set(assetId, url);
     }

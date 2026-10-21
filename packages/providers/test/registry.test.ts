@@ -6,8 +6,8 @@ describe("registry", () => {
     const ids = (k: "llm" | "tts" | "avatar") => defaultRegistry.listProviders(k).map((p) => p.id).sort();
     expect(ids("llm")).toEqual(["anthropic", "gemini", "mock"]);
     expect(ids("tts")).toEqual(["elevenlabs", "gemini", "mock"]);
-    expect(ids("avatar")).toEqual(["heygen", "mock"]);
-    expect(defaultRegistry.listProviders()).toHaveLength(8);
+    expect(ids("avatar")).toEqual(["heygen", "local", "mock"]);
+    expect(defaultRegistry.listProviders()).toHaveLength(9);
   });
   it("creates mocks without keys and refuses keyed providers without one", () => {
     expect(defaultRegistry.createTts("mock").id).toBe("mock");

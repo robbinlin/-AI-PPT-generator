@@ -114,6 +114,8 @@ export interface AvatarCapabilities {
   aspectRatios: AspectRatio[];
   /** Billing unit the provider charges by, for estimates. */
   billingUnit: "avatar_seconds";
+  /** The user can upload their own photo/video as a character (see `createCharacter`). */
+  customCharacters?: boolean;
 }
 
 export interface AvatarCreateRequest {
@@ -146,6 +148,12 @@ export interface AvatarProvider {
   createTask(req: AvatarCreateRequest): Promise<{ taskId: string }>;
   getTask(taskId: string): Promise<AvatarTaskStatus>;
   cancelTask(taskId: string): Promise<void>;
+  /** Self-hosted providers: is the service reachable, and if not (or degraded), what should the user do? */
+  probe?(): Promise<{ ok: boolean; hint?: string }>;
+  /** Providers with `capabilities.customCharacters`. */
+  createCharacter?(input: { data: Uint8Array; mimeType: string; fileName: string; name: string }): Promise<AvatarCharacter>;
+  deleteCharacter?(id: string): Promise<void>;
+  characterPreview?(id: string): Promise<{ data: Uint8Array; mimeType: string }>;
 }
 
 // ------------------------------------------------------------ Registry -----
