@@ -20,6 +20,8 @@ export interface PlaybackState {
   playing: boolean;
   /** "播放全部": when the current scene ends, advance to the next playable scene. */
   playAll: boolean;
+  /** Position of the current scene's narration, so the preview can show the matching subtitle. */
+  currentTime: number;
 }
 
 export interface UploadState {
@@ -74,6 +76,7 @@ export interface EditorState {
   setUpload(upload: UploadState): void;
 
   setPlaying(playing: boolean): void;
+  setCurrentTime(sec: number): void;
   togglePlaying(): void;
   startPlayAll(): void;
   stopPlayback(): void;
@@ -116,7 +119,7 @@ const initial = {
   saveState: {},
   dirty: false,
   recentJobs: [],
-  playback: { playing: false, playAll: false },
+  playback: { playing: false, playAll: false, currentTime: 0 },
   upload: { progress: null, error: null },
 } satisfies Partial<EditorState>;
 
@@ -339,19 +342,23 @@ export function createEditorStore(): StoreApi<EditorState> {
       },
 
       setPlaying(playing) {
-        set((s) => ({ playback: { playing, playAll: playing ? s.playback.playAll : false } }));
+        set((s) => ({ playback: { ...s.playback, playing, playAll: playing ? s.playback.playAll : false } }));
+      },
+
+      setCurrentTime(sec) {
+        set((s) => (Math.abs(s.playback.currentTime - sec) < 0.05 ? s : { playback: { ...s.playback, currentTime: sec } }));
       },
 
       togglePlaying() {
-        set((s) => ({ playback: { playing: !s.playback.playing, playAll: s.playback.playing ? false : s.playback.playAll } }));
+        set((s) => ({ playback: { ...s.playback, playing: !s.playback.playing, playAll: s.playback.playing ? false : s.playback.playAll } }));
       },
 
       startPlayAll() {
-        set({ playback: { playing: true, playAll: true } });
+        set((s) => ({ playback: { ...s.playback, playing: true, playAll: true } }));
       },
 
       stopPlayback() {
-        set({ playback: { playing: false, playAll: false } });
+        set({ playback: { playing: false, playAll: false, currentTime: 0 } });
       },
     };
   });

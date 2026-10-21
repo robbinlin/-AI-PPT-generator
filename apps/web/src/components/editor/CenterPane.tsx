@@ -1,5 +1,8 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { SubtitleCue } from "@lvs/shared";
+import { useAssetUrl } from "../../api/context";
 import { t } from "../../i18n";
+import { cueAt, parseSrt } from "../../lib/srt";
 import { useEditor } from "../../store/editorStore";
 import { ScenePlayer } from "./ScenePlayer";
 import { SlidePreview } from "./SlidePreview";
@@ -10,9 +13,11 @@ export function CenterPane({ onUpload }: { onUpload: (file: File) => void }) {
   const selectedSceneId = useEditor((s) => s.selectedSceneId);
   const drafts = useEditor((s) => s.drafts);
   const recentJobs = useEditor((s) => s.recentJobs);
+  const currentTime = useEditor((s) => s.playback.currentTime);
 
   const scene = useMemo(() => detail?.scenes.find((s) => s.id === selectedSceneId), [detail, selectedSceneId]);
   const slide = useMemo(() => detail?.slides.find((s) => s.id === scene?.slideId), [detail, scene]);
+  const cues = useSceneCues(detail?.project.id, scene?.subtitle.status === "ready" ? scene.subtitle.assetId : undefined);
   if (!detail) return null;
 
   const source = detail.sourceDocument;
@@ -47,14 +52,24 @@ export function CenterPane({ onUpload }: { onUpload: (file: File) => void }) {
   }
 
   const script = scene ? detail.scripts[scene.id] : undefined;
-  // Subtitles preview the saved subtitle text, or the draft while the user is typing.
-  const subtitleText = scene && drafts[scene.id] !== undefined ? drafts[scene.id] : script?.subtitleText;
+  // While the user is typing, preview the draft's first sentence. Otherwise follow the narration:
+  // the cue at the playhead from the generated SRT, or the first sentence before any audio exists.
+  const draft = scene ? drafts[scene.id] : undefined;
+  const timedCue = draft === undefined && cues ? cueAt(cues, currentTime) : undefined;
+  const subtitleText = draft !== undefined ? draft : cues ? (timedCue?.text ?? "") : script?.subtitleText;
 
   return (
     <section className="flex min-h-0 flex-col gap-3 bg-neutral-950 p-4">
       <div className="min-h-0 flex-1">
         {slide ? (
-          <SlidePreview project={detail.project} slide={slide} scene={scene} subtitleText={subtitleText} assets={detail.assets} />
+          <SlidePreview
+            project={detail.project}
+            slide={slide}
+            scene={scene}
+            subtitleText={subtitleText}
+            subtitleIsCue={draft === undefined && !!cues}
+            assets={detail.assets}
+          />
         ) : (
           <div className="flex size-full items-center justify-center text-sm text-neutral-500">{t.editor.selectPage}</div>
         )}
@@ -63,4 +78,29 @@ export function CenterPane({ onUpload }: { onUpload: (file: File) => void }) {
       <p className="text-center text-[11px] text-neutral-600">{t.player.shortcuts}</p>
     </section>
   );
+}
+
+const srtCache = new Map<string, Promise<SubtitleCue[]>>();
+
+/** Cues of the scene's generated SRT (undefined until loaded or when the scene has none). */
+function useSceneCues(projectId: string | undefined, assetId: string | undefined): SubtitleCue[] | undefined {
+  const url = useAssetUrl(projectId, assetId);
+  const [state, setState] = useState<{ url: string; cues: SubtitleCue[] } | null>(null);
+  useEffect(() => {
+    if (!url) return;
+    let alive = true;
+    let p = srtCache.get(url);
+    if (!p) {
+      p = fetch(url)
+        .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+        .then(parseSrt);
+      srtCache.set(url, p);
+    }
+    p.then((cues) => alive && setState({ url, cues })).catch(() => srtCache.delete(url));
+    return () => {
+      alive = false;
+    };
+  }, [url]);
+  if (!url || state?.url !== url) return undefined;
+  return state.cues;
 }

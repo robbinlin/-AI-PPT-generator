@@ -46,7 +46,10 @@ export function ScenePlayer({ projectId, scene, hidden }: ScenePlayerProps) {
     el.play().catch(() => editorStore.getState().setPlaying(false));
   }, [playback.playing, playback.playAll, playable, url]);
 
-  useEffect(() => setTime({ current: 0, duration: 0 }), [url]);
+  useEffect(() => {
+    setTime({ current: 0, duration: 0 });
+    editorStore.getState().setCurrentTime(0);
+  }, [url]);
 
   const onEnded = () => {
     const store = editorStore.getState();
@@ -72,7 +75,10 @@ export function ScenePlayer({ projectId, scene, hidden }: ScenePlayerProps) {
         src={url}
         preload="auto"
         onEnded={onEnded}
-        onTimeUpdate={(e) => setTime({ current: e.currentTarget.currentTime, duration: e.currentTarget.duration || 0 })}
+        onTimeUpdate={(e) => {
+          setTime({ current: e.currentTarget.currentTime, duration: e.currentTarget.duration || 0 });
+          editorStore.getState().setCurrentTime(e.currentTarget.currentTime);
+        }}
         onLoadedMetadata={(e) => setTime({ current: 0, duration: e.currentTarget.duration || 0 })}
       />
       <Button

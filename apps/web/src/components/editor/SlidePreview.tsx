@@ -15,16 +15,18 @@ export interface SlidePreviewProps {
   slide: Slide;
   scene: Scene | undefined;
   subtitleText: string | undefined;
+  /** True when subtitleText is already a timed cue (shown as-is, may be empty between cues). */
+  subtitleIsCue?: boolean;
   assets: Record<string, Asset>;
 }
 
 /** The video frame: slide image letterboxed into the project aspect ratio, avatar and subtitle on top. */
-export function SlidePreview({ project, slide, scene, subtitleText, assets }: SlidePreviewProps) {
+export function SlidePreview({ project, slide, scene, subtitleText, subtitleIsCue = false, assets }: SlidePreviewProps) {
   const imageUrl = useAssetUrl(project.id, slide.imageAssetId);
   const ratio = RATIOS[project.settings.aspectRatio];
   const { avatar, subtitles } = project.settings;
   const layout = effectiveAvatarLayout(project, scene);
-  const cue = firstSubtitleCue(subtitleText, subtitles.style.maxCharsPerLine);
+  const cue = subtitleIsCue ? (subtitleText ?? "") : firstSubtitleCue(subtitleText, subtitles.style.maxCharsPerLine);
 
   return (
     <div className="flex size-full items-center justify-center [container-type:size]">
