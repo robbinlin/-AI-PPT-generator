@@ -13,8 +13,11 @@ import { fetchJson, fromBase64, type FetchOptions } from "../http.js";
 import { groupCharacterAlignment } from "./timing.js";
 
 export const ELEVENLABS_BASE_URL = "https://api.elevenlabs.io";
-/** Overridable with ELEVENLABS_MODEL (e.g. eleven_v3, eleven_flash_v2_5). */
-export const ELEVENLABS_MODEL = "eleven_multilingual_v2";
+/**
+ * Overridable with ELEVENLABS_MODEL. v3 is the default: on Taiwanese Mandarin it scored 7/10 in a
+ * blind Gemini listening test against 3-4/10 for eleven_multilingual_v2 (tones, 十/是, 值/至).
+ */
+export const ELEVENLABS_MODEL = "eleven_v3";
 const envModel = () => process.env.ELEVENLABS_MODEL || ELEVENLABS_MODEL;
 
 /**
@@ -40,7 +43,8 @@ export function buildElevenLabsRequest(req: TtsRequest, model = ELEVENLABS_MODEL
   const body: ElevenLabsTtsBody = {
     text: req.text,
     model_id: model,
-    voice_settings: { stability: 0.5, similarity_boost: 0.75, speed: clamp(req.speed ?? 1, 0.7, 1.2) },
+    // v3 only accepts the discrete stability presets (0 creative, 0.5 natural, 1 robust).
+    voice_settings: { stability: /^eleven_v3/.test(model) ? 0.5 : 0.6, similarity_boost: 0.75, speed: clamp(req.speed ?? 1, 0.7, 1.2) },
   };
   const code = lang[req.language];
   if (code && supportsLanguageCode(model)) body.language_code = code;
@@ -142,7 +146,7 @@ export class ElevenLabsTtsProvider implements TtsProvider {
     wordTimestamps: true,
     ssml: false,
     speedControl: true,
-    maxChars: 5000,
+    maxChars: 3000,
     outputMimeType: "audio/mpeg",
   };
   private readonly apiKey: string;

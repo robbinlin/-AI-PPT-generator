@@ -51,9 +51,12 @@ describe("elevenlabs tts", () => {
   it("builds the with-timestamps request", () => {
     const { url, body } = buildElevenLabsRequest({ ...req, speed: 1.5 });
     expect(url).toBe("/v1/text-to-speech/v1/with-timestamps?output_format=mp3_44100_128");
-    // multilingual_v2 rejects language_code, so it is only sent to models that honour it
-    expect(body.language_code).toBeUndefined();
+    expect(body.model_id).toBe("eleven_v3");
+    expect(body.language_code).toBe("zh");
+    expect(body.voice_settings.stability).toBe(0.5); // v3 preset
     expect(body.voice_settings.speed).toBe(1.2); // clamped
+    // multilingual_v2 rejects language_code, so it is only sent to models that honour it
+    expect(buildElevenLabsRequest(req, "eleven_multilingual_v2").body.language_code).toBeUndefined();
     expect(buildElevenLabsRequest(req, "eleven_flash_v2_5").body.language_code).toBe("zh");
     expect(buildElevenLabsRequest(req, "eleven_v3").body.language_code).toBe("zh");
     expect(buildElevenLabsRequest({ ...req, language: "mixed" }, "eleven_flash_v2_5").body.language_code).toBeUndefined();

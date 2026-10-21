@@ -126,7 +126,9 @@ function escapeRegExp(s: string): string {
 
 /** Replace glossary terms (longest first) with their readings. Case-sensitive for Latin to avoid mangling prose. */
 export function applyGlossaryReadings(text: string, glossary: GlossaryEntry[]): string {
-  const entries = glossary.filter((g) => g.reading && g.reading !== g.term).sort((a, b) => b.term.length - a.term.length);
+  const entries = glossary
+    .filter((g) => g.reading && g.reading !== g.term && !isTranslationNotReading(g.term, g.reading))
+    .sort((a, b) => b.term.length - a.term.length);
   let out = text;
   for (const g of entries) {
     const term = escapeRegExp(g.term);
@@ -135,6 +137,18 @@ export function applyGlossaryReadings(text: string, glossary: GlossaryEntry[]): 
     out = out.replace(re, g.reading!);
   }
   return out;
+}
+
+/**
+ * A plain English word (mean, median, mode…) with a purely Chinese "reading" is a translation,
+ * not a pronunciation: substituting it turns 「平均數，也就是 mean」 into 「平均數，也就是平均數」.
+ * Modern TTS engines read such words fine, so keep them. Acronyms (ANOVA) and anything with
+ * digits or symbols (VO₂max, η²) keep their readings.
+ */
+export function isTranslationNotReading(term: string, reading: string): boolean {
+  const plainWord = /^[a-z][a-z]*(?:[ '-][a-z]+)*$/.test(term);
+  const chineseOnly = /^[\p{Script=Han}\s，、]+$/u.test(reading);
+  return plainWord && chineseOnly;
 }
 
 /** Normalise sub/superscript digits so VO₂max becomes VO2max when no reading exists. */

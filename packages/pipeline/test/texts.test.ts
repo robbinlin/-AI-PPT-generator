@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyGlossaryReadings,
+  isTranslationNotReading,
   decimalToChinese,
   derivePronunciationText,
   deriveSubtitleText,
@@ -88,5 +89,17 @@ describe("length helpers", () => {
   it("targetLength", () => {
     expect(targetLength(60, "zh-TW")).toEqual({ chars: 270 });
     expect(targetLength(60, "en")).toEqual({ words: 150 });
+  });
+});
+
+describe("isTranslationNotReading", () => {
+  it("keeps plain English words instead of swapping in a Chinese translation", () => {
+    expect(isTranslationNotReading("mean", "平均數")).toBe(true);
+    expect(isTranslationNotReading("standard deviation", "標準差")).toBe(true);
+    expect(isTranslationNotReading("ANOVA", "變異數分析")).toBe(false); // acronym: speak the Chinese name
+    expect(isTranslationNotReading("VO₂max", "V O two max")).toBe(false);
+    expect(isTranslationNotReading("mean", "ㄇㄧㄣ")).toBe(false);
+    const glossary = [{ term: "mean", reading: "平均數", definition: "" }];
+    expect(applyGlossaryReadings("平均數，也就是 mean", glossary)).toBe("平均數，也就是 mean");
   });
 });
