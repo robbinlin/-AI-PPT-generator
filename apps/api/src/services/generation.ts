@@ -327,9 +327,13 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       let taskId = ctx.job.providerTaskId?.startsWith(prefix) ? ctx.job.providerTaskId.slice(prefix.length) : undefined;
       if (!taskId) {
         const { url } = ctx.storage.signUrl(audioAsset.id, config.AVATAR_AUDIO_URL_TTL_SEC);
+        // Hand the provider the bytes as well as a URL: HeyGen uploads them as an asset, which
+        // also works when the API runs on localhost where no vendor could fetch the URL.
+        const audioBytes = await streamToBuffer((await ctx.storage.getStream(audioAsset.storageKey)).stream);
         const created = await provider.createTask({
           avatarId,
           aspectRatio: settings.aspectRatio,
+          audio: { data: audioBytes, mimeType: audioAsset.mimeType, fileName: `scene-${scene.index + 1}.${AUDIO_EXT[audioAsset.mimeType] ?? "bin"}` },
           audioUrl: url,
           clientReference: ctx.job.id,
         });
@@ -533,3 +537,9 @@ function buildTimelineTracks(renderScenes: RenderScene[], scenesInOrder: Scene[]
 
 const round = (n: number) => Math.round(n * 1000) / 1000;
 
+
+async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const c of stream) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+  return Buffer.concat(chunks);
+}

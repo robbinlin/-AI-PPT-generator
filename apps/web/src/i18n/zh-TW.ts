@@ -79,7 +79,7 @@ export const zhTW = {
     generateSpeech: "產生全部語音",
     generateAvatar: "產生人像",
     export: "匯出影片",
-    avatarDisabled: "請先在「設定」啟用虛擬人像",
+    avatarDisabled: "請先在右側「設定」的「虛擬人像」區打開「啟用虛擬人像」並選擇角色",
     avatarConfirmTitle: "產生虛擬人像",
     avatarConfirmBody: "虛擬人像是最昂貴的步驟，建議先確認講稿並試聽語音。將為語音已就緒的頁面產生人像。",
     avatarConfirmCost: "預估費用：{cost}",

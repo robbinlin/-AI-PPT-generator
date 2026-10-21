@@ -74,6 +74,13 @@ export function SettingsPanel({ actions }: { actions: Pick<EditorActions, "updat
       toast(`${t.settings.voiceListFailed}：${errorMessage(err)}`, "error");
     });
   }, [api, voiceProvider]);
+  // Same for avatar ids once the provider's list is known.
+  const currentAvatarId = project?.settings.avatar.avatarId;
+  useEffect(() => {
+    if (!project || avatars.length === 0 || avatars.some((a) => a.id === currentAvatarId)) return;
+    void actions.updateProject({ settings: { avatar: { ...project.settings.avatar, avatarId: avatars[0]!.id } } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [avatars, currentAvatarId]);
   // Voice ids are provider-specific: after switching providers, a leftover id (e.g. Gemini's
   // "Kore" sent to ElevenLabs) makes every synthesis fail, so snap to the first voice offered.
   const currentVoiceId = project?.settings.voice.voiceId;

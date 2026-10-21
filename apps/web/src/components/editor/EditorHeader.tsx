@@ -5,6 +5,7 @@ import type { EditorActions } from "../../hooks/useEditorActions";
 import { useCostEstimate } from "../../hooks/useCostEstimate";
 import { ACCEPTED_EXTENSIONS } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
+import { toast } from "../../store/toastStore";
 import { formatCost, formatDuration } from "../../lib/format";
 import { useEditor } from "../../store/editorStore";
 import { Button } from "../ui/Button";
@@ -89,9 +90,9 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
         <GenerateButton kind="synthesize_speech" icon={AudioLines} label={t.editor.generateSpeech} actions={actions} disabled={!hasSlides || busy("synthesize_speech")} />
         <Button
           icon={UserRound}
-          disabled={!hasSlides || !avatarEnabled || busy("generate_avatar")}
+          disabled={!hasSlides || busy("generate_avatar")}
           title={avatarEnabled ? undefined : t.editor.avatarDisabled}
-          onClick={() => setAvatarConfirm(true)}
+          onClick={() => (avatarEnabled ? setAvatarConfirm(true) : toast(t.editor.avatarDisabled, "info"))}
         >
           {t.editor.generateAvatar}
         </Button>

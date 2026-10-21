@@ -13,56 +13,58 @@ import { fetchJson, fetchWithRetry, type FetchOptions } from "../http.js";
 export const HEYGEN_BASE_URL = "https://api.heygen.com";
 
 /**
- * Every HeyGen request/response mapping lives in this file so a live test can
- * fix field names in one place. Shapes follow the public v2 docs as of 2026.
+ * HeyGen v3 API (v1/v2 are sunset on 2026-10-31). Every request/response mapping lives in
+ * this file so a live test can fix field names in one place.
+ *
+ * Audio is uploaded to HeyGen as an asset (`POST /v3/assets`) and referenced by id, so the
+ * API server never needs a publicly reachable URL; a plain `audioUrl` still works as fallback.
  */
 
 // ---------------------------------------------------------------- mapping --
 
-export const HEYGEN_DIMENSIONS: Record<AspectRatio, { width: number; height: number }> = {
-  "16:9": { width: 1280, height: 720 },
-  "9:16": { width: 720, height: 1280 },
-  "1:1": { width: 720, height: 720 },
-};
+export const HEYGEN_ASPECT: Record<AspectRatio, "16:9" | "9:16" | "1:1"> = { "16:9": "16:9", "9:16": "9:16", "1:1": "1:1" };
 
 /** Chroma-key green; the render worker keys it out when the provider has no alpha. */
 export const HEYGEN_CHROMA_BACKGROUND = "#00FF00";
 
 export interface HeyGenGenerateBody {
+  type: "avatar";
+  avatar_id: string;
+  audio_asset_id?: string;
+  audio_url?: string;
+  script?: string;
+  voice_id?: string;
+  aspect_ratio: "16:9" | "9:16" | "1:1";
+  resolution: "720p" | "1080p";
+  output_format: "mp4";
+  background: { type: "color"; value: string };
   title?: string;
-  caption: false;
-  dimension: { width: number; height: number };
-  video_inputs: Array<{
-    character: { type: "avatar"; avatar_id: string; avatar_style: "normal" | "circle" | "closeUp" };
-    voice: { type: "audio"; audio_url: string } | { type: "text"; input_text: string; voice_id: string };
-    background: { type: "color"; value: string };
-  }>;
   callback_id?: string;
 }
 
-export function buildHeyGenGenerateBody(req: AvatarCreateRequest): HeyGenGenerateBody {
-  if (!req.audioUrl && !req.text) throw new Error("heygen: audioUrl or text required");
-  if (req.text && !req.voiceId) throw new Error("heygen: voiceId required with text input");
-  const voice: HeyGenGenerateBody["video_inputs"][number]["voice"] = req.audioUrl
-    ? { type: "audio", audio_url: req.audioUrl }
-    : { type: "text", input_text: req.text!, voice_id: req.voiceId! };
+export function buildHeyGenGenerateBody(req: AvatarCreateRequest, audioAssetId?: string): HeyGenGenerateBody {
+  if (!audioAssetId && !req.audioUrl && !req.text) throw new Error("heygen: audio or text required");
+  if (req.text && !audioAssetId && !req.audioUrl && !req.voiceId) throw new Error("heygen: voiceId required with text input");
+  const source: Partial<HeyGenGenerateBody> = audioAssetId
+    ? { audio_asset_id: audioAssetId }
+    : req.audioUrl
+      ? { audio_url: req.audioUrl }
+      : { script: req.text!, voice_id: req.voiceId! };
   return {
-    caption: false,
-    dimension: HEYGEN_DIMENSIONS[req.aspectRatio],
-    video_inputs: [
-      {
-        character: { type: "avatar", avatar_id: req.avatarId, avatar_style: "normal" },
-        voice,
-        background: { type: "color", value: HEYGEN_CHROMA_BACKGROUND },
-      },
-    ],
-    ...(req.clientReference ? { callback_id: req.clientReference } : {}),
+    type: "avatar",
+    avatar_id: req.avatarId,
+    ...source,
+    aspect_ratio: HEYGEN_ASPECT[req.aspectRatio],
+    resolution: "720p",
+    output_format: "mp4",
+    background: { type: "color", value: HEYGEN_CHROMA_BACKGROUND },
+    ...(req.clientReference ? { callback_id: req.clientReference, title: `lvs ${req.clientReference}` } : {}),
   };
 }
 
 export interface HeyGenGenerateResponse {
-  error: null | { code?: string; message?: string };
-  data?: { video_id?: string } | null;
+  data?: { video_id?: string; status?: string } | null;
+  error?: null | { code?: string; message?: string };
 }
 
 export function mapHeyGenGenerateResponse(res: HeyGenGenerateResponse): { taskId: string } {
@@ -73,20 +75,18 @@ export function mapHeyGenGenerateResponse(res: HeyGenGenerateResponse): { taskId
 }
 
 export interface HeyGenStatusResponse {
-  code?: number;
-  message?: string;
   data?: {
     id?: string;
-    status?: "pending" | "waiting" | "processing" | "completed" | "failed";
+    status?: "pending" | "processing" | "completed" | "failed";
     video_url?: string | null;
     duration?: number | null;
-    error?: { message?: string; detail?: string } | string | null;
+    failure_code?: string | null;
+    failure_message?: string | null;
   };
 }
 
 export function mapHeyGenStatus(taskId: string, res: HeyGenStatusResponse): AvatarTaskStatus {
   const d = res.data ?? {};
-  const err = typeof d.error === "string" ? d.error : d.error?.message ?? d.error?.detail;
   switch (d.status) {
     case "completed":
       return {
@@ -97,37 +97,39 @@ export function mapHeyGenStatus(taskId: string, res: HeyGenStatusResponse): Avat
         ...(typeof d.duration === "number" ? { durationSec: d.duration } : {}),
       };
     case "failed":
-      return { taskId, status: "failed", error: err ?? "heygen: generation failed" };
+      return { taskId, status: "failed", error: d.failure_message ?? d.failure_code ?? "heygen: generation failed" };
     case "processing":
       return { taskId, status: "processing", progress: 0.5 };
     case "pending":
-    case "waiting":
     default:
       return { taskId, status: "queued", progress: 0 };
   }
 }
 
-export interface HeyGenAvatarsResponse {
-  data?: {
-    avatars?: Array<{ avatar_id: string; avatar_name: string; preview_image_url?: string; premium?: boolean }>;
-    talking_photos?: Array<{ talking_photo_id: string; talking_photo_name: string; preview_image_url?: string }>;
-  };
+export interface HeyGenLooksResponse {
+  data?: Array<{
+    id: string;
+    name: string;
+    avatar_type?: string;
+    preview_image_url?: string | null;
+    gender?: string | null;
+  }>;
+  has_more?: boolean;
+  next_token?: string | null;
 }
 
-export function mapHeyGenAvatars(res: HeyGenAvatarsResponse): AvatarCharacter[] {
-  const out: AvatarCharacter[] = [];
-  for (const a of res.data?.avatars ?? []) {
-    out.push({ id: a.avatar_id, name: a.avatar_name, kind: "stock", ...(a.preview_image_url ? { previewImageUrl: a.preview_image_url } : {}) });
-  }
-  for (const p of res.data?.talking_photos ?? []) {
-    out.push({
-      id: p.talking_photo_id,
-      name: p.talking_photo_name,
-      kind: "personal",
-      ...(p.preview_image_url ? { previewImageUrl: p.preview_image_url } : {}),
-    });
-  }
-  return out;
+export interface HeyGenAssetResponse {
+  data?: { asset_id?: string; url?: string };
+}
+
+/** Private looks (the user's own likeness) are labelled and listed before the public library. */
+export function mapHeyGenLooks(res: HeyGenLooksResponse, ownership: "private" | "public"): AvatarCharacter[] {
+  return (res.data ?? []).map((l) => ({
+    id: l.id,
+    name: ownership === "private" ? `我的人像・${l.name}` : l.name,
+    kind: ownership === "private" ? "personal" : "stock",
+    ...(l.preview_image_url ? { previewImageUrl: l.preview_image_url } : {}),
+  }));
 }
 
 // ---------------------------------------------------------------- provider --
@@ -154,27 +156,55 @@ export class HeyGenAvatarProvider implements AvatarProvider {
     this.baseUrl = (creds.baseUrl ?? HEYGEN_BASE_URL).replace(/\/$/, "");
   }
 
-  private headers(): Record<string, string> {
-    return { "x-api-key": this.apiKey, "content-type": "application/json", accept: "application/json" };
+  private headers(json = true): Record<string, string> {
+    return { "x-api-key": this.apiKey, accept: "application/json", ...(json ? { "content-type": "application/json" } : {}) };
   }
 
   async listAvatars(): Promise<AvatarCharacter[]> {
-    const res = await fetchJson<HeyGenAvatarsResponse>(`${this.baseUrl}/v2/avatars`, { ...this.fetchOpts, headers: this.headers() });
-    return mapHeyGenAvatars(res);
+    const out: AvatarCharacter[] = [];
+    for (const ownership of ["private", "public"] as const) {
+      let token: string | null | undefined;
+      for (let page = 0; page < 10; page++) {
+        const q = new URLSearchParams({ ownership, limit: "50" });
+        if (token) q.set("token", token);
+        const res = await fetchJson<HeyGenLooksResponse>(`${this.baseUrl}/v3/avatars/looks?${q}`, { ...this.fetchOpts, headers: this.headers() });
+        out.push(...mapHeyGenLooks(res, ownership));
+        token = res.next_token;
+        if (!res.has_more || !token) break;
+      }
+    }
+    return out;
+  }
+
+  /** Uploads audio bytes as a HeyGen asset; returns the asset id to reference from a video. */
+  async uploadAudio(data: Uint8Array, mimeType: string, fileName = "audio"): Promise<string> {
+    const form = new FormData();
+    form.append("file", new Blob([data], { type: mimeType }), fileName);
+    const res = await fetchJson<HeyGenAssetResponse>(`${this.baseUrl}/v3/assets`, {
+      ...this.fetchOpts,
+      method: "POST",
+      headers: this.headers(false),
+      body: form,
+      timeoutMs: this.fetchOpts.timeoutMs ?? 120_000,
+    });
+    const id = res.data?.asset_id;
+    if (!id) throw new Error("heygen: asset upload returned no asset_id");
+    return id;
   }
 
   async createTask(req: AvatarCreateRequest): Promise<{ taskId: string }> {
-    const res = await fetchJson<HeyGenGenerateResponse>(`${this.baseUrl}/v2/video/generate`, {
+    const assetId = req.audio ? await this.uploadAudio(req.audio.data, req.audio.mimeType, req.audio.fileName) : undefined;
+    const res = await fetchJson<HeyGenGenerateResponse>(`${this.baseUrl}/v3/videos`, {
       ...this.fetchOpts,
       method: "POST",
       headers: this.headers(),
-      body: JSON.stringify(buildHeyGenGenerateBody(req)),
+      body: JSON.stringify(buildHeyGenGenerateBody(req, assetId)),
     });
     return mapHeyGenGenerateResponse(res);
   }
 
   async getTask(taskId: string): Promise<AvatarTaskStatus> {
-    const res = await fetchJson<HeyGenStatusResponse>(`${this.baseUrl}/v1/video_status.get?video_id=${encodeURIComponent(taskId)}`, {
+    const res = await fetchJson<HeyGenStatusResponse>(`${this.baseUrl}/v3/videos/${encodeURIComponent(taskId)}`, {
       ...this.fetchOpts,
       headers: this.headers(),
     });
@@ -182,7 +212,7 @@ export class HeyGenAvatarProvider implements AvatarProvider {
   }
 
   async cancelTask(taskId: string): Promise<void> {
-    await fetchWithRetry(`${this.baseUrl}/v1/video.delete?video_id=${encodeURIComponent(taskId)}`, {
+    await fetchWithRetry(`${this.baseUrl}/v3/videos/${encodeURIComponent(taskId)}`, {
       ...this.fetchOpts,
       method: "DELETE",
       headers: this.headers(),

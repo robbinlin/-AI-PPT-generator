@@ -119,7 +119,9 @@ export interface AvatarCapabilities {
 export interface AvatarCreateRequest {
   avatarId: string;
   aspectRatio: AspectRatio;
-  /** Exactly one of audioUrl / text must be provided. Audio-driven is preferred. */
+  /** Audio bytes; providers that accept uploads use these and never need a public URL. */
+  audio?: { data: Uint8Array; mimeType: string; fileName?: string };
+  /** Public URL fallback for providers that only fetch audio. One of audio / audioUrl / text is required. */
   audioUrl?: string;
   text?: string;
   voiceId?: string;

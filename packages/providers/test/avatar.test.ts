@@ -4,24 +4,26 @@ import { describe, expect, it } from "vitest";
 import {
   buildHeyGenGenerateBody,
   HeyGenAvatarProvider,
-  mapHeyGenAvatars,
+  mapHeyGenLooks,
   mapHeyGenGenerateResponse,
   mapHeyGenStatus,
 } from "../src/avatar/heygen.js";
 import { MockAvatarProvider } from "../src/avatar/mock.js";
 
-describe("heygen mapping", () => {
-  it("builds an audio-driven generate body with chroma background", () => {
-    const b = buildHeyGenGenerateBody({ avatarId: "av1", aspectRatio: "16:9", audioUrl: "https://x/a.wav", clientReference: "job-1" });
-    expect(b.dimension).toEqual({ width: 1280, height: 720 });
-    expect(b.video_inputs[0]!.voice).toEqual({ type: "audio", audio_url: "https://x/a.wav" });
-    expect(b.video_inputs[0]!.background).toEqual({ type: "color", value: "#00FF00" });
+describe("heygen mapping (v3)", () => {
+  it("builds an avatar video body from an uploaded asset, a url, or text", () => {
+    const b = buildHeyGenGenerateBody({ avatarId: "av1", aspectRatio: "16:9", audioUrl: "https://x/a.wav", clientReference: "job-1" }, "asset-9");
+    expect(b).toMatchObject({ type: "avatar", avatar_id: "av1", audio_asset_id: "asset-9", aspect_ratio: "16:9", resolution: "720p", output_format: "mp4" });
+    expect(b.audio_url).toBeUndefined();
+    expect(b.background).toEqual({ type: "color", value: "#00FF00" });
     expect(b.callback_id).toBe("job-1");
+    expect(buildHeyGenGenerateBody({ avatarId: "a", aspectRatio: "9:16", audioUrl: "https://x/a.wav" })).toMatchObject({ audio_url: "https://x/a.wav", aspect_ratio: "9:16" });
+    expect(buildHeyGenGenerateBody({ avatarId: "a", aspectRatio: "1:1", text: "hi", voiceId: "v" })).toMatchObject({ script: "hi", voice_id: "v" });
     expect(() => buildHeyGenGenerateBody({ avatarId: "a", aspectRatio: "1:1" })).toThrow();
     expect(() => buildHeyGenGenerateBody({ avatarId: "a", aspectRatio: "1:1", text: "hi" })).toThrow(/voiceId/);
   });
-  it("maps generate/status/avatars responses", () => {
-    expect(mapHeyGenGenerateResponse({ error: null, data: { video_id: "vid" } })).toEqual({ taskId: "vid" });
+  it("maps generate/status/looks responses", () => {
+    expect(mapHeyGenGenerateResponse({ data: { video_id: "vid", status: "waiting" } })).toEqual({ taskId: "vid" });
     expect(() => mapHeyGenGenerateResponse({ error: { message: "quota" } })).toThrow(/quota/);
     expect(mapHeyGenStatus("vid", { data: { status: "completed", video_url: "u", duration: 12.5 } })).toEqual({
       taskId: "vid",
@@ -30,34 +32,63 @@ describe("heygen mapping", () => {
       resultUrl: "u",
       durationSec: 12.5,
     });
-    expect(mapHeyGenStatus("vid", { data: { status: "failed", error: { message: "boom" } } })).toMatchObject({ status: "failed", error: "boom" });
+    expect(mapHeyGenStatus("vid", { data: { status: "failed", failure_code: "rendering_failed", failure_message: "boom" } })).toMatchObject({ status: "failed", error: "boom" });
     expect(mapHeyGenStatus("vid", { data: { status: "pending" } }).status).toBe("queued");
     expect(mapHeyGenStatus("vid", { data: { status: "processing" } }).status).toBe("processing");
-    const avatars = mapHeyGenAvatars({
-      data: { avatars: [{ avatar_id: "a", avatar_name: "A", preview_image_url: "p" }], talking_photos: [{ talking_photo_id: "t", talking_photo_name: "T" }] },
-    });
-    expect(avatars).toEqual([
-      { id: "a", name: "A", kind: "stock", previewImageUrl: "p" },
-      { id: "t", name: "T", kind: "personal" },
+    expect(mapHeyGenLooks({ data: [{ id: "lk1", name: "Business Suit", preview_image_url: "p" }] }, "public")).toEqual([
+      { id: "lk1", name: "Business Suit", kind: "stock", previewImageUrl: "p" },
     ]);
+    expect(mapHeyGenLooks({ data: [{ id: "me", name: "Me" }] }, "private")).toEqual([{ id: "me", name: "我的人像・Me", kind: "personal" }]);
   });
-  it("sends x-api-key and hits documented endpoints", async () => {
+  it("uploads audio as an asset, then hits the v3 endpoints with x-api-key", async () => {
     const seen: string[] = [];
     const fetchImpl = (async (url: string, init: RequestInit) => {
-      seen.push(`${init.method ?? "GET"} ${url} ${(init.headers as Record<string, string>)["x-api-key"]}`);
-      if (url.includes("video/generate")) return new Response(JSON.stringify({ error: null, data: { video_id: "v9" } }));
-      if (url.includes("video_status.get")) return new Response(JSON.stringify({ data: { status: "processing" } }));
+      const h = init.headers as Record<string, string>;
+      seen.push(`${init.method ?? "GET"} ${url} ${h["x-api-key"]}`);
+      if (url.endsWith("/v3/assets")) {
+        expect(init.body).toBeInstanceOf(FormData);
+        expect(h["content-type"]).toBeUndefined(); // fetch sets the multipart boundary itself
+        const file = (init.body as FormData).get("file") as File;
+        expect(file.type).toBe("audio/mpeg");
+        return new Response(JSON.stringify({ data: { asset_id: "as1", url: "https://files/x.mp3" } }));
+      }
+      if (url.endsWith("/v3/videos")) {
+        expect(JSON.parse(init.body as string)).toMatchObject({ type: "avatar", audio_asset_id: "as1" });
+        return new Response(JSON.stringify({ data: { video_id: "v9", status: "waiting" } }));
+      }
+      if (url.includes("/v3/videos/v9") && init.method !== "DELETE") return new Response(JSON.stringify({ data: { id: "v9", status: "processing" } }));
+      if (url.includes("/v3/avatars/looks")) {
+        const u = new URL(url);
+        const own = u.searchParams.get("ownership");
+        const second = u.searchParams.get("token") === "t2";
+        return new Response(
+          JSON.stringify({
+            data: [{ id: `${own}-${second ? 2 : 1}`, name: own! }],
+            has_more: own === "public" && !second,
+            next_token: own === "public" && !second ? "t2" : null,
+          }),
+        );
+      }
       return new Response("{}");
     }) as unknown as typeof fetch;
     const p = new HeyGenAvatarProvider({ apiKey: "hg" }, { fetchImpl });
-    const { taskId } = await p.createTask({ avatarId: "a", aspectRatio: "16:9", audioUrl: "https://x/a.wav" });
+    const { taskId } = await p.createTask({
+      avatarId: "a",
+      aspectRatio: "16:9",
+      audio: { data: new Uint8Array([1, 2, 3]), mimeType: "audio/mpeg", fileName: "s.mp3" },
+      audioUrl: "https://x/a.mp3",
+    });
     expect(taskId).toBe("v9");
     expect((await p.getTask("v9")).status).toBe("processing");
     await p.cancelTask("v9");
-    expect(seen).toEqual([
-      "POST https://api.heygen.com/v2/video/generate hg",
-      "GET https://api.heygen.com/v1/video_status.get?video_id=v9 hg",
-      "DELETE https://api.heygen.com/v1/video.delete?video_id=v9 hg",
+    const looks = await p.listAvatars();
+    expect(looks.map((l) => l.id)).toEqual(["private-1", "public-1", "public-2"]);
+    expect(looks[0]!.kind).toBe("personal");
+    expect(seen.slice(0, 4)).toEqual([
+      "POST https://api.heygen.com/v3/assets hg",
+      "POST https://api.heygen.com/v3/videos hg",
+      "GET https://api.heygen.com/v3/videos/v9 hg",
+      "DELETE https://api.heygen.com/v3/videos/v9 hg",
     ]);
   });
 });
