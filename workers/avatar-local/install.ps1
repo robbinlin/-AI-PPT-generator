@@ -3,7 +3,8 @@
 # 可重複執行；已完成的步驟會略過。總下載量約 4 到 5 GB。
 $ErrorActionPreference = "Stop"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $Here
+Push-Location $Here
+trap { Pop-Location; break }
 $MuseTalkCommit = "0a89dec45a0192b824e3cf4daf96c239440c5ed8"
 
 function Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
@@ -12,8 +13,9 @@ function Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 Step "檢查 NVIDIA 驅動程式"
 $smi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
 if ($smi) {
-  $line = (& nvidia-smi | Select-String "Driver Version").ToString()
-  if ($line -match "Driver Version:\s*([\d.]+)") {
+  # nvidia-smi can print nothing (driver mid-update, remote session); never crash on it.
+  $out = try { (& nvidia-smi 2>$null | Out-String) } catch { "" }
+  if ($out -match "Driver Version:\s*([\d.]+)") {
     $ver = [double]($Matches[1].Split(".")[0])
     if ($ver -lt 520) { Write-Warning "驅動版本 $($Matches[1]) 太舊（需 520 以上才支援 CUDA 11.8）。請先到 https://www.nvidia.com/drivers 更新並重開機，否則只能用 CPU（非常慢）。" }
     else { Write-Host "驅動 $($Matches[1]) OK" }
@@ -70,3 +72,4 @@ Step "檢查 ffmpeg"
 if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { Write-Warning "找不到 ffmpeg，請安裝後確認 PATH（專案其他部分也需要它）。" } else { ffmpeg -version | Select-Object -First 1 }
 
 Write-Host "`n安裝完成。啟動服務：在專案根目錄執行  pnpm dev:avatar" -ForegroundColor Green
+Pop-Location

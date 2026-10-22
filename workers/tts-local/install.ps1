@@ -7,7 +7,8 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $Here
+Push-Location $Here
+trap { Pop-Location; break }
 function Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 
 $CosyVoiceCommit = "074ca6dc9e80a2f424f1f74b48bdd7d3fea531cc"
@@ -18,8 +19,9 @@ $FishSpeechCommit = "49374e0e95938d03ecbe7b3550e4f120104aaf82"
 Step "檢查 NVIDIA 驅動程式"
 $smi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
 if ($smi) {
-  $line = (& nvidia-smi | Select-String "Driver Version").ToString()
-  if ($line -match "Driver Version:\s*([\d.]+)") {
+  # nvidia-smi can print nothing (driver mid-update, remote session); never crash on it.
+  $out = try { (& nvidia-smi 2>$null | Out-String) } catch { "" }
+  if ($out -match "Driver Version:\s*([\d.]+)") {
     $ver = [double]($Matches[1].Split(".")[0])
     if ($ver -lt 525) { Write-Warning "驅動版本 $($Matches[1]) 太舊（CUDA 12 需 525 以上）。請先到 https://www.nvidia.com/drivers 更新並重開機。" }
     else { Write-Host "驅動 $($Matches[1]) OK" }
@@ -111,3 +113,4 @@ foreach ($e in $Engines.Split(",")) {
 Step "檢查 ffmpeg"
 if (Get-Command ffmpeg -ErrorAction SilentlyContinue) { ffmpeg -version | Select-Object -First 1 } else { Write-Warning "找不到 ffmpeg，請安裝後確認 PATH" }
 Write-Host "`n安裝完成。啟動服務：pnpm dev:tts" -ForegroundColor Green
+Pop-Location
