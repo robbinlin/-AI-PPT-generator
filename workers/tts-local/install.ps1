@@ -21,7 +21,8 @@ $smi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
 if ($smi) {
   # nvidia-smi can print nothing (driver mid-update, remote session); never crash on it.
   $out = try { (& nvidia-smi 2>$null | Out-String) } catch { "" }
-  if ($out -match "Driver Version:\s*([\d.]+)") {
+  # Newer drivers (600+) print "KMD Version" instead of "Driver Version".
+  if ($out -match "(?:Driver|KMD) Version:\s*([\d.]+)") {
     $ver = [double]($Matches[1].Split(".")[0])
     if ($ver -lt 525) { Write-Warning "驅動版本 $($Matches[1]) 太舊（CUDA 12 需 525 以上）。請先到 https://www.nvidia.com/drivers 更新並重開機。" }
     else { Write-Host "驅動 $($Matches[1]) OK" }
