@@ -176,6 +176,7 @@ export const zhTW = {
     voiceId: "聲音",
     previewVoice: "試聽",
     uploadVoice: "上傳我的聲音",
+    noCustomVoices: "還沒有聲音可用：請先按下方「上傳我的聲音」上傳一段錄音。",
     uploadVoiceHint: "3 到 60 秒、安靜環境的清晰錄音（wav/mp3/m4a），一個人用平常講課的語氣說話。上傳後會自動聽寫內容。",
     uploadingVoice: "上傳與分析中…",
     voiceUploaded: "聲音已上傳",

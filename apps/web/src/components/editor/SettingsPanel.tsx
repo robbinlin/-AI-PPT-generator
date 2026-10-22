@@ -299,6 +299,8 @@ export function SettingsPanel({
                 options={withCurrent(voices, s.voice.voiceId)}
                 onChange={(voiceId) => setVoice({ voiceId })}
               />
+            ) : providers.find((p) => p.kind === "tts" && p.id === s.voice.providerId)?.customVoices ? (
+              <p className="py-1.5 text-xs text-amber-300/90">{t.settings.noCustomVoices}</p>
             ) : (
               <CommitText
                 label={t.settings.voiceId}
