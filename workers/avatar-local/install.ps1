@@ -1,4 +1,4 @@
-# 本機人像（MuseTalk）安裝腳本 — Windows PowerShell
+﻿# 本機人像（MuseTalk）安裝腳本 — Windows PowerShell
 # 用法：在 PowerShell 進到專案資料夾後執行  .\workers\avatar-local\install.ps1
 # 可重複執行；已完成的步驟會略過。總下載量約 4 到 5 GB。
 $ErrorActionPreference = "Stop"

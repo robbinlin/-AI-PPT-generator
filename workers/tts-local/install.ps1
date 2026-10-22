@@ -1,4 +1,4 @@
-# 本機語音安裝腳本 — Windows PowerShell
+﻿# 本機語音安裝腳本 — Windows PowerShell
 # 用法：.\workers\tts-local\install.ps1 [-Engines cosyvoice2,gptsovits,fishspeech] [-Device cu118|cu121|cpu]
 # 可重複執行；已完成的步驟會略過。三個引擎全裝約下載 8 GB。
 param(
