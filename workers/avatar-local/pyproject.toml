@@ -10,6 +10,9 @@ dependencies = [
   "numpy>=1.23",
   "opencv-python-headless>=4.9",
   "soundfile>=0.12",
+  # person matting so local avatars get the same clean cut-out as HeyGen (u2net_human_seg)
+  "rembg>=2.0.60",
+  "onnxruntime>=1.17",
 ]
 
 [project.optional-dependencies]

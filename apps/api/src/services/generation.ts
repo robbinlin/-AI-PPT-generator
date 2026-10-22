@@ -67,7 +67,8 @@ const PRESETS: Record<string, Record<ProjectSettings["aspectRatio"], { width: nu
 const AUDIO_EXT: Record<string, string> = { "audio/wav": "wav", "audio/x-wav": "wav", "audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/ogg": "ogg" };
 
 /** Providers whose avatar clips come on a green screen instead of an alpha channel. */
-const CHROMA_KEY_BY_PROVIDER: Record<string, string> = { heygen: "#00FF00" };
+// The local worker composites its own person matte onto the same green (lvs_avatar/matting.py).
+const CHROMA_KEY_BY_PROVIDER: Record<string, string> = { heygen: "#00FF00", local: "#00FF00" };
 
 /** Hold time for a muted scene with no narration. */
 const MUTED_SCENE_SEC = 3;

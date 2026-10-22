@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from . import __version__
+from . import __version__, matting
 from .engines import select_engine
 from .store import CharacterStore, Task, TaskQueue, default_data_dir
 
@@ -43,7 +43,14 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
 
     @app.get("/health")
     def health():
-        return {"ok": True, "engine": engine.name, "device": engine.device, "modelsReady": engine.models_ready(), "version": __version__}
+        return {
+            "ok": True,
+            "engine": engine.name,
+            "device": engine.device,
+            "modelsReady": engine.models_ready(),
+            "matting": matting.enabled() and matting.available(),
+            "version": __version__,
+        }
 
     @app.get("/characters")
     def list_characters():

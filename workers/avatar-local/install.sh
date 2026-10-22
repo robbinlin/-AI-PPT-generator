@@ -31,6 +31,7 @@ uv pip install --python $PY "numpy==1.26.4"
 $PY -c "import xtcocotools.mask" 2>/dev/null || $PY -m pip install --no-build-isolation --no-binary xtcocotools --force-reinstall --no-deps "xtcocotools==1.14.3"
 step "安裝本機人像服務 (lvs_avatar)"
 uv pip install --python $PY -e ".[test]"
+step "下載去背模型 (u2net_human_seg, 約 170 MB)"; $PY -c "from rembg import new_session; new_session('u2net_human_seg'); print('去背模型 OK')"
 step "下載模型權重到 vendor/MuseTalk/models"
 $PY download_weights.py
 step "檢查 ffmpeg"

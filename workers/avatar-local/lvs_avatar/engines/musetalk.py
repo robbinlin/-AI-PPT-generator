@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import glob
+import json
 import logging
 import os
 import pickle
@@ -20,7 +21,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .. import ffmpeg
+from .. import ffmpeg, matting
 from . import Report
 
 log = logging.getLogger("lvs_avatar")
@@ -124,6 +125,7 @@ class MuseTalkEngine:
         get_landmark_and_bbox = self._mods["preprocessing"].get_landmark_and_bbox
         done = cache / "prepared.json"
         if done.is_file():
+            meta = json.loads(done.read_text("utf-8") or "{}")
             frame_list = [cv2.imread(p) for p in sorted(glob.glob(str(cache / "full_imgs" / "*.png")))]
             masks = [cv2.imread(p) for p in sorted(glob.glob(str(cache / "mask" / "*.png")))]
             with open(cache / "coords.pkl", "rb") as f:
@@ -131,7 +133,10 @@ class MuseTalkEngine:
             with open(cache / "mask_coords.pkl", "rb") as f:
                 mask_coords = pickle.load(f)
             latents = torch.load(cache / "latents.pt", map_location="cpu")
-            return dict(frames=frame_list, coords=coords, latents=latents, masks=masks, mask_coords=mask_coords)
+            if "source_idx" in meta and len(meta["source_idx"]) == len(frame_list):
+                return dict(frames=frame_list, coords=coords, latents=latents, masks=masks, mask_coords=mask_coords, source_idx=meta["source_idx"])
+            # Cache from before source indices were recorded: rebuild so mattes line up.
+            shutil.rmtree(cache, ignore_errors=True)
 
         shutil.rmtree(cache, ignore_errors=True)
         (cache / "full_imgs").mkdir(parents=True)
@@ -140,8 +145,8 @@ class MuseTalkEngine:
         coord_list, frame_list = get_landmark_and_bbox([str(p) for p in frames], 0)
         placeholder = (0.0, 0.0, 0.0, 0.0)
         latents = []
-        keep_coords, keep_frames = [], []
-        for bbox, frame in zip(coord_list, frame_list):
+        keep_coords, keep_frames, keep_idx = [], [], []
+        for src_i, (bbox, frame) in enumerate(zip(coord_list, frame_list)):
             if bbox == placeholder:
                 continue  # no face in this frame: drop it so coords and latents stay aligned
             x1, y1, x2, y2 = bbox
@@ -150,11 +155,13 @@ class MuseTalkEngine:
             latents.append(m["vae"].get_latents_for_unet(crop))
             keep_coords.append([x1, y1, x2, y2])
             keep_frames.append(frame)
+            keep_idx.append(src_i)
         if not latents:
             raise ValueError("no face detected in the character source; use a clear, front-facing photo or video")
         frame_cycle = keep_frames + keep_frames[::-1]
         coord_cycle = keep_coords + keep_coords[::-1]
         latent_cycle = latents + latents[::-1]
+        source_idx = keep_idx + keep_idx[::-1]  # which source frame (and therefore which matte) each cycle entry uses
         masks, mask_coords = [], []
         for i, frame in enumerate(frame_cycle):
             cv2.imwrite(str(cache / "full_imgs" / f"{i:08d}.png"), frame)
@@ -168,8 +175,8 @@ class MuseTalkEngine:
         with open(cache / "mask_coords.pkl", "wb") as f:
             pickle.dump(mask_coords, f)
         torch.save(latent_cycle, cache / "latents.pt")
-        done.write_text("{}", "utf-8")
-        return dict(frames=frame_cycle, coords=coord_cycle, latents=latent_cycle, masks=masks, mask_coords=mask_coords)
+        done.write_text(json.dumps({"source_idx": source_idx}), "utf-8")
+        return dict(frames=frame_cycle, coords=coord_cycle, latents=latent_cycle, masks=masks, mask_coords=mask_coords, source_idx=source_idx)
 
     # --------------------------------------------------------------- inference --
 
@@ -180,9 +187,12 @@ class MuseTalkEngine:
         get_image_blending = self._mods["blending"].get_image_blending
         datagen = self._mods["utils"].datagen
         prep = self._prepare(frames, character_dir / "musetalk", m, report)
+        # Person mattes (cached per character) so the clip is composited onto chroma green.
+        matte_paths = matting.ensure_masks(frames, character_dir, lambda f: report(0.15 + 0.05 * f))
+        mattes = matting.load_masks(matte_paths) if matte_paths else None
         wav = work_dir / "audio16k.wav"
         ffmpeg.to_wav16k(audio, wav)
-        report(0.16)
+        report(0.2)
 
         feats, librosa_len = m["audio_processor"].get_audio_feature(str(wav), weight_dtype=m["dtype"])
         chunks = m["audio_processor"].get_whisper_chunk(
@@ -207,9 +217,11 @@ class MuseTalkEngine:
                     x1, y1, x2, y2 = prep["coords"][k]
                     face = cv2.resize(res.astype(np.uint8), (x2 - x1, y2 - y1))
                     combined = get_image_blending(copy.deepcopy(prep["frames"][k]), face, prep["coords"][k], prep["masks"][k], prep["mask_coords"][k])
+                    if mattes:
+                        combined = matting.apply(combined, mattes[prep["source_idx"][k]])
                     cv2.imwrite(str(tmp / f"{idx:08d}.png"), combined)
                     idx += 1
-                report(0.16 + 0.8 * (b + 1) / total_batches)
+                report(0.2 + 0.76 * (b + 1) / total_batches)
         rendered = sorted(tmp.glob("*.png"))
         ffmpeg.frames_to_video(rendered, audio, out)
         shutil.rmtree(tmp, ignore_errors=True)

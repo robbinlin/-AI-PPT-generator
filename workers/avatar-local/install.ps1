@@ -72,6 +72,8 @@ Step "固定 numpy 1.26.4 並檢查編譯套件相容性"
 if ($LASTEXITCODE -ne 0) { Write-Host "xtcocotools 與 numpy 不相容，重新編譯（需要 Visual C++ Build Tools）"; & $Py -m pip install --no-build-isolation --no-binary xtcocotools --force-reinstall --no-deps "xtcocotools==1.14.3" }
 Step "安裝本機人像服務 (lvs_avatar)"
 & $Uv pip install --python $Py -e ".[test]"
+Step "下載去背模型 (u2net_human_seg, 約 170 MB)"
+& $Py -c "from rembg import new_session; new_session('u2net_human_seg'); print('去背模型 OK')"
 
 # ---- 5. 模型權重（約 3.5 GB） -------------------------------------------------
 Step "下載模型權重到 vendor\MuseTalk\models"
