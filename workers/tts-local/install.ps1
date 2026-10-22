@@ -58,7 +58,8 @@ Step "建立主服務虛擬環境 (.venv, Python 3.11)"
 if (-not (Test-Path ".venv\Scripts\python.exe")) { & $Uv venv --seed --python 3.11 .venv }
 $Py = Join-Path $Here ".venv\Scripts\python.exe"
 & $Uv pip install --python $Py -e ".[test]" huggingface_hub
-if ($Device -ne "cpu") { & $Uv pip install --python $Py "nvidia-cublas-cu12" "nvidia-cudnn-cu12"   # CTranslate2 (Whisper on GPU) needs these DLLs on Windows }
+# CTranslate2 (Whisper on GPU) needs the cuBLAS/cuDNN DLLs; the pip wheels provide them on Windows.
+if ($Device -ne "cpu") { & $Uv pip install --python $Py "nvidia-cublas-cu12" "nvidia-cudnn-cu12" }
 Step "下載 Whisper small 模型"
 & $Py -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8'); print('Whisper OK')"
 
