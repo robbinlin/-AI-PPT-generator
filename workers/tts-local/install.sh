@@ -41,6 +41,8 @@ install_engine() {
       step "[GPT-SoVITS] 取得原始碼"; [ -d vendor/GPT-SoVITS/GPT_SoVITS ] || { mkdir -p vendor; git clone https://github.com/RVC-Boss/GPT-SoVITS.git vendor/GPT-SoVITS; }
       git -C vendor/GPT-SoVITS checkout -q "$GPTSOVITS_COMMIT"
       step "[GPT-SoVITS] 相依套件"; uv pip install --python "$epy" -r vendor/GPT-SoVITS/extra-req.txt --no-deps; uv pip install --python "$epy" -r requirements.txt
+      # jieba_fast (C extension) is replaced by a shim over plain jieba, same as on Windows
+      site=$("$epy" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])'); cp -r shims/jieba_fast "$site/"
       step "[GPT-SoVITS] 英文 G2P 需要的 NLTK 資料"; "$epy" -c "import nltk; nltk.download('averaged_perceptron_tagger_eng', quiet=True); nltk.download('cmudict', quiet=True)" ;;
     fishspeech)
       step "[Fish Speech] Python 3.12 虛擬環境"; [ -x "$epy" ] || uv venv --seed --python 3.12 .venv

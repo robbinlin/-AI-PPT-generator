@@ -18,7 +18,7 @@ peft<0.18.0
 chardet
 PyYAML
 psutil
-jieba_fast
+# jieba_fast (C extension, no Windows wheels) is replaced by the shim in ./shims/jieba_fast
 jieba
 split-lang
 fast_langdetect>=0.3.1

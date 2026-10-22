@@ -52,14 +52,17 @@ if (-not $Uv) {
 }
 if (-not $Uv) { throw "找不到 uv。請手動安裝：在 PowerShell 執行  irm https://astral.sh/uv/install.ps1 | iex  後重新開一個視窗再跑本腳本。" }
 Write-Host "uv: $Uv  $(& $Uv --version)"
+# Native commands do not stop the script on failure; check every uv/pip/mim step explicitly.
+function Uv { & $Uv @args; if ($LASTEXITCODE -ne 0) { throw "uv 失敗 (exit $LASTEXITCODE)：uv $($args -join ' ')" } }
+function Run($exe) { & $exe @args; if ($LASTEXITCODE -ne 0) { throw "$([IO.Path]::GetFileName($exe)) 失敗 (exit $LASTEXITCODE)：$($args -join ' ')" } }
 
 # ---- 2. 主服務 (Python 3.11 + Whisper) ---------------------------------------
 Step "建立主服務虛擬環境 (.venv, Python 3.11)"
 if (-not (Test-Path ".venv\Scripts\python.exe")) { & $Uv venv --seed --python 3.11 .venv }
 $Py = Join-Path $Here ".venv\Scripts\python.exe"
-& $Uv pip install --python $Py -e ".[test]" huggingface_hub
+Uv pip install --python $Py -e ".[test]" huggingface_hub
 # CTranslate2 (Whisper on GPU) needs the cuBLAS/cuDNN DLLs; the pip wheels provide them on Windows.
-if ($Device -ne "cpu") { & $Uv pip install --python $Py "nvidia-cublas-cu12" "nvidia-cudnn-cu12" }
+if ($Device -ne "cpu") { Uv pip install --python $Py "nvidia-cublas-cu12" "nvidia-cudnn-cu12" }
 Step "下載 Whisper small 模型"
 & $Py -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8'); print('Whisper OK')"
 
@@ -74,29 +77,32 @@ function Install-Engine($name) {
       Step "[CosyVoice 2] Python 3.10 虛擬環境"
       if (-not (Test-Path $EPy)) { & $Uv venv --seed --python 3.10 .venv }
       Step "[CosyVoice 2] PyTorch 2.3.1 ($Device)"
-      & $Uv pip install --python $EPy "torch==2.3.1" "torchaudio==2.3.1" --index-url $TorchIndex
+      Uv pip install --python $EPy "torch==2.3.1" "torchaudio==2.3.1" --index-url $TorchIndex
       Step "[CosyVoice 2] 取得原始碼"
       if (-not (Test-Path "vendor\CosyVoice\cosyvoice")) { New-Item -ItemType Directory -Force vendor | Out-Null; git clone --recursive https://github.com/FunAudioLLM/CosyVoice.git vendor\CosyVoice }
       Push-Location vendor\CosyVoice; git checkout -q $CosyVoiceCommit; git submodule update --init --recursive; Pop-Location
       Step "[CosyVoice 2] 相依套件"
-      & $Uv pip install --python $EPy "setuptools<81" wheel "numpy==1.26.4"
-      & $Uv pip install --python $EPy --no-build-isolation "openai-whisper==20231117"   # its build needs pkg_resources
-      & $Uv pip install --python $EPy -r requirements.txt
-      if ($Device -ne "cpu") { & $Uv pip install --python $EPy "onnxruntime-gpu==1.18.0" }
+      Uv pip install --python $EPy "setuptools<81" wheel "numpy==1.26.4"
+      Uv pip install --python $EPy --no-build-isolation "openai-whisper==20231117"   # its build needs pkg_resources
+      Uv pip install --python $EPy -r requirements.txt
+      if ($Device -ne "cpu") { Uv pip install --python $EPy "onnxruntime-gpu==1.18.0" }
     }
     "gptsovits" {
       Step "[GPT-SoVITS] Python 3.10 虛擬環境"
       if (-not (Test-Path $EPy)) { & $Uv venv --seed --python 3.10 .venv }
       Step "[GPT-SoVITS] PyTorch ($Device)"
-      & $Uv pip install --python $EPy torch torchaudio torchcodec --index-url $TorchIndex
+      Uv pip install --python $EPy torch torchaudio torchcodec --index-url $TorchIndex
       Step "[GPT-SoVITS] 取得原始碼"
       if (-not (Test-Path "vendor\GPT-SoVITS\GPT_SoVITS")) { New-Item -ItemType Directory -Force vendor | Out-Null; git clone https://github.com/RVC-Boss/GPT-SoVITS.git vendor\GPT-SoVITS }
       Push-Location vendor\GPT-SoVITS; git checkout -q $GptSovitsCommit; Pop-Location
       Step "[GPT-SoVITS] 相依套件"
-      & $Uv pip install --python $EPy -r vendor\GPT-SoVITS\extra-req.txt --no-deps
-      & $Uv pip install --python $EPy -r requirements.txt
+      Uv pip install --python $EPy -r vendor\GPT-SoVITS\extra-req.txt --no-deps
+      Uv pip install --python $EPy -r requirements.txt
+      # jieba_fast has no Windows wheels (needs Visual C++); ship a shim that maps it onto plain jieba.
+      $site = Join-Path $venv "Lib\site-packages"
+      Copy-Item -Recurse -Force (Join-Path $dir "shims\jieba_fast") (Join-Path $site "jieba_fast")
       Step "[GPT-SoVITS] 英文 G2P 需要的 NLTK 資料"
-      & $EPy -c "import nltk; nltk.download('averaged_perceptron_tagger_eng', quiet=True); nltk.download('cmudict', quiet=True)"
+      Run $EPy -c "import nltk; nltk.download('averaged_perceptron_tagger_eng', quiet=True); nltk.download('cmudict', quiet=True)"
     }
     "fishspeech" {
       Step "[Fish Speech] Python 3.12 虛擬環境"
@@ -107,9 +113,9 @@ function Install-Engine($name) {
       # transformers needs torch >= 2.6; 2.6 ships for cpu / cu124 / cu126
       $FishIndex = if ($Device -eq "cpu") { "https://download.pytorch.org/whl/cpu" } else { "https://download.pytorch.org/whl/cu124" }
       Step "[Fish Speech] PyTorch 2.6.0 與相依套件"
-      & $Uv pip install --python $EPy "torch==2.6.0" "torchaudio==2.6.0" --index-url $FishIndex
-      & $Uv pip install --python $EPy -r requirements.txt            # deps minus pyaudio/gradio/wandb
-      & $Uv pip install --python $EPy --no-deps -e vendor\fish-speech
+      Uv pip install --python $EPy "torch==2.6.0" "torchaudio==2.6.0" --index-url $FishIndex
+      Uv pip install --python $EPy -r requirements.txt            # deps minus pyaudio/gradio/wandb
+      Uv pip install --python $EPy --no-deps -e vendor\fish-speech
       if (-not $env:HF_TOKEN) { Write-Warning "未設定 HF_TOKEN：openaudio-s1-mini 需要先在 Hugging Face 同意條款並建立 token，否則下載會失敗。" }
     }
   }
