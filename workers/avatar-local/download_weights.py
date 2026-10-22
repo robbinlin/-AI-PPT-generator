@@ -41,6 +41,17 @@ def main() -> int:
         if got != target:
             target.parent.mkdir(parents=True, exist_ok=True)
             got.replace(target)
+    # MuseTalk's face detector (S3FD) otherwise fetches its 86 MB weights from adrianbulat.com on
+    # the first avatar job, which looks like a hang on a slow link. Put the file where
+    # sfd_detector.py looks first (next to the module) so first use is instant.
+    sfd = MODELS.parent / "musetalk" / "utils" / "face_detection" / "detection" / "sfd" / "s3fd.pth"
+    if not (sfd.is_file() and sfd.stat().st_size > 80_000_000):
+        print("  下載 S3FD 人臉偵測權重 (s3fd-619a316812.pth, 86 MB) ...", flush=True)
+        import urllib.request
+
+        tmp = sfd.with_suffix(".pth.part")
+        urllib.request.urlretrieve("https://www.adrianbulat.com/downloads/python-fan/s3fd-619a316812.pth", tmp)
+        tmp.replace(sfd)
     print(f"模型權重就緒：{MODELS}")
     return 0
 

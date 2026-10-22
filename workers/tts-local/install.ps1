@@ -97,7 +97,11 @@ function Install-Engine($name) {
       Push-Location vendor\GPT-SoVITS; git checkout -q $GptSovitsCommit; Pop-Location
       Step "[GPT-SoVITS] 相依套件"
       Uv pip install --python $EPy -r vendor\GPT-SoVITS\extra-req.txt --no-deps
-      Uv pip install --python $EPy -r requirements.txt
+      # pyopenjtalk (Japanese G2P) has no Windows wheels and needs CMake + Visual C++; it is only
+      # imported for Japanese text, which this app never sends, so it is skipped on Windows.
+      $reqWin = Join-Path $env:TEMP "gptsovits-requirements-win.txt"
+      Get-Content requirements.txt | Where-Object { $_ -notmatch '^\s*pyopenjtalk' } | Set-Content -Encoding ascii $reqWin
+      Uv pip install --python $EPy -r $reqWin
       # jieba_fast has no Windows wheels (needs Visual C++); ship a shim that maps it onto plain jieba.
       $site = Join-Path $venv "Lib\site-packages"
       Copy-Item -Recurse -Force (Join-Path $dir "shims\jieba_fast") (Join-Path $site "jieba_fast")
