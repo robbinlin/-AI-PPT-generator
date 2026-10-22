@@ -42,3 +42,5 @@ workers/tts-local/engines/*/models/
 workers/tts-local/engines/*/vendor/
 data/tts-local/
 *.egg-info/
+
+*.egg-info/
