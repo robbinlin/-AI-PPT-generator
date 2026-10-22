@@ -11,6 +11,7 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm build:libs && pnpm -r test",
+    "dev": "node scripts/dev-all.mjs",
     "dev:api": "pnpm build:libs && pnpm --filter @lvs/api dev",
     "dev:web": "pnpm --filter @lvs/shared build && pnpm --filter @lvs/web dev",
     "dev:avatar": "node workers/avatar-local/start.mjs",

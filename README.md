@@ -21,6 +21,37 @@ pnpm dev:web                    # http://localhost:5173
 
 Optional: `docker compose up -d` for PostgreSQL + MinIO and set `DATABASE_URL`.
 
+## Windows 快速啟動（中文）
+
+第一次安裝（PowerShell，在專案資料夾內）：
+
+```powershell
+pnpm install
+Copy-Item .env.example .env          # 用記事本填入 GEMINI_API_KEY；其他金鑰可在網頁「服務供應商」頁貼上
+pip install -r workers\parser\requirements.txt
+pnpm build
+.\workers\tts-local\install.ps1      # 選用：本機語音（CosyVoice 2 / GPT-SoVITS / Fish Speech，約 13 GB）
+.\workers\avatar-local\install.ps1   # 選用：本機人像（MuseTalk，約 5 GB，需要 NVIDIA 顯示卡）
+```
+
+之後每次使用只要一行，它會幫你開好四個視窗（已經在跑的會略過）：
+
+```powershell
+pnpm dev
+```
+
+瀏覽器開 http://localhost:5173 。要停止就關掉對應的視窗。
+
+| 視窗 | 服務 | 什麼時候需要 |
+|---|---|---|
+| A | API（http://localhost:4000） | 一定要 |
+| B | 網頁（http://localhost:5173） | 一定要 |
+| C | 本機人像 MuseTalk（8765） | 人像供應商選「本機人像」時 |
+| D | 本機語音 + Whisper（8766） | 語音供應商選「本機語音」時 |
+
+免費方案：講稿用 Gemini（免費額度），語音用「本機語音」上傳自己的錄音複製聲音，人像用「本機人像」上傳自己的照片或短片。
+付費方案（品質較高、不占用自己的電腦）：ElevenLabs 語音、HeyGen 人像，金鑰貼在「服務供應商」頁即可。
+
 ## Workspace
 
 ```
