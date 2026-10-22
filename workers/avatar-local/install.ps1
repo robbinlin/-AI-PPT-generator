@@ -25,23 +25,33 @@ if ($smi) {
 
 # ---- 1. uv（負責下載 Python 3.10 與建立虛擬環境） ---------------------------
 Step "安裝 uv"
-if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
-  try { winget install --id astral-sh.uv -e --silent --accept-package-agreements --accept-source-agreements | Out-Null }
-  catch { powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex" }
-  $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
+function Find-Uv {
+  $cmd = Get-Command uv -ErrorAction SilentlyContinue
+  if ($cmd) { return $cmd.Source }
+  foreach ($c in @("$env:USERPROFILE\.local\bin\uv.exe", "$env:LOCALAPPDATA\Microsoft\WinGet\Links\uv.exe", "$env:LOCALAPPDATA\Programs\uv\uv.exe")) {
+    if (Test-Path $c) { return $c }
+  }
+  return $null
 }
-uv --version
+$Uv = Find-Uv
+if (-not $Uv) {
+  # The official installer puts uv in ~\.local\bin; winget's copy only appears on PATH in a new window.
+  powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+  $Uv = Find-Uv
+}
+if (-not $Uv) { throw "找不到 uv。請手動安裝：在 PowerShell 執行  irm https://astral.sh/uv/install.ps1 | iex  後重新開一個視窗再跑本腳本。" }
+Write-Host "uv: $Uv  $(& $Uv --version)"
 
 # ---- 2. Python 3.10 虛擬環境 -------------------------------------------------
 Step "建立 Python 3.10 虛擬環境 (.venv)"
-if (-not (Test-Path ".venv\Scripts\python.exe")) { uv venv --seed --python 3.10 .venv }
+if (-not (Test-Path ".venv\Scripts\python.exe")) { & $Uv venv --seed --python 3.10 .venv }
 $Py = Join-Path $Here ".venv\Scripts\python.exe"
 
 # ---- 3. PyTorch 2.0.1 (CUDA 11.8) + OpenMMLab 套件 ----------------------------
 Step "安裝 PyTorch 2.0.1 (CUDA 11.8)"
-uv pip install --python $Py "torch==2.0.1" "torchvision==0.15.2" "torchaudio==2.0.2" --index-url https://download.pytorch.org/whl/cu118
+& $Uv pip install --python $Py "torch==2.0.1" "torchvision==0.15.2" "torchaudio==2.0.2" --index-url https://download.pytorch.org/whl/cu118
 Step "安裝 OpenMMLab (mmcv 2.0.1 / mmdet 3.1.0 / mmpose 1.1.0)"
-uv pip install --python $Py -U "setuptools<81" wheel openmim
+& $Uv pip install --python $Py -U "setuptools<81" wheel openmim
 & $Py -m mim install mmengine "mmcv==2.0.1" "mmdet==3.1.0"
 # chumpy (an mmpose dependency) imports pip inside its build, which breaks under build isolation
 & $Py -m pip install --no-build-isolation chumpy
@@ -55,13 +65,13 @@ if (-not (Test-Path "vendor\MuseTalk\musetalk")) {
 }
 Push-Location vendor\MuseTalk; git checkout -q $MuseTalkCommit; Pop-Location
 Step "安裝 MuseTalk 相依套件"
-uv pip install --python $Py "diffusers==0.30.2" "accelerate==0.28.0" "numpy==1.26.4" "opencv-python==4.9.0.80" "soundfile==0.12.1" "transformers==4.39.2" "huggingface_hub==0.30.2" "librosa==0.11.0" "einops==0.8.1" requests "imageio[ffmpeg]" omegaconf ffmpeg-python tqdm gdown
+& $Uv pip install --python $Py "diffusers==0.30.2" "accelerate==0.28.0" "numpy==1.26.4" "opencv-python==4.9.0.80" "soundfile==0.12.1" "transformers==4.39.2" "huggingface_hub==0.30.2" "librosa==0.11.0" "einops==0.8.1" requests "imageio[ffmpeg]" omegaconf ffmpeg-python tqdm gdown
 Step "固定 numpy 1.26.4 並檢查編譯套件相容性"
-uv pip install --python $Py "numpy==1.26.4"
+& $Uv pip install --python $Py "numpy==1.26.4"
 & $Py -c "import xtcocotools.mask"
 if ($LASTEXITCODE -ne 0) { Write-Host "xtcocotools 與 numpy 不相容，重新編譯（需要 Visual C++ Build Tools）"; & $Py -m pip install --no-build-isolation --no-binary xtcocotools --force-reinstall --no-deps "xtcocotools==1.14.3" }
 Step "安裝本機人像服務 (lvs_avatar)"
-uv pip install --python $Py -e ".[test]"
+& $Uv pip install --python $Py -e ".[test]"
 
 # ---- 5. 模型權重（約 3.5 GB） -------------------------------------------------
 Step "下載模型權重到 vendor\MuseTalk\models"
