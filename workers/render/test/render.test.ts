@@ -104,7 +104,7 @@ describe("render (real ffmpeg)", () => {
         durationSec: 2,
         avatar: {
           videoPath: avatar,
-          layout: { shape: "circle", anchor: "bottom-right", size: 0.3, margin: 0.03, visible: true },
+          layout: { shape: "circle", anchor: "bottom-right", size: 0.3, margin: 0.03, visible: true, slideScale: 1, slideAlign: "center" },
         },
       },
     ]);
@@ -151,7 +151,7 @@ describe("render (real ffmpeg)", () => {
         avatar: {
           videoPath: avatar,
           chromaKey: "#00FF00",
-          layout: { shape: "rect", anchor: "bottom-right", size: 0.5, margin: 0, visible: true },
+          layout: { shape: "rect", anchor: "bottom-right", size: 0.5, margin: 0, visible: true, slideScale: 1, slideAlign: "center" },
         },
       },
     ]);

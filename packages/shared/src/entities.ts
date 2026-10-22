@@ -30,6 +30,16 @@ export const AvatarLayout = z.object({
   size: z.number().min(0.05).max(1).default(0.28),
   margin: z.number().min(0).max(0.5).default(0.03),
   visible: z.boolean().default(true),
+  /**
+   * Free position set by dragging in the editor: centre of the avatar box as a fraction of the
+   * frame width / height. When both are set they override `anchor` + `margin`.
+   */
+  x: z.number().min(0).max(1).optional(),
+  y: z.number().min(0).max(1).optional(),
+  /** Slide image scaled to this fraction of the frame (leaving room beside it for the avatar). */
+  slideScale: z.number().min(0.4).max(1).default(1),
+  /** Where the scaled slide sits horizontally. */
+  slideAlign: z.enum(["center", "left", "right"]).default("center"),
 });
 export type AvatarLayout = z.infer<typeof AvatarLayout>;
 
@@ -44,6 +54,10 @@ export const SubtitleStyle = z.object({
   /** Line width in CJK-equivalent columns: a CJK character counts 1, any other character 0.5. */
   maxCharsPerLine: z.number().int().min(8).max(80).default(28),
   highlightWords: z.boolean().default(false),
+  bold: z.boolean().default(false),
+  /** Text outline, drawn when the background box is fully transparent (backgroundOpacity 0). */
+  outlineColor: z.string().default("#000000"),
+  outlineWidthPx: z.number().int().min(0).max(12).default(0),
 });
 export type SubtitleStyle = z.infer<typeof SubtitleStyle>;
 
@@ -89,6 +103,8 @@ export const ProjectSettings = z.object({
   avatar: AvatarSettings.default({}),
   subtitles: SubtitleSettings.default({}),
   transition: Transition.default("fade"),
+  /** Frame colour around the slide (visible when the slide is letterboxed or scaled down). */
+  backgroundColor: z.string().default("#000000"),
 });
 export type ProjectSettings = z.infer<typeof ProjectSettings>;
 

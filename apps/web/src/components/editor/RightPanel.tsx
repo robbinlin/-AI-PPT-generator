@@ -4,15 +4,16 @@ import { t } from "../../i18n";
 import { OutlinePanel } from "./OutlinePanel";
 import { ScriptPanel } from "./ScriptPanel";
 import { SettingsPanel } from "./SettingsPanel";
+import { StudioPanel } from "./StudioPanel";
 
-type Tab = "script" | "settings" | "outline";
-const TABS: Tab[] = ["script", "settings", "outline"];
+type Tab = "script" | "studio" | "settings" | "outline";
+const TABS: Tab[] = ["script", "studio", "settings", "outline"];
 const TAB_KEY = "lvs.editor.tab";
 
 function initialTab(): Tab {
   try {
     const saved = localStorage.getItem(TAB_KEY);
-    if (saved === "script" || saved === "settings" || saved === "outline") return saved;
+    if (saved && (TABS as string[]).includes(saved)) return saved as Tab;
   } catch {
     /* storage unavailable */
   }
@@ -52,6 +53,7 @@ export function RightPanel({ actions }: { actions: EditorActions }) {
       </div>
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="min-h-0 flex-1 overflow-y-auto">
         {tab === "script" && <ScriptPanel actions={actions} />}
+        {tab === "studio" && <StudioPanel actions={actions} />}
         {tab === "settings" && <SettingsPanel actions={actions} />}
         {tab === "outline" && <OutlinePanel actions={actions} />}
       </div>

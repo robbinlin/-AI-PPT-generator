@@ -50,12 +50,13 @@ export interface GenerationDeps {
   config: Config;
 }
 
-function scaleSubtitleStyle<T extends { fontSizePx: number; marginPx: number }>(style: T, factor: number): T {
+function scaleSubtitleStyle<T extends { fontSizePx: number; marginPx: number; outlineWidthPx?: number }>(style: T, factor: number): T {
   if (factor === 1) return style;
   return {
     ...style,
     fontSizePx: Math.max(10, Math.round(style.fontSizePx * factor)),
     marginPx: Math.max(0, Math.round(style.marginPx * factor)),
+    ...(style.outlineWidthPx ? { outlineWidthPx: Math.max(1, Math.round(style.outlineWidthPx * factor)) } : {}),
   };
 }
 
@@ -418,7 +419,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         // Style sizes are authored for 1080p; scale them to the preset so previews wrap the same way.
         subtitleStyle: scaleSubtitleStyle(settings.subtitles.style, size.height / 1080),
         burnSubtitles: burnSubtitles && settings.subtitles.enabled,
-        backgroundColor: "#000000",
+        backgroundColor: settings.backgroundColor ?? "#000000",
         outputs: { mp4Path: join(workDir, "output.mp4"), srtPath: join(workDir, "output.srt") },
       };
       await ctx.emit(0.1, "渲染場景");

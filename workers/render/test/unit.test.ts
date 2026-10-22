@@ -121,7 +121,8 @@ describe("timeline", () => {
 
 describe("command building", () => {
   it("quotes concat list paths", () => {
-    expect(buildConcatList(["/tmp/it's here.mp4"])).toContain("file '/tmp/it'\\''s here.mp4'");
+    // Paths are resolved (C:... on Windows); what matters is the escaped apostrophe.
+    expect(buildConcatList(["/tmp/it's here.mp4"])).toContain("it'\\''s here.mp4'");
   });
 
   it("positions the avatar by anchor", () => {
@@ -152,7 +153,7 @@ describe("command building", () => {
   it("keeps provider alpha for circle avatars", () => {
     const args = buildSceneArgs({
       scene: scene({
-        avatar: { videoPath: "/a.webm", hasAlpha: true, layout: { shape: "circle", anchor: "top-right", size: 0.25, margin: 0.02, visible: true } },
+        avatar: { videoPath: "/a.webm", hasAlpha: true, layout: { shape: "circle", anchor: "top-right", size: 0.25, margin: 0.02, visible: true, slideScale: 1, slideAlign: "center" } },
       }),
       width: 1280,
       height: 720,
@@ -172,7 +173,7 @@ describe("command building", () => {
     expect(chromaKeyFilter("#00FF00")).toBe("chromakey=color=0x00FF00:similarity=0.3:blend=0.1");
     const circle = buildSceneArgs({
       scene: scene({
-        avatar: { videoPath: "/a.mp4", hasAlpha: false, chromaKey: "#00ff00", layout: { shape: "circle", anchor: "bottom-right", size: 0.3, margin: 0.03, visible: true } },
+        avatar: { videoPath: "/a.mp4", hasAlpha: false, chromaKey: "#00ff00", layout: { shape: "circle", anchor: "bottom-right", size: 0.3, margin: 0.03, visible: true, slideScale: 1, slideAlign: "center" } },
       }),
       width: 1280,
       height: 720,
@@ -185,7 +186,7 @@ describe("command building", () => {
     expect(graph).toContain("alphaextract");
     expect(graph).toContain("blend=all_mode=multiply");
     const rect = buildSceneArgs({
-      scene: scene({ avatar: { videoPath: "/a.mp4", hasAlpha: false, chromaKey: "#00FF00", layout: { shape: "rect", anchor: "left", size: 0.5, margin: 0, visible: true } } }),
+      scene: scene({ avatar: { videoPath: "/a.mp4", hasAlpha: false, chromaKey: "#00FF00", layout: { shape: "rect", anchor: "left", size: 0.5, margin: 0, visible: true, slideScale: 1, slideAlign: "center" } } }),
       width: 640,
       height: 360,
       fps: 15,
@@ -193,7 +194,55 @@ describe("command building", () => {
       outPath: "/o.mp4",
     });
     const rectGraph = rect[rect.indexOf("-filter_complex") + 1]!;
-    expect(rectGraph).toContain("scale=-2:180,setsar=1,format=rgba,chromakey=color=0x00FF00:similarity=0.3:blend=0.1[av]");
+    expect(rectGraph).toContain("scale=-2:180,crop='min(iw,136)':180,setsar=1,format=rgba,chromakey=color=0x00FF00:similarity=0.3:blend=0.1[av]");
     expect(rectGraph).not.toContain("alphaextract");
+  });
+});
+
+describe("editor layouts", () => {
+  const base = { shape: "rect" as const, anchor: "bottom-right" as const, size: 0.7, margin: 0, visible: true };
+  const mk = (layout: Record<string, unknown>) =>
+    buildSceneArgs({
+      scene: scene({ avatar: { videoPath: "/a.mp4", hasAlpha: false, layout: { ...base, slideScale: 1, slideAlign: "center", ...layout } as never } }),
+      width: 1920,
+      height: 1080,
+      fps: 25,
+      backgroundColor: "#112233",
+      outPath: "/o.mp4",
+    });
+
+  it("places a dragged avatar by its centre and clamps it inside the frame", () => {
+    expect(overlayPosition("bottom-right", 10, { x: 0.25, y: 0.5 })).toEqual({
+      x: "'min(max(W*0.25-w/2,0),W-w)'",
+      y: "'min(max(H*0.5-h/2,0),H-h)'",
+    });
+    // half-set positions fall back to the anchor
+    expect(overlayPosition("top-left", 5, { x: 0.3 })).toEqual({ x: "5", y: "5" });
+    const graph = mk({ x: 0.85, y: 0.6 }).join(" ");
+    expect(graph).toContain("overlay=x='min(max(W*0.85-w/2,0),W-w)':y='min(max(H*0.6-h/2,0),H-h)'");
+  });
+
+  it("scales the slide down and aligns it to leave room for the avatar", () => {
+    const left = mk({ slideScale: 0.75, slideAlign: "left" });
+    const g = left[left.indexOf("-filter_complex") + 1]!;
+    expect(g).toContain("[0:v]scale=1440:810:force_original_aspect_ratio=decrease,pad=1920:1080:43:(oh-ih)/2:color=0x112233");
+    const right = mk({ slideScale: 0.75, slideAlign: "right" });
+    expect(right[right.indexOf("-filter_complex") + 1]).toContain("pad=1920:1080:ow-iw-43:(oh-ih)/2");
+    const full = mk({});
+    expect(full[full.indexOf("-filter_complex") + 1]).toContain("[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2");
+  });
+});
+
+describe("outlined subtitles", () => {
+  it("uses an outline instead of the box when the background is transparent", () => {
+    const style = SubtitleStyle.parse({ backgroundOpacity: 0, outlineWidthPx: 3, outlineColor: "#000000", bold: true, color: "#FFD60A" });
+    const ass = buildAss([{ index: 1, startSec: 0, endSec: 1, text: "測試" }], { width: 1920, height: 1080, style });
+    const line = ass.split("\n").find((l) => l.startsWith("Style: Default"))!;
+    const f = line.split(",");
+    expect(f[7]).toBe("-1"); // bold
+    expect(f[15]).toBe("1"); // BorderStyle: outline + shadow
+    expect(f[16]).toBe("3"); // outline width
+    const boxed = buildAss([{ index: 1, startSec: 0, endSec: 1, text: "測試" }], { width: 1920, height: 1080, style: SubtitleStyle.parse({}) });
+    expect(boxed.split("\n").find((l) => l.startsWith("Style: Default"))!.split(",")[15]).toBe("3");
   });
 });

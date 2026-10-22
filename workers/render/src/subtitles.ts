@@ -136,6 +136,10 @@ export function buildAss(cues: readonly SubtitleCue[], opts: AssOptions): string
   const { style, width, height } = opts;
   const primary = assColor(style.color);
   const box = assColor(style.backgroundColor, style.backgroundOpacity);
+  // No box + an outline width: classic outlined captions (BorderStyle 1) instead of the opaque box.
+  const outlined = style.backgroundOpacity <= 0 && (style.outlineWidthPx ?? 0) > 0;
+  const outline = outlined ? assColor(style.outlineColor ?? "#000000") : box;
+  const bold = style.bold ? -1 : 0;
   const alignment = style.position === "top" ? 8 : 2;
   const boxPad = Math.max(2, Math.round(style.fontSizePx * 0.2));
   const sideMargin = Math.max(16, Math.round(width * 0.04));
@@ -155,7 +159,9 @@ export function buildAss(cues: readonly SubtitleCue[], opts: AssOptions): string
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    `Style: Default,${font},${style.fontSizePx},${primary},${primary},${box},${box},0,0,0,0,100,100,0,0,3,${boxPad},0,${alignment},${sideMargin},${sideMargin},${style.marginPx},1`,
+    outlined
+      ? `Style: Default,${font},${style.fontSizePx},${primary},${primary},${outline},${box},${bold},0,0,0,100,100,0,0,1,${style.outlineWidthPx},0,${alignment},${sideMargin},${sideMargin},${style.marginPx},1`
+      : `Style: Default,${font},${style.fontSizePx},${primary},${primary},${box},${box},${bold},0,0,0,100,100,0,0,3,${boxPad},0,${alignment},${sideMargin},${sideMargin},${style.marginPx},1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",

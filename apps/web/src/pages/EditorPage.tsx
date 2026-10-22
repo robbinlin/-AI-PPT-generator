@@ -115,7 +115,7 @@ export function EditorPage() {
       <EditorHeader actions={actions} onOpenJobs={() => setJobsOpen(true)} />
       <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)_380px]">
         <PageList actions={actions} />
-        <CenterPane onUpload={(file) => void actions.upload(file)} />
+        <CenterPane onUpload={(file) => void actions.upload(file)} actions={actions} />
         <RightPanel actions={actions} />
       </div>
       <JobsDrawer open={jobsOpen} onClose={closeJobs} actions={actions} />

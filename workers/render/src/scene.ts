@@ -97,8 +97,21 @@ export function chromaKeyFilter(hex: string, similarity = 0.3, blend = 0.1): str
   return `chromakey=color=${ffmpegColor(hex)}:similarity=${similarity}:blend=${blend}`;
 }
 
-/** overlay x/y expressions for an anchor; `W/H` = frame, `w/h` = avatar. */
-export function overlayPosition(anchor: AvatarLayout["anchor"], marginPx: number): { x: string; y: string } {
+/**
+ * overlay x/y expressions; `W/H` = frame, `w/h` = avatar. A dragged position (`x`/`y`, centre of
+ * the avatar as a frame fraction) wins over the anchor and is clamped so the avatar stays inside.
+ */
+export function overlayPosition(
+  anchor: AvatarLayout["anchor"],
+  marginPx: number,
+  free?: { x?: number; y?: number },
+): { x: string; y: string } {
+  if (free?.x !== undefined && free?.y !== undefined) {
+    const fx = num(free.x);
+    const fy = num(free.y);
+    // Single quotes keep the commas inside min/max from splitting the filtergraph.
+    return { x: `'min(max(W*${fx}-w/2,0),W-w)'`, y: `'min(max(H*${fy}-h/2,0),H-h)'` };
+  }
   const m = String(marginPx);
   switch (anchor) {
     case "bottom-left":
@@ -137,11 +150,17 @@ export function buildSceneArgs(input: SceneCommandInput): string[] {
   const filters: string[] = [];
   const bg = ffmpegColor(input.backgroundColor);
 
-  // 0: slide image, looped.
+  // 0: slide image, looped. With an avatar beside it the slide may be scaled down and aligned.
   args.push("-loop", "1", "-framerate", String(fps), "-i", scene.imagePath);
+  const frameLayout = scene.avatar && avatarVisible(scene) ? scene.avatar.layout : undefined;
+  const scale = frameLayout?.slideScale ?? 1;
+  const sw = even(W * scale);
+  const sh = even(H * scale);
+  const inset = Math.round(H * 0.04);
+  const padX = frameLayout?.slideAlign === "left" ? String(inset) : frameLayout?.slideAlign === "right" ? `ow-iw-${inset}` : "(ow-iw)/2";
   filters.push(
-    `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
-      `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=${bg},setsar=1,fps=${fps}[bg]`,
+    `[0:v]scale=${sw}:${sh}:force_original_aspect_ratio=decrease,` +
+      `pad=${W}:${H}:${scale < 1 ? padX : "(ow-iw)/2"}:(oh-ih)/2:color=${bg},setsar=1,fps=${fps}[bg]`,
   );
 
   // 1: audio or generated silence.
@@ -183,9 +202,12 @@ export function buildSceneArgs(input: SceneCommandInput): string[] {
         filters.push("[avc][mask]alphamerge[av]");
       }
     } else {
-      filters.push(`${pre},scale=-2:${size},setsar=1${key}${hasAlpha && !key ? ",format=rgba" : ""}[av]`);
+      // Portrait 3:4 box centred on the presenter (wide 16:9 provider clips are cropped to it),
+      // matching the editor preview.
+      const cw = even(size * 0.75);
+      filters.push(`${pre},scale=-2:${size},crop='min(iw,${cw})':${size},setsar=1${key}${hasAlpha && !key ? ",format=rgba" : ""}[av]`);
     }
-    const pos = overlayPosition(layout.anchor, margin);
+    const pos = overlayPosition(layout.anchor, margin, layout);
     filters.push(`[bg][av]overlay=x=${pos.x}:y=${pos.y}:format=auto:eof_action=repeat[ov]`);
     videoLabel = "ov";
   }

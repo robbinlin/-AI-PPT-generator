@@ -1,0 +1,132 @@
+import { useEffect, useState } from "react";
+import type { Project, ProviderInfo } from "@lvs/shared";
+import { useApi } from "../api/context";
+import { errorMessage, type AvatarOption, type VoiceOption } from "../api/types";
+import { t } from "../i18n";
+import { toast } from "../store/toastStore";
+import type { EditorActions } from "./useEditorActions";
+
+/** Avatar lists are fetched by several components (panel, preview); share one request per provider. */
+const avatarCache = new Map<string, Promise<AvatarOption[]>>();
+
+export function invalidateAvatars(providerId: string): void {
+  avatarCache.delete(providerId);
+}
+
+export function useAvatarList(providerId: string | undefined): [AvatarOption[], (list: AvatarOption[]) => void] {
+  const api = useApi();
+  const [avatars, setAvatars] = useState<AvatarOption[]>([]);
+  useEffect(() => {
+    if (!providerId) {
+      setAvatars([]);
+      return;
+    }
+    let alive = true;
+    let p = avatarCache.get(providerId);
+    if (!p) {
+      p = api.listAvatars(providerId);
+      avatarCache.set(providerId, p);
+      p.catch(() => avatarCache.delete(providerId));
+    }
+    p.then(
+      (list) => alive && setAvatars(list),
+      (err: unknown) => {
+        if (!alive) return;
+        setAvatars([]);
+        toast(`${t.settings.avatarListFailed}：${errorMessage(err)}`, "error");
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [api, providerId]);
+  const set = (list: AvatarOption[]) => {
+    if (providerId) avatarCache.set(providerId, Promise.resolve(list));
+    setAvatars(list);
+  };
+  return [avatars, set];
+}
+
+/**
+ * Provider catalogue + the voice and avatar lists for the project's current providers, and the
+ * self-healing that keeps settings pointing at something that exists (a hidden provider, a voice
+ * id left over from another provider).
+ */
+export function useStudioLists(project: Project | undefined, actions: Pick<EditorActions, "updateProject">) {
+  const api = useApi();
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [voices, setVoices] = useState<VoiceOption[]>([]);
+  const voiceProvider = project?.settings.voice.providerId;
+  const avatarProvider = project?.settings.avatar.providerId;
+  const [avatars, setAvatars] = useAvatarList(avatarProvider);
+
+  useEffect(() => {
+    api.listProviders().then(setProviders, () => setProviders([]));
+  }, [api]);
+
+  useEffect(() => {
+    if (!voiceProvider) return;
+    let alive = true;
+    api.listVoices(voiceProvider).then(
+      (list) => alive && setVoices(list),
+      (err: unknown) => {
+        if (!alive) return;
+        setVoices([]);
+        toast(`${t.settings.voiceListFailed}：${errorMessage(err)}`, "error");
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [api, voiceProvider]);
+
+  // Snap each kind to the first configured provider when the stored one is not offered.
+  useEffect(() => {
+    if (!project || providers.length === 0) return;
+    const pick = (kind: ProviderInfo["kind"], current: string | undefined) => {
+      const list = providers.filter((p) => p.kind === kind);
+      if (current && list.some((p) => p.id === current)) return undefined;
+      return (list.find((p) => p.configured) ?? list[0])?.id;
+    };
+    const s0 = project.settings;
+    const llm = pick("llm", s0.llmProviderId);
+    const tts = pick("tts", s0.voice.providerId);
+    const av = s0.avatar.enabled ? pick("avatar", s0.avatar.providerId) : undefined;
+    if (!llm && !tts && !av) return;
+    void actions.updateProject({
+      settings: {
+        ...(llm ? { llmProviderId: llm } : {}),
+        ...(tts ? { voice: { ...s0.voice, providerId: tts } } : {}),
+        ...(av ? { avatar: { ...s0.avatar, providerId: av } } : {}),
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providers, project?.settings.llmProviderId, project?.settings.voice.providerId, project?.settings.avatar.providerId, project?.settings.avatar.enabled]);
+
+  const currentAvatarId = project?.settings.avatar.avatarId;
+  useEffect(() => {
+    if (!project || avatars.length === 0 || avatars.some((a) => a.id === currentAvatarId)) return;
+    void actions.updateProject({ settings: { avatar: { ...project.settings.avatar, avatarId: avatars[0]!.id } } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [avatars, currentAvatarId]);
+
+  const currentVoiceId = project?.settings.voice.voiceId;
+  useEffect(() => {
+    if (!project || voices.length === 0 || voices.some((v) => v.id === currentVoiceId)) return;
+    void actions.updateProject({ settings: { voice: { ...project.settings.voice, voiceId: voices[0]!.id } } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voices, currentVoiceId]);
+
+  return { providers, voices, setVoices, avatars, setAvatars };
+}
+
+/** Image to show for an avatar character: local characters are proxied through the API. */
+export function avatarImageUrl(
+  api: { avatarCharacterPreviewUrl(providerId: string, id: string): string },
+  providerId: string | undefined,
+  a: AvatarOption | undefined,
+): string | undefined {
+  if (!a || !providerId) return undefined;
+  if (providerId === "local") return api.avatarCharacterPreviewUrl(providerId, a.id);
+  return a.previewImageUrl;
+}

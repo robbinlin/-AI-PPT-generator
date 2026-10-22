@@ -1,14 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import type { SubtitleCue } from "@lvs/shared";
-import { useAssetUrl } from "../../api/context";
+import type { AvatarLayout } from "@lvs/shared";
+import { useApi, useAssetUrl } from "../../api/context";
+import type { EditorActions } from "../../hooks/useEditorActions";
+import { avatarImageUrl, useAvatarList } from "../../hooks/useStudioLists";
 import { t } from "../../i18n";
 import { cueAt, parseSrt } from "../../lib/srt";
 import { useEditor } from "../../store/editorStore";
 import { ScenePlayer } from "./ScenePlayer";
 import { SlidePreview } from "./SlidePreview";
+import { Timeline } from "./Timeline";
 import { ParseProgress, UploadDropZone } from "./UploadDropZone";
 
-export function CenterPane({ onUpload }: { onUpload: (file: File) => void }) {
+export function CenterPane({
+  onUpload,
+  actions,
+}: {
+  onUpload: (file: File) => void;
+  actions?: Pick<EditorActions, "updateProject" | "updateScene" | "reorder">;
+}) {
+  const api = useApi();
   const detail = useEditor((s) => s.detail);
   const selectedSceneId = useEditor((s) => s.selectedSceneId);
   const drafts = useEditor((s) => s.drafts);
@@ -18,7 +29,17 @@ export function CenterPane({ onUpload }: { onUpload: (file: File) => void }) {
   const scene = useMemo(() => detail?.scenes.find((s) => s.id === selectedSceneId), [detail, selectedSceneId]);
   const slide = useMemo(() => detail?.slides.find((s) => s.id === scene?.slideId), [detail, scene]);
   const cues = useSceneCues(detail?.project.id, scene?.subtitle.status === "ready" ? scene.subtitle.assetId : undefined);
+  const avatarSettings = detail?.project.settings.avatar;
+  const [avatars] = useAvatarList(avatarSettings?.enabled ? avatarSettings.providerId : undefined);
   if (!detail) return null;
+  const avatarPreviewUrl = avatarImageUrl(api, avatarSettings?.providerId, avatars.find((a) => a.id === avatarSettings?.avatarId));
+  // A page with its own layout keeps it; otherwise dragging edits the project-wide layout.
+  const commitLayout = actions
+    ? (layout: AvatarLayout) => {
+        if (scene?.avatarLayout) void actions.updateScene(scene.id, { avatarLayout: layout });
+        else void actions.updateProject({ settings: { avatar: { ...detail.project.settings.avatar, layout } } });
+      }
+    : undefined;
 
   const source = detail.sourceDocument;
   if (
@@ -59,7 +80,7 @@ export function CenterPane({ onUpload }: { onUpload: (file: File) => void }) {
   const subtitleText = draft !== undefined ? draft : cues ? (timedCue?.text ?? "") : script?.subtitleText;
 
   return (
-    <section className="flex min-h-0 flex-col gap-3 bg-neutral-950 p-4">
+    <section className="flex min-h-0 flex-col gap-2 bg-neutral-950 p-3">
       <div className="min-h-0 flex-1">
         {slide ? (
           <SlidePreview
@@ -69,12 +90,15 @@ export function CenterPane({ onUpload }: { onUpload: (file: File) => void }) {
             subtitleText={subtitleText}
             subtitleIsCue={draft === undefined && !!cues}
             assets={detail.assets}
+            avatarPreviewUrl={avatarPreviewUrl}
+            onLayoutCommit={commitLayout}
           />
         ) : (
           <div className="flex size-full items-center justify-center text-sm text-neutral-500">{t.editor.selectPage}</div>
         )}
       </div>
       <ScenePlayer projectId={detail.project.id} scene={scene} hidden={slide?.hidden ?? false} />
+      {actions && <Timeline actions={actions} />}
       <p className="text-center text-[11px] text-neutral-600">{t.player.shortcuts}</p>
     </section>
   );
