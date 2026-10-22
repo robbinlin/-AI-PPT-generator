@@ -91,8 +91,10 @@ function Install-Engine($name) {
       Step "[GPT-SoVITS] Python 3.10 虛擬環境"
       if (-not (Test-Path $EPy)) { & $Uv venv --seed --python 3.10 .venv }
       Step "[GPT-SoVITS] PyTorch ($Device)"
-      # torchaudio >= 2.9 needs torchcodec, which has no Windows wheels; 2.5.1 still loads wav/mp3 via soundfile.
-      Uv pip install --python $EPy "torch==2.5.1" "torchaudio==2.5.1" --index-url $TorchIndex
+      # transformers >= 4.51 refuses torch.load on torch < 2.6 (GPT-SoVITS's BERT ships as .bin), and
+      # torchaudio >= 2.9 needs torchcodec, which has no Windows wheels: 2.6.0 satisfies both.
+      $GsIndex = if ($Device -eq "cpu") { "https://download.pytorch.org/whl/cpu" } else { "https://download.pytorch.org/whl/cu124" }
+      Uv pip install --python $EPy "torch==2.6.0" "torchaudio==2.6.0" --index-url $GsIndex
       Step "[GPT-SoVITS] 取得原始碼"
       if (-not (Test-Path "vendor\GPT-SoVITS\GPT_SoVITS")) { New-Item -ItemType Directory -Force vendor | Out-Null; git clone https://github.com/RVC-Boss/GPT-SoVITS.git vendor\GPT-SoVITS }
       Push-Location vendor\GPT-SoVITS; git checkout -q $GptSovitsCommit; Pop-Location
