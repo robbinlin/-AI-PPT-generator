@@ -17,6 +17,10 @@ describe("heygen mapping (v3)", () => {
     expect(b).toMatchObject({ type: "avatar", avatar_id: "av1", audio_asset_id: "asset-9", aspect_ratio: "16:9", resolution: "720p", output_format: "mp4", remove_background: true });
     expect(buildHeyGenGenerateBody({ avatarId: "av1", aspectRatio: "16:9", audioUrl: "u" }, undefined, "avatar_iii", false)).toMatchObject({ engine: { type: "avatar_iii" } });
     expect(buildHeyGenGenerateBody({ avatarId: "av1", aspectRatio: "16:9", audioUrl: "u" }, undefined, undefined, false).remove_background).toBeUndefined();
+    // A per-character engine (video twin → avatar_iii) wins over the HEYGEN_ENGINE default; junk is ignored.
+    expect(buildHeyGenGenerateBody({ avatarId: "av1", aspectRatio: "16:9", audioUrl: "u", engine: "avatar_iii" }, undefined, "avatar_iv").engine).toEqual({ type: "avatar_iii" });
+    expect(buildHeyGenGenerateBody({ avatarId: "av1", aspectRatio: "16:9", audioUrl: "u", engine: "bogus" }, undefined, "avatar_iv").engine).toEqual({ type: "avatar_iv" });
+    expect(buildHeyGenGenerateBody({ avatarId: "av1", aspectRatio: "16:9", audioUrl: "u" }, undefined, undefined).engine).toBeUndefined();
     expect(b.audio_url).toBeUndefined();
     expect(b.background).toEqual({ type: "color", value: "#00FF00" });
     expect(b.callback_id).toBe("job-1");

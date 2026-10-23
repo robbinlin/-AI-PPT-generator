@@ -31,6 +31,10 @@ describe("input hashes", () => {
     expect(avatarInputHash({ audioAssetId: "A", providerId: "heygen", avatarId: "v", aspectRatio: "16:9" })).not.toBe(
       avatarInputHash({ audioAssetId: "B", providerId: "heygen", avatarId: "v", aspectRatio: "16:9" }),
     );
+    // A non-default engine is a different clip; no engine keeps the hash clips were made under.
+    const base = { audioAssetId: "A", providerId: "heygen", avatarId: "v", aspectRatio: "16:9" as const };
+    expect(avatarInputHash({ ...base, engine: "avatar_iii" })).not.toBe(avatarInputHash(base));
+    expect(avatarInputHash({ ...base, engine: undefined })).toBe(avatarInputHash(base));
     const style = SubtitleStyle.parse({});
     const scenes = [{ sceneId: "sc1", imageAssetId: "i", audioAssetId: "a", muted: false, tailPauseSec: 0.5 }];
     const r = renderInputHash({ scenes, subtitleStyle: style, burnSubtitles: true, transition: "fade", preset: "hd_1080p", aspectRatio: "16:9" });

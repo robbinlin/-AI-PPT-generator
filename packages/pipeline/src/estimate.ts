@@ -17,7 +17,9 @@ export const DEFAULT_PRICE_TABLE: PriceTable = {
     mock: { charsPer1k: 0 },
   },
   avatar: {
-    heygen: { perSecond: 0.05 },
+    // HeyGen API pay-as-you-go (heygen.com/blog/ai-video-generator-pricing, 2026-10-20):
+    // Avatar IV photo avatar $0.05/s (the default), Avatar III digital twin $0.0167/s.
+    heygen: { perSecond: 0.05, perSecondByEngine: { avatar_iii: 0.0167, avatar_v: 0.0667 } },
     mock: { perSecond: 0 },
   },
   render: { perSecond: 0.002 },
@@ -27,7 +29,7 @@ export const DEFAULT_PRICE_TABLE: PriceTable = {
 export interface PriceTable {
   llm: Record<string, { tokensInPer1k: number; tokensOutPer1k: number }>;
   tts: Record<string, { charsPer1k: number }>;
-  avatar: Record<string, { perSecond: number }>;
+  avatar: Record<string, { perSecond: number; perSecondByEngine?: Record<string, number> }>;
   render: { perSecond: number };
   currency: string;
 }
@@ -44,6 +46,16 @@ export interface EstimateInputs {
   calls?: number;
   /** Narration seconds already known or estimated (avatar/render). */
   seconds?: number;
+  /** Avatar rendering engine (see `avatarEngine`); priced per engine where the table says. */
+  engine?: string;
+}
+
+/**
+ * Engine a project's avatar renders with: HeyGen video twins use Avatar III (their motion comes
+ * from the recording, a third of Avatar IV's price); everything else keeps the provider default.
+ */
+export function avatarEngine(avatar: { providerId?: string; avatarSource?: "photo" | "video" }): string | undefined {
+  return avatar.providerId === "heygen" && avatar.avatarSource === "video" ? "avatar_iii" : undefined;
 }
 
 /** Order-of-magnitude cost before a job runs. Never used for billing. */
@@ -74,8 +86,9 @@ export function estimateCost(kind: EstimateKind, inputs: EstimateInputs, table: 
     case "generate_avatar": {
       const id = inputs.providerId ?? "heygen";
       const p = table.avatar[id] ?? { perSecond: 0 };
+      const rate = (inputs.engine ? p.perSecondByEngine?.[inputs.engine] : undefined) ?? p.perSecond;
       const s = inputs.seconds ?? 0;
-      add(id, "avatar_seconds", s, s * p.perSecond);
+      add(id, "avatar_seconds", s, s * rate);
       break;
     }
     case "render_video": {

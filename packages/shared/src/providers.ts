@@ -137,6 +137,8 @@ export interface AvatarCreateRequest {
   text?: string;
   voiceId?: string;
   transparent?: boolean;
+  /** Provider rendering engine (HeyGen: avatar_iii | avatar_iv | avatar_v); provider default when absent. */
+  engine?: string;
   /** Echoed back by webhooks; use the job id. */
   clientReference?: string;
 }

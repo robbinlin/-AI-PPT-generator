@@ -24,6 +24,7 @@ import type {
 } from "@lvs/shared";
 import { detectPauses } from "./audio.js";
 import {
+  avatarEngine,
   buildCues,
   cuesToSrt,
   generateOutline as pipelineOutline,
@@ -342,6 +343,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       const providerId = settings.avatar.providerId;
       const avatarId = settings.avatar.avatarId;
       if (!providerId || !avatarId) throw new NonRetryableJobError(AVATAR_NOT_SELECTED);
+
       const ownerId = await ownerOf(ctx);
       const provider = await withProvider(() => providers.avatar(ownerId, providerId));
       const audioAsset = await assetById(ctx.db, audioAssetId);
@@ -360,6 +362,8 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
           audio: { data: audioBytes, mimeType: audioAsset.mimeType, fileName: `scene-${scene.index + 1}.${AUDIO_EXT[audioAsset.mimeType] ?? "bin"}` },
           audioUrl: url,
           clientReference: ctx.job.id,
+          // Video twins → Avatar III (motion from the recording, a third of Avatar IV's price).
+          ...(avatarEngine(settings.avatar) ? { engine: avatarEngine(settings.avatar) } : {}),
         }));
         taskId = created.taskId;
         await ctx.setProviderTaskId(prefix + taskId);

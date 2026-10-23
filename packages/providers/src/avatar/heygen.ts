@@ -29,9 +29,10 @@ export const HEYGEN_CHROMA_BACKGROUND = "#00FF00";
 
 /** Overridable with HEYGEN_ENGINE (avatar_iv default; avatar_iii is the cheaper talking-photo engine). */
 export type HeyGenEngine = "avatar_iv" | "avatar_iii" | "avatar_v";
+const isHeyGenEngine = (e: string | undefined): e is HeyGenEngine => e === "avatar_iii" || e === "avatar_iv" || e === "avatar_v";
 const envEngine = (): HeyGenEngine | undefined => {
   const e = process.env.HEYGEN_ENGINE;
-  return e === "avatar_iii" || e === "avatar_iv" || e === "avatar_v" ? e : undefined;
+  return isHeyGenEngine(e) ? e : undefined;
 };
 
 /** HEYGEN_REMOVE_BACKGROUND=0 disables matting (then the look's own scene stays behind the avatar). */
@@ -68,10 +69,12 @@ export function buildHeyGenGenerateBody(
     : req.audioUrl
       ? { audio_url: req.audioUrl }
       : { script: req.text!, voice_id: req.voiceId! };
+  // The request's engine (chosen per character) wins over the HEYGEN_ENGINE default.
+  const chosen = isHeyGenEngine(req.engine) ? req.engine : engine;
   return {
     type: "avatar",
     avatar_id: req.avatarId,
-    ...(engine ? { engine: { type: engine } } : {}),
+    ...(chosen ? { engine: { type: chosen } } : {}),
     ...(removeBackground ? { remove_background: true } : {}),
     ...source,
     aspect_ratio: HEYGEN_ASPECT[req.aspectRatio],

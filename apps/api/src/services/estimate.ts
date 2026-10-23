@@ -1,5 +1,5 @@
 import type { CostEstimate, JobType, ProjectDetail } from "@lvs/shared";
-import { estimateCost } from "@lvs/pipeline";
+import { avatarEngine, estimateCost } from "@lvs/pipeline";
 import {
   audioReady,
   avatarTargets,
@@ -84,7 +84,7 @@ export function estimateJob(detail: ProjectDetail, type: JobType, opts: Estimate
         const chars = needAudio.reduce((n, sc) => n + (detail.scripts[sc.id]?.pronunciationText.length ?? 0), 0);
         parts.push(estimateCost("synthesize_speech", { providerId: s.voice.providerId, chars }));
       }
-      parts.push(estimateCost("generate_avatar", { providerId: s.avatar.providerId ?? "heygen", seconds: Math.ceil(seconds) }));
+      parts.push(estimateCost("generate_avatar", { providerId: s.avatar.providerId ?? "heygen", seconds: Math.ceil(seconds), engine: avatarEngine(s.avatar) }));
       return merge(parts, targets.length, seconds);
     }
     case "render_video": {

@@ -39,6 +39,7 @@ const seams: GenerationSeams = {
   async generateAvatar({ ctx, scene, audioAssetId, inputHash }) {
     avatarCalls.push({ sceneId: scene.id, audioAssetId });
     const assetId = await fakeAsset(ctx.db, ctx.job.projectId, "avatar_video", inputHash, ctx.job.id);
+    await ctx.storage.put(`fake/${assetId}`, Buffer.from("clip"), "video/mp4"); // a real file, so it can be reused
     await ctx.db.update(scenes).set({ avatar: { status: "ready", assetId, inputHash, jobId: ctx.job.id } }).where(eq(scenes.id, scene.id));
   },
   async renderVideo({ ctx, inputHash }) {
@@ -207,6 +208,27 @@ describe("generation handlers", () => {
       expect(sc.avatar.status).toBe("ready");
     }
     expect((await estimate("type=generate_avatar")).sceneCount).toBe(0); // nothing to pay for again
+  });
+
+  it("switching the character away and back reuses the clips already made instead of paying again", async () => {
+    const before = await detail();
+    const original = before.scenes.map((s) => s.avatar.assetId);
+    expect(before.scenes.every((s) => s.avatar.status === "ready")).toBe(true);
+    await t.app.inject({ method: "PATCH", url: `/projects/${projectId}`, payload: { settings: { avatar: { avatarId: "mock-other" } } } });
+    const calls = avatarCalls.length;
+    expect((await run({ type: "generate_avatar" })).row.status).toBe("succeeded");
+    expect(avatarCalls.length).toBe(calls + 3); // a new character is new clips
+
+    await t.app.inject({ method: "PATCH", url: `/projects/${projectId}`, payload: { settings: { avatar: { avatarId: "mock-teacher" } } } });
+    expect((await detail()).scenes.every((s) => s.avatar.status === "stale")).toBe(true);
+    messages.length = 0;
+    const back = await run({ type: "generate_avatar" });
+    expect(back.row.result).toMatchObject({ processed: 3, reused: 3 });
+    expect(avatarCalls.length).toBe(calls + 3); // nothing sent to the provider
+    expect(messages).toContain("第 1 頁沿用先前做好的人像（不另收費）");
+    const after = await detail();
+    expect(after.scenes.map((s) => s.avatar.assetId)).toEqual(original);
+    expect(after.scenes.every((s) => s.avatar.status === "ready")).toBe(true);
   });
 
   it("zh-TW errors for a disabled avatar and a project without slides", async () => {

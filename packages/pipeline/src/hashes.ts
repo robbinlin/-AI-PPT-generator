@@ -71,8 +71,16 @@ export function subtitleInputHash(input: { audioInputHash: string; subtitleText:
   return contentHash({ kind: "subtitle", audio: input.audioInputHash, text: input.subtitleText, maxCharsPerLine: input.maxCharsPerLine });
 }
 
-export function avatarInputHash(input: { audioAssetId: string; providerId: string; avatarId: string; aspectRatio: AspectRatio }): string {
-  return contentHash({ kind: "avatar", audio: input.audioAssetId, providerId: input.providerId, avatarId: input.avatarId, aspectRatio: input.aspectRatio });
+export function avatarInputHash(input: { audioAssetId: string; providerId: string; avatarId: string; aspectRatio: AspectRatio; engine?: string }): string {
+  return contentHash({
+    kind: "avatar",
+    audio: input.audioAssetId,
+    providerId: input.providerId,
+    avatarId: input.avatarId,
+    aspectRatio: input.aspectRatio,
+    // Only a non-default engine joins the hash, so clips made before engines were chosen stay current.
+    ...(input.engine ? { engine: input.engine } : {}),
+  });
 }
 
 export interface RenderSceneInputs {

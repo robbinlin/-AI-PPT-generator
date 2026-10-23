@@ -181,7 +181,10 @@ function AvatarSection({
   const selected = avatars.find((a) => a.id === s.avatarId);
   const names = useMemo(() => distinctNames(avatars), [avatars]);
 
-  const pick = (id: string) => setAvatar({ enabled: true, avatarId: id, layout: { ...s.layout, visible: true } });
+  // The character's source picks the HeyGen engine (video twin → Avatar III), so it is saved with it.
+  // Unknown counts as a photo: that keeps the provider's default engine.
+  const pick = (id: string) =>
+    setAvatar({ enabled: true, avatarId: id, avatarSource: avatars.find((a) => a.id === id)?.source ?? "photo", layout: { ...s.layout, visible: true } });
 
   const upload = async (file: File) => {
     if (!s.providerId) return;
@@ -287,6 +290,11 @@ function AvatarSection({
         <div className="flex items-center justify-between gap-2 text-xs text-neutral-400">
           <span className="truncate">
             {t.studio.current}：<span className="text-neutral-200">{names.get(selected.id) ?? selected.name}</span>
+            {s.providerId === "heygen" && (
+              <span className="block text-[11px] text-neutral-400" data-testid="avatar-engine">
+                {s.avatarSource === "video" ? t.studio.engineVideo : t.studio.enginePhoto}
+              </span>
+            )}
           </span>
           {selected.kind === "personal" && custom && (
             <Button size="sm" variant="ghost" icon={Trash2} onClick={() => void remove()}>

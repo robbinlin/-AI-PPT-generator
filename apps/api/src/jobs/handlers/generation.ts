@@ -3,10 +3,10 @@
  * work, keeps the job lifecycle correct) and delegates the actual provider call to one
  * clearly marked function that @lvs/pipeline / @lvs/providers will fill in.
  */
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { OutlineRevision, ProjectSettings, Scene, ScriptRevision, Slide } from "@lvs/shared";
 import { toScene } from "../../db/mappers.js";
-import { projects, scenes } from "../../db/schema.js";
+import { assets, projects, scenes } from "../../db/schema.js";
 import { NonRetryableJobError, NotImplementedJobError } from "../../errors.js";
 import { getProjectDetail } from "../../services/projects.js";
 import type { JobContext, JobHandler } from "../context.js";
@@ -20,6 +20,29 @@ async function loadDetail(ctx: JobContext) {
   const slidesById = new Map(detail.slides.map((s) => [s.id, s]));
   const visibleScenes = visibleScenesOf(detail);
   return { project, detail, slidesById, visibleScenes };
+}
+
+/**
+ * Switching a character away and back must not bill the same clip twice: when this project
+ * already holds an avatar clip made from exactly these inputs (the hash covers the page's audio
+ * asset, character, engine and aspect ratio), the page points at it again instead of calling
+ * the provider. Returns whether it did.
+ */
+async function reuseAvatarClip(ctx: JobContext, sceneId: string, inputHash: string): Promise<boolean> {
+  const [earlier] = await ctx.db
+    .select()
+    .from(assets)
+    .where(and(eq(assets.projectId, ctx.job.projectId), eq(assets.kind, "avatar_video"), eq(assets.inputHash, inputHash)))
+    .orderBy(desc(assets.createdAt))
+    .limit(1);
+  if (!earlier || !(await ctx.storage.stat(earlier.storageKey))) return false;
+  await ctx.db
+    .update(scenes)
+    .set({ avatar: { status: "ready", assetId: earlier.id, inputHash, jobId: ctx.job.id } })
+    .where(eq(scenes.id, sceneId));
+  const [row] = await ctx.db.select().from(scenes).where(eq(scenes.id, sceneId)).limit(1);
+  if (row) ctx.publish({ kind: "scene", scene: toScene(row) });
+  return true;
 }
 
 const NO_SLIDES = "專案還沒有投影片，請先上傳簡報";
@@ -226,6 +249,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
     const targets = avatarTargets(detail, { sceneIds: ctx.job.payload.sceneIds, force: ctx.job.payload.force });
     const plan = progressPlan(candidates, targets, narrationWeight(detail));
     let synthesized = 0;
+    let reused = 0;
     for (const target of targets) {
       const n = pageNo(target);
       let scene = target;
@@ -242,11 +266,16 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
       }
       const audioAssetId = scene.audio.assetId!;
       const inputHash = avatarInputHash({ audioAssetId, settings });
+      if (await reuseAvatarClip(ctx, scene.id, inputHash)) {
+        reused++;
+        await ctx.emit(plan.finish(target), `第 ${n} 頁沿用先前做好的人像（不另收費）`);
+        continue;
+      }
       await ctx.emit(plan.within(target, speechShare), `正在產生第 ${n} 頁人像`);
       await seams.generateAvatar({ ctx, scene, audioAssetId, settings, inputHash });
       await ctx.emit(plan.finish(target), `第 ${n} 頁人像完成`);
     }
-    return { processed: targets.length, skipped: candidates.length - targets.length, synthesized };
+    return { processed: targets.length, skipped: candidates.length - targets.length, synthesized, reused };
   };
 
   const renderVideo: JobHandler<{ type: "render_video"; preset: "preview_540p" | "hd_1080p"; burnSubtitles?: boolean }> = async (ctx) => {

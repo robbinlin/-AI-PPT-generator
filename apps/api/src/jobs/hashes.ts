@@ -50,6 +50,7 @@ export function avatarInputHash(args: { audioAssetId: string; settings: ProjectS
     providerId: args.settings.avatar.providerId ?? "",
     avatarId: args.settings.avatar.avatarId ?? "",
     aspectRatio: args.settings.aspectRatio,
+    engine: pipeline.avatarEngine(args.settings.avatar),
   });
 }
 

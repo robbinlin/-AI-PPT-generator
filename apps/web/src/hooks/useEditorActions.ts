@@ -3,7 +3,7 @@ import type { CostEstimate, EnqueueJobRequest, Job, UpdateProjectRequest, Update
 import { useApi } from "../api/context";
 import { errorMessage, type EstimateType } from "../api/types";
 import { fmt, t } from "../i18n";
-import { formatCostTwd } from "../lib/format";
+import { formatTwdFirst } from "../lib/format";
 import { requestNotifyPermission } from "../lib/notify";
 import {
   confirmContent,
@@ -127,7 +127,7 @@ export function useEditorActions() {
         let value = "";
         try {
           const est = await api.getEstimate(detail.project.id, "generate_avatar", { scope: "all", sceneIds: avatarReady.map((s) => s.id) });
-          value = formatCostTwd(est.total, est.currency);
+          value = formatTwdFirst(est.total, est.currency);
         } catch {
           value = "";
         }

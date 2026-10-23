@@ -76,6 +76,11 @@ export const AvatarSettings = z.object({
   enabled: z.boolean().default(false),
   providerId: z.string().optional(),
   avatarId: z.string().optional(),
+  /**
+   * What the chosen character was made from (from the provider's list). HeyGen video twins
+   * already move like the recording, so they render with the cheaper Avatar III engine.
+   */
+  avatarSource: z.enum(["photo", "video"]).optional(),
   layout: AvatarLayout.default({}),
 });
 export type AvatarSettings = z.infer<typeof AvatarSettings>;

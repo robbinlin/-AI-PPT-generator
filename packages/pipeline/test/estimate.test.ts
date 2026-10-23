@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PRICE_TABLE, estimateCost } from "../src/estimate.js";
+import { avatarEngine, DEFAULT_PRICE_TABLE, estimateCost } from "../src/estimate.js";
 
 describe("estimateCost", () => {
   it("tts by chars", () => {
@@ -11,6 +11,15 @@ describe("estimateCost", () => {
   it("avatar by seconds and render", () => {
     expect(estimateCost("generate_avatar", { providerId: "heygen", seconds: 100 }).total).toBe(5);
     expect(estimateCost("render_video", { seconds: 600 }).total).toBe(1.2);
+  });
+  it("prices HeyGen video twins at the Avatar III rate and picks that engine only for them", () => {
+    expect(estimateCost("generate_avatar", { providerId: "heygen", seconds: 60, engine: "avatar_iii" }).total).toBeCloseTo(1.0, 2);
+    expect(estimateCost("generate_avatar", { providerId: "heygen", seconds: 60 }).total).toBe(3);
+    expect(estimateCost("generate_avatar", { providerId: "heygen", seconds: 60, engine: "unknown" }).total).toBe(3);
+    expect(avatarEngine({ providerId: "heygen", avatarSource: "video" })).toBe("avatar_iii");
+    expect(avatarEngine({ providerId: "heygen", avatarSource: "photo" })).toBeUndefined();
+    expect(avatarEngine({ providerId: "heygen" })).toBeUndefined();
+    expect(avatarEngine({ providerId: "local", avatarSource: "video" })).toBeUndefined();
   });
   it("llm by prompt chars and calls", () => {
     const e = estimateCost("generate_script", { providerId: "anthropic", chars: 3000, calls: 10 });

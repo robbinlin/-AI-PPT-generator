@@ -12,8 +12,8 @@ import { Button, IconButton } from "../ui/Button";
 import { Spinner } from "../ui/Misc";
 
 export const SCRIPT_MAX_CHARS = 5000;
-/** HeyGen API price per avatar second (matches the API's pricing table), for the edit warning. */
-const HEYGEN_USD_PER_SEC = 0.05;
+/** HeyGen API price per avatar second (pipeline price table): video twin (Avatar III) / photo (Avatar IV). */
+const HEYGEN_USD_PER_SEC = { video: 0.0167, photo: 0.05 } as const;
 
 export interface ScriptPanelProps {
   actions: Pick<EditorActions, "enqueue" | "saveScript" | "updateScene">;
@@ -48,7 +48,7 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const busy = (type: string) => detail.activeJobs.some((j) => j.type === type);
   // A finished paid avatar is lip-synced to this exact text: say so before the first keystroke.
   const paidAvatarReady = avatarOn && settings.avatar.providerId !== "local" && !scene.muted && scene.avatar.status === "ready";
-  const redoCost = twdShort((scene.durationSec ?? seconds) * HEYGEN_USD_PER_SEC);
+  const redoCost = twdShort((scene.durationSec ?? seconds) * HEYGEN_USD_PER_SEC[settings.avatar.avatarSource === "video" ? "video" : "photo"]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!(e.ctrlKey || e.metaKey)) return;
