@@ -144,12 +144,26 @@ export interface HeyGenAssetResponse {
 
 /** Private looks (the user's own likeness) are labelled and listed before the public library. */
 export function mapHeyGenLooks(res: HeyGenLooksResponse, ownership: "private" | "public"): AvatarCharacter[] {
-  return (res.data ?? []).map((l) => ({
-    id: l.id,
-    name: ownership === "private" ? `我的人像・${l.name}` : l.name,
-    kind: ownership === "private" ? "personal" : "stock",
-    ...(l.preview_image_url ? { previewImageUrl: l.preview_image_url } : {}),
-  }));
+  return (res.data ?? []).map((l) => {
+    const source = heyGenLookSource(l);
+    return {
+      id: l.id,
+      name: ownership === "private" ? `我的人像・${l.name}` : l.name,
+      kind: ownership === "private" ? "personal" : "stock",
+      ...(l.preview_image_url ? { previewImageUrl: l.preview_image_url } : {}),
+      ...(source ? { source } : {}),
+    };
+  });
+}
+
+/** Photo avatars ("talking photo") vs. video-trained ones, from avatar_type or the preview path. */
+export function heyGenLookSource(l: { avatar_type?: string; preview_image_url?: string | null }): "photo" | "video" | undefined {
+  const type = (l.avatar_type ?? "").toLowerCase();
+  if (/photo/.test(type)) return "photo";
+  if (type) return "video";
+  if (/\/talking_photo\//.test(l.preview_image_url ?? "")) return "photo";
+  if (/\/avatar\//.test(l.preview_image_url ?? "")) return "video";
+  return undefined;
 }
 
 function isMattingRejection(err: unknown): boolean {

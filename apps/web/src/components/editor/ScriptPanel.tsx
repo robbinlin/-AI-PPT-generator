@@ -3,13 +3,17 @@ import type { ScriptRevision } from "@lvs/shared";
 import { AlertTriangle, ChevronRight, Redo2, Undo2, Volume2, VolumeX, WandSparkles } from "lucide-react";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
+import { twdShort } from "../../lib/paidJobs";
 import { countChars, estimateSpeechSeconds } from "../../lib/scenes";
+import { confirmAction } from "../../store/confirmStore";
 import { currentScript, useEditor, type SaveState } from "../../store/editorStore";
 import { toast } from "../../store/toastStore";
 import { Button, IconButton } from "../ui/Button";
 import { Spinner } from "../ui/Misc";
 
 export const SCRIPT_MAX_CHARS = 5000;
+/** HeyGen API price per avatar second (matches the API's pricing table), for the edit warning. */
+const HEYGEN_USD_PER_SEC = 0.05;
 
 export interface ScriptPanelProps {
   actions: Pick<EditorActions, "enqueue" | "saveScript" | "updateScene">;
@@ -24,6 +28,7 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const editScript = useEditor((s) => s.editScript);
   const undo = useEditor((s) => s.undo);
   const redo = useEditor((s) => s.redo);
+  const [focused, setFocused] = useState(false);
 
   const scene = useMemo(() => detail?.scenes.find((s) => s.id === sceneId), [detail, sceneId]);
   if (!detail || !scene) {
@@ -41,6 +46,9 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const avatarOn = settings.avatar.enabled && !!settings.avatar.avatarId;
   const avatarNeeds = avatarOn && !scene.muted && !!revision && (needs(scene.avatar) || scene.avatar.status === "missing");
   const busy = (type: string) => detail.activeJobs.some((j) => j.type === type);
+  // A finished paid avatar is lip-synced to this exact text: say so before the first keystroke.
+  const paidAvatarReady = avatarOn && settings.avatar.providerId !== "local" && !scene.muted && scene.avatar.status === "ready";
+  const redoCost = twdShort((scene.durationSec ?? seconds) * HEYGEN_USD_PER_SEC);
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!(e.ctrlKey || e.metaKey)) return;
@@ -55,6 +63,17 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   };
 
   const rewrite = async () => {
+    // AI rewrite replaces the page; a hand-edited script is not recoverable from here.
+    if (revision?.source === "user") {
+      const ok = await confirmAction({
+        title: t.script.rewriteConfirmTitle,
+        lines: [fmt(t.script.rewriteConfirmBody, { n: scene.index + 1 }), ...(paidAvatarReady ? [fmt(t.script.editWarnAvatar, { cost: redoCost })] : [])],
+        note: t.script.rewriteConfirmNote,
+        confirmLabel: t.script.rewriteConfirm,
+        danger: true,
+      });
+      if (!ok) return;
+    }
     const job = await actions.enqueue({ type: "generate_script", sceneIds: [scene.id], force: true });
     if (job) toast(t.script.aiRewriteQueued);
   };
@@ -95,6 +114,13 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
         </div>
       </div>
 
+      {paidAvatarReady && (focused || hasDraft) && (
+        <p className="flex items-start gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-100" role="note" data-testid="edit-warning">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          {fmt(t.script.editWarnAvatar, { cost: redoCost })}
+        </p>
+      )}
+
       <div className="relative min-h-[200px] flex-1">
         <textarea
           aria-label={fmt(t.script.heading, { n: scene.index + 1 })}
@@ -105,6 +131,8 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
           readOnly={generating}
           onChange={(e) => editScript(scene.id, e.target.value)}
           onKeyDown={onKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
         />
         {generating && (
           <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">

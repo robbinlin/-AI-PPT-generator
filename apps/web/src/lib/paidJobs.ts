@@ -1,7 +1,7 @@
 import type { CostEstimate, EnqueueJobRequest } from "@lvs/shared";
 import type { EstimateType } from "../api/types";
 import { fmt, t } from "../i18n";
-import { formatCost, formatCostTwd, formatWait } from "./format";
+import { formatCostTwd, formatTwdFirst, formatWait, TWD_PER_USD } from "./format";
 
 /** Job types that cost money or real time and therefore get an estimate before they start. */
 export const ESTIMATED_TYPES: ReadonlySet<string> = new Set<EstimateType>(["generate_script", "synthesize_speech", "generate_avatar"]);
@@ -67,7 +67,7 @@ export function confirmContent(type: EstimateType, req: EnqueueJobRequest, estim
   const wait = estimateWaitSec(type, estimate, avatarProviderId);
   const lines = [
     ...(pages !== undefined ? [fmt(t.paid.pages, { n: pages })] : []),
-    fmt(t.paid.cost, { cost: formatCostTwd(estimate.total, estimate.currency) }),
+    fmt(t.paid.cost, { cost: estimate.total > 0 ? formatTwdFirst(estimate.total, estimate.currency) : avatarProviderId === "local" && type === "generate_avatar" ? t.paid.freeLocal : t.paid.free }),
     ...estimateLines(estimate).map((l) => `・${l}`),
     fmt(t.paid.wait, { wait: formatWait(wait) }),
   ];
@@ -76,6 +76,29 @@ export function confirmContent(type: EstimateType, req: EnqueueJobRequest, estim
     title: fmt(t.paid.title, { job: t.jobs.types[type] }),
     lines,
     note: notes.join(" "),
-    confirmLabel: fmt(t.paid.start, { cost: formatCost(estimate.total, estimate.currency) }),
+    confirmLabel: fmt(t.paid.start, { cost: twdShort(estimate.total, estimate.currency) }),
+  };
+}
+
+/** "約 NT$321" / "不到 NT$1" / "免費", for buttons. */
+export function twdShort(amount: number, currency = "USD"): string {
+  if (amount <= 0) return t.paid.free;
+  if (currency !== "USD") return formatTwdFirst(amount, currency);
+  const twd = amount * TWD_PER_USD;
+  return twd < 1 ? "不到 NT$1" : `約 NT$${Math.round(twd).toLocaleString("zh-TW")}`;
+}
+
+/** Without an estimate (API error) avatars and forced reruns still must not start unasked. */
+export function needsConfirmWithoutEstimate(req: EnqueueJobRequest): boolean {
+  return req.type === "generate_avatar" || isForced(req);
+}
+
+export function unknownEstimateContent(type: EstimateType, avatarProviderId?: string) {
+  const price = type === "generate_avatar" && avatarProviderId === "heygen" ? t.paid.unknownHeygen : t.paid.unknownGeneric;
+  return {
+    title: fmt(t.paid.title, { job: t.jobs.types[type] }),
+    lines: [t.paid.unknown, price],
+    note: t.paid.unknownNote,
+    confirmLabel: t.paid.startAnyway,
   };
 }

@@ -55,6 +55,7 @@ export function mapLocalCharacter(
     name: c.name,
     kind: "personal",
     previewImageUrl: `${baseUrl}${c.previewImageUrl}`,
+    source: c.sourceKind === "video" ? "video" : "photo",
   };
 }
 
@@ -235,7 +236,8 @@ export class LocalAvatarProvider implements AvatarProvider {
 
 export const localAvatarFactory: ProviderFactory<AvatarProvider> = {
   id: "local",
-  displayName: "本機人像（免費，MuseTalk）",
+  // MuseTalk only animates the mouth; the name says so instead of naming the model.
+  displayName: "本機人像（免費・只動嘴）",
   requiresApiKey: false,
   create: (creds) => new LocalAvatarProvider(creds),
 };

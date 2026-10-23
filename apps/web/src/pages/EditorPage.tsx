@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import type { ProjectEvent } from "@lvs/shared";
 import { useApiEnv } from "../api/context";
@@ -6,7 +6,8 @@ import { errorMessage } from "../api/types";
 import { ConfirmHost } from "../components/ConfirmHost";
 import { CenterPane } from "../components/editor/CenterPane";
 import { EditorHeader } from "../components/editor/EditorHeader";
-import { saveWithToasts, VIDEO_FILE_TYPE, videoFileName } from "../components/editor/ExportMenu";
+import { saveVideo } from "../lib/saveFiles";
+import { takeAutoExport } from "../lib/autoExport";
 import { JobsDrawer } from "../components/editor/JobsDrawer";
 import { PageList } from "../components/editor/PageList";
 import { RightPanel } from "../components/editor/RightPanel";
@@ -24,6 +25,9 @@ export function EditorPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { client: api, assetUrls } = useApiEnv();
   const actions = useEditorActions();
+  // The event handler below lives as long as the project; it reads the latest actions from here.
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
   const loaded = useEditor((s) => s.detail?.project.id === projectId);
   const drafts = useEditor((s) => s.drafts);
   const dirty = useEditor((s) => s.dirty);
@@ -57,6 +61,11 @@ export function EditorPage() {
         return;
       }
       editorStore.getState().applyEvent(event);
+      // "Make what's missing, then export": start the armed render once its prerequisite is done.
+      if (event.kind === "job") {
+        const render = takeAutoExport(event.job.id, event.job.status);
+        if (render) void actionsRef.current.enqueue(render).then((job) => job && toast(t.export.queued));
+      }
       // There is no SourceDocument event: after a parse finishes, take a fresh snapshot.
       if (event.kind === "job" && event.job.type === "parse_document" && event.job.status === "succeeded") {
         void refresh().catch(() => undefined);
@@ -75,9 +84,9 @@ export function EditorPage() {
         const videoAssetId = event.job.type === "render_video" ? (event.job.result as { videoAssetId?: string } | undefined)?.videoAssetId : undefined;
         if (videoAssetId) {
           // Resolve the URL first so the click on 下載影片 opens the save dialog right away.
-          const name = videoFileName(editorStore.getState().detail?.project.name ?? "video");
+          const name = editorStore.getState().detail?.project.name ?? "video";
           void assetUrls.get(projectId, videoAssetId).then(
-            (url) => toast(t.export.readyToast, "success", { label: t.export.readyAction, run: () => void saveWithToasts(url, name, VIDEO_FILE_TYPE, true) }, 120_000),
+            (url) => toast(t.export.readyToast, "success", { label: t.export.readyAction, run: () => void saveVideo(url, name, videoAssetId) }, 120_000),
             () => toast(fmt(t.jobs.doneToast, { type }), "success"),
           );
         } else {

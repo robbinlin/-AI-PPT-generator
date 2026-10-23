@@ -111,6 +111,8 @@ export interface AvatarCharacter {
   previewImageUrl?: string;
   /** "stock" = platform library, "personal" = user-licensed likeness. */
   kind: "stock" | "personal";
+  /** What the character was made from: one photo or a recorded video (when the provider says). */
+  source?: "photo" | "video";
 }
 
 export interface AvatarCapabilities {

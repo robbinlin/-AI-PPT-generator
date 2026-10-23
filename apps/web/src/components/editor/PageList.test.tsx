@@ -75,9 +75,10 @@ describe("PageList", () => {
     expect(items).toHaveLength(3);
     const [p1, p2, p3] = items as [HTMLElement, HTMLElement, HTMLElement];
 
-    expect(dotsOf(p1)).toEqual({ script: "ready", audio: "ready", avatar: "missing", subtitle: "missing" });
-    expect(dotsOf(p2)).toEqual({ script: "ready", audio: "stale", avatar: "missing", subtitle: "missing" });
-    expect(dotsOf(p3)).toEqual({ script: "queued", audio: "missing", avatar: "missing", subtitle: "missing" });
+    // The fixture project has no avatar, so that chip reads 未使用 instead of 尚未產生.
+    expect(dotsOf(p1)).toEqual({ script: "ready", audio: "ready", avatar: "unused", subtitle: "missing" });
+    expect(dotsOf(p2)).toEqual({ script: "ready", audio: "stale", avatar: "unused", subtitle: "missing" });
+    expect(dotsOf(p3)).toEqual({ script: "queued", audio: "missing", avatar: "unused", subtitle: "missing" });
 
     expect(within(p1).getByText("第一頁講稿")).toBeInTheDocument();
     expect(within(p2).getByText("（尚無講稿）")).toBeInTheDocument();

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { SlidersHorizontal, Volume2, VolumeX, ZoomIn } from "lucide-react";
+import { GripVertical, SlidersHorizontal, Volume2, VolumeX, X, ZoomIn } from "lucide-react";
 import { MAX_TAIL_PAUSE_SEC, type Scene, type Transition } from "@lvs/shared";
 import { useAssetUrl } from "../../api/context";
 import type { EditorActions } from "../../hooks/useEditorActions";
@@ -27,6 +27,7 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
   const [width, setWidth] = useState(600);
   const [zoom, setZoom] = useState(1);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [tipSeen, setTipSeen] = useState(() => readFlag(TIP_KEY));
   // Page length being dragged, or committed and still being saved.
   const [resize, setResize] = useState<ResizeState | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -65,7 +66,9 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
   const scaleTotal = useRef(0);
   if (!resize?.dragging) scaleTotal.current = model.totalSec;
   const fitPx = scaleTotal.current > 0 ? Math.max(2, (width - LABEL_W - 16) / scaleTotal.current) : 20;
-  const pxPerSec = fitPx * zoom;
+  // At least ~44 px per page on average, so label, menu button and length handle never pile up.
+  const autoZoom = model.blocks.length > 0 ? Math.max(1, (44 * model.blocks.length) / Math.max(1, width - LABEL_W - 16)) : 1;
+  const pxPerSec = fitPx * Math.max(zoom, autoZoom);
   const selected = model.blocks.find((b) => b.scene.id === selectedSceneId);
   const playhead = selected ? selected.start + Math.min(currentTime, selected.total) : 0;
 
@@ -98,7 +101,7 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
         {resize?.dragging ? (
           <ResizeReadout block={model.blocks.find((b) => b.scene.id === resize.sceneId)} state={resize} />
         ) : (
-          <span className="tabular-nums">{fmt(t.timeline.total, { time: formatDuration(model.totalSec) })}</span>
+          <span className="tabular-nums">{totalDurationLabel(model)}</span>
         )}
         <label className="flex items-center gap-1.5">
           <ZoomIn className="size-3.5" aria-hidden />
@@ -106,6 +109,22 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
           <input type="range" min={1} max={6} step={0.25} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="w-24 accent-accent-500" aria-label={t.timeline.zoom} />
         </label>
       </div>
+      {!tipSeen && (
+        <div className="flex items-center gap-2 border-b border-neutral-800 bg-accent-500/10 px-3 py-1.5 text-xs text-accent-100" role="note" data-testid="timeline-tip">
+          <GripVertical className="size-3.5 shrink-0" aria-hidden />
+          <span className="flex-1">{t.timeline.tip}</span>
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-accent-200 hover:bg-white/10"
+            onClick={() => {
+              writeFlag(TIP_KEY);
+              setTipSeen(true);
+            }}
+          >
+            <X className="size-3" aria-hidden /> {t.timeline.tipDismiss}
+          </button>
+        </div>
+      )}
       <div ref={scroller} className="relative overflow-x-auto overflow-y-hidden">
         <div className="relative" style={{ width: contentW }}>
           <Ruler totalSec={model.totalSec} pxPerSec={pxPerSec} />
@@ -175,13 +194,37 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
   );
 }
 
+const TIP_KEY = "lvs:timeline-tip-seen";
+
+function readFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeFlag(key: string): void {
+  try {
+    localStorage.setItem(key, "1");
+  } catch {
+    // Storage blocked: the tip shows again next time, which is harmless.
+  }
+}
+
+/** "總長 2:47", or "總長約 2:47" while some pages still use the estimated narration length. */
+export function totalDurationLabel(model: { blocks: { estimated: boolean }[]; totalSec: number }): string {
+  const estimated = model.blocks.some((b) => b.estimated);
+  return fmt(estimated ? t.timeline.totalEstimated : t.timeline.total, { time: formatDuration(model.totalSec) });
+}
+
 function Ruler({ totalSec, pxPerSec }: { totalSec: number; pxPerSec: number }) {
   // Tick every 5/10/30/60 s depending on zoom, labelled.
   const step = [1, 2, 5, 10, 15, 30, 60, 120].find((s) => s * pxPerSec >= 56) ?? 300;
   const ticks: number[] = [];
   for (let s = 0; s <= totalSec + 0.001; s += step) ticks.push(s);
   return (
-    <div className="relative h-5 border-b border-neutral-800 text-[10px] text-neutral-500" style={{ marginLeft: LABEL_W }}>
+    <div className="relative h-5 border-b border-neutral-800 text-[11px] text-neutral-400" style={{ marginLeft: LABEL_W }}>
       {ticks.map((s) => (
         <span key={s} className="absolute top-0 h-full border-l border-neutral-700 pl-1" style={{ left: s * pxPerSec }}>
           {formatDuration(s)}
@@ -194,7 +237,7 @@ function Ruler({ totalSec, pxPerSec }: { totalSec: number; pxPerSec: number }) {
 function TrackRow({ label, height, children }: { label: string; height: number; children: React.ReactNode }) {
   return (
     <div className="flex border-b border-neutral-800/70" style={{ height }}>
-      <div className="sticky left-0 z-10 flex shrink-0 items-center bg-neutral-900 px-2 text-[10px] text-neutral-500" style={{ width: LABEL_W }}>
+      <div className="sticky left-0 z-10 flex shrink-0 items-center bg-neutral-900 px-2 text-xs text-neutral-400" style={{ width: LABEL_W }}>
         {label}
       </div>
       <div className="relative flex-1">{children}</div>
@@ -234,21 +277,29 @@ function SlideBlock({
       style={style}
       data-testid="timeline-slide"
       data-scene-id={block.scene.id}
-      title={t.timeline.dragToReorder}
-      className={`group absolute top-1 bottom-1 flex cursor-grab items-center gap-1 overflow-hidden rounded border bg-neutral-800 ${
+      className={`group absolute top-1 bottom-1 flex cursor-pointer items-center gap-1 overflow-hidden rounded border bg-neutral-800 ${
         selected ? "border-accent-400 ring-1 ring-accent-400" : "border-neutral-700 hover:border-neutral-500"
       } ${isDragging ? "opacity-80 shadow-lg" : ""}`}
       onClick={() => editorStore.getState().select(block.scene.id)}
-      {...attributes}
-      {...listeners}
     >
-      {thumb && <img src={thumb} alt="" className="h-full shrink-0 object-cover" draggable={false} />}
-      <span className="shrink-0 px-1 text-[10px] font-semibold text-neutral-300">P{block.index + 1}</span>
+      {/* Reorder only from the thumbnail + page number, so a drag near the edge can't move the page by accident. */}
+      <span
+        {...attributes}
+        {...listeners}
+        aria-label={fmt(t.timeline.reorderHandle, { n: block.index + 1 })}
+        aria-roledescription={t.timeline.sortable}
+        title={t.timeline.dragToReorder}
+        data-testid="timeline-reorder"
+        className="flex h-full shrink-0 cursor-grab items-center gap-1 focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:outline-none active:cursor-grabbing"
+      >
+        {thumb && <img src={thumb} alt="" className="h-full shrink-0 object-cover" draggable={false} />}
+        <span className="shrink-0 px-1 text-[11px] font-semibold text-neutral-200">P{block.index + 1}</span>
+      </span>
       {block.scene.muted && <VolumeX className="size-3 shrink-0 text-amber-300" aria-label={t.timeline.mute} />}
       <button
         type="button"
         aria-label={fmt(t.timeline.pageMenu, { n: block.index + 1 })}
-        className="ml-auto mr-1 shrink-0 rounded bg-black/50 p-0.5 text-neutral-200 opacity-70 hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-400"
+        className="mr-5 ml-auto shrink-0 rounded bg-black/50 p-0.5 text-neutral-200 opacity-70 hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-400"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
@@ -323,7 +374,9 @@ function ResizeHandle({ block, pxPerSec, state, onDrag, onCommit, keyboard = tru
         aria-valuetext={pageLengthLabel(block)}
         title={`${pageLengthLabel(block)}\n${t.timeline.resizeHint}`}
         data-testid="timeline-resize"
-        className="absolute inset-y-0 right-0 z-10 flex w-2.5 cursor-ew-resize touch-none items-center justify-center rounded-r bg-white/0 hover:bg-accent-400/40 focus-visible:bg-accent-400/50 focus-visible:outline-none"
+        className={`absolute inset-y-0 right-0 z-10 flex w-4 cursor-ew-resize touch-none items-center justify-center rounded-r border-l border-neutral-600/60 hover:bg-accent-400/40 focus-visible:bg-accent-400/50 focus-visible:outline-none ${
+          dragging ? "bg-accent-400/40" : "bg-neutral-700/70"
+        }`}
         onPointerDown={(e) => {
           e.stopPropagation();
           e.preventDefault();
@@ -347,7 +400,7 @@ function ResizeHandle({ block, pxPerSec, state, onDrag, onCommit, keyboard = tru
           onCommit(roundTail(Math.min(MAX_TAIL_PAUSE_SEC, Math.max(0, block.tail + step))));
         }}
       >
-        <span className={`h-4 w-0.5 rounded ${dragging ? "bg-accent-300" : "bg-neutral-300/70"}`} aria-hidden />
+        <GripVertical className={`size-3.5 ${dragging ? "text-accent-100" : "text-neutral-300"}`} aria-hidden />
       </div>
     </>
   );
@@ -437,7 +490,7 @@ function NarrationBlock({
             ))}
           </svg>
         ) : (
-          <span className="absolute inset-0 flex items-center px-1 text-[10px] text-neutral-500">{block.scene.muted ? t.player.mutedScene : t.timeline.noAudio}</span>
+          <span className="absolute inset-0 flex items-center px-1 text-[11px] text-neutral-400">{block.scene.muted ? t.player.mutedScene : t.timeline.noAudio}</span>
         )}
       </div>
       {block.tail > 0 && (
@@ -467,7 +520,7 @@ function CueBlock({ block, pxPerSec }: { block: TimelineBlock; pxPerSec: number 
         <div
           key={c.index}
           title={c.text}
-          className="absolute top-0.5 bottom-0.5 truncate rounded-sm bg-violet-500/30 px-0.5 text-[9px] leading-[14px] text-violet-100"
+          className="absolute top-0.5 bottom-0.5 truncate rounded-sm bg-violet-500/30 px-0.5 text-[10px] leading-[14px] text-violet-50"
           style={{ left: (block.start + c.startSec) * pxPerSec, width: Math.max(2, (c.endSec - c.startSec) * pxPerSec - 1) }}
         >
           {c.text}

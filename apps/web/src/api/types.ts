@@ -56,6 +56,7 @@ export const AvatarCharacterSchema = z.object({
   name: z.string(),
   previewImageUrl: z.string().optional(),
   kind: z.enum(["stock", "personal"]),
+  source: z.enum(["photo", "video"]).optional(),
 });
 export type AvatarOption = z.infer<typeof AvatarCharacterSchema>;
 

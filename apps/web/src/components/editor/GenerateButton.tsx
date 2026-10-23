@@ -23,12 +23,15 @@ export function GenerateButton({
   kind,
   icon,
   label,
+  shortLabel,
   actions,
   disabled,
 }: {
   kind: Kind;
   icon: LucideIcon;
   label: string;
+  /** Shown instead of `label` on narrow screens (one word, e.g. 講稿). */
+  shortLabel?: string;
   actions: Pick<EditorActions, "enqueue">;
   disabled: boolean;
 }) {
@@ -78,6 +81,7 @@ export function GenerateButton({
         aria-label={label}
         title={`${label}：${fmt(t.generate.pendingTitle, { count: pending, total: visible.length })}`}
       >
+        <span className="min-[1360px]:hidden">{shortLabel ?? label}</span>
         <span className="hidden min-[1360px]:inline">{label}</span>
         {pending > 0 && <span className="ml-1 rounded bg-neutral-700 px-1 text-[10px] leading-4 text-neutral-200">{pending}</span>}
       </Button>

@@ -1,11 +1,13 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
-import type { Job } from "@lvs/shared";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Asset, CostEstimate, Job } from "@lvs/shared";
 import { AlertTriangle, Download, FileText, Film, Subtitles } from "lucide-react";
 import { useApi, useAssetUrl } from "../../api/context";
-import { errorMessage } from "../../api/types";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
-import { canChooseSaveLocation, formatBytes, formatRelativeTime, saveFileAs } from "../../lib/format";
+import { armAutoExport, DOWNLOADED_EVENT, markDownloaded, wasDownloaded } from "../../lib/autoExport";
+import { canChooseSaveLocation, formatBytes, formatRelativeTime, type saveFileAs } from "../../lib/format";
+import { twdShort } from "../../lib/paidJobs";
+import { saveWithToasts, VIDEO_FILE_TYPE } from "../../lib/saveFiles";
 import { latestProjectAsset } from "../../lib/scenes";
 import { pageRanges, visibleScenes } from "../../lib/settingsImpact";
 import { useEditor } from "../../store/editorStore";
@@ -16,30 +18,6 @@ import { etaText, useTick } from "./JobsDrawer";
 import { OPEN_EXPORT_EVENT } from "./StepBar";
 
 type Preset = "preview_540p" | "hd_1080p";
-
-/**
- * Asks where to save (Chrome/Edge; other browsers drop the file in Downloads) and reports the
- * outcome in a toast. Call it straight from a click: the save dialog needs the user gesture.
- */
-export async function saveWithToasts(
-  source: Parameters<typeof saveFileAs>[0],
-  filename: string,
-  type: { description: string; mime: string },
-  big = false,
-): Promise<void> {
-  try {
-    const result = await saveFileAs(source, filename, type, big ? () => toast(fmt(t.export.saving, { name: filename })) : undefined);
-    if (result === "saved") toast(fmt(t.export.saved, { name: filename }), "success");
-  } catch (err) {
-    toast(errorMessage(err), "error");
-  }
-}
-
-export const VIDEO_FILE_TYPE = { description: t.export.videoFile, mime: "video/mp4" };
-
-export function videoFileName(projectName: string): string {
-  return `${projectName.replace(/[\\/:*?"<>|]+/g, "_")}.mp4`;
-}
 
 /** Shown in place of 開始匯出 while a render runs, so the click visibly did something. */
 function RenderProgress({ job }: { job: Job }) {
@@ -60,10 +38,27 @@ function RenderProgress({ job }: { job: Job }) {
   );
 }
 
+/** The latest video when it matches the current project and hasn't been saved from this browser yet. */
+export function useFreshUndownloadedVideo(): Asset | undefined {
+  const detail = useEditor((s) => s.detail);
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const on = () => bump((n) => n + 1);
+    window.addEventListener(DOWNLOADED_EVENT, on);
+    return () => window.removeEventListener(DOWNLOADED_EVENT, on);
+  }, []);
+  if (!detail) return undefined;
+  const video = latestProjectAsset(detail.assets, detail.scenes, "video");
+  if (!video) return undefined;
+  const current = detail.currentRenderHashes.length === 0 || detail.currentRenderHashes.includes(video.inputHash ?? "");
+  return current && !wasDownloaded(video.id) ? video : undefined;
+}
+
 export function ExportMenu({ actions, disabled }: { actions: Pick<EditorActions, "enqueue">; disabled: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const renderJob = useEditor((s) => s.detail?.activeJobs.find((j) => j.type === "render_video"));
+  const freshVideo = useFreshUndownloadedVideo();
 
   useEffect(() => {
     const onOpen = () => setOpen(true);
@@ -95,11 +90,17 @@ export function ExportMenu({ actions, disabled }: { actions: Pick<EditorActions,
         aria-haspopup="menu"
         onClick={() => setOpen((v) => !v)}
         data-testid="export-button"
+        title={freshVideo && !renderJob ? t.export.readyToDownload : undefined}
       >
         {renderJob ? (
           <span className="flex items-center gap-1.5">
             <Spinner className="size-3.5 text-white" />
             {fmt(t.export.renderingShort, { pct: Math.round((renderJob.progress ?? 0) * 100) })}
+          </span>
+        ) : freshVideo ? (
+          <span className="flex items-center gap-1.5" data-testid="export-ready">
+            {t.export.readyShort}
+            <span className="size-2 rounded-full bg-emerald-400 ring-2 ring-emerald-400/30" aria-hidden />
           </span>
         ) : (
           t.editor.export
@@ -110,45 +111,73 @@ export function ExportMenu({ actions, disabled }: { actions: Pick<EditorActions,
   );
 }
 
+/** Pending cost of a job type, for labelling the "make it first" buttons. */
+function usePendingEstimate(projectId: string | undefined, type: "synthesize_speech" | "generate_avatar", enabled: boolean): CostEstimate | undefined {
+  const api = useApi();
+  const [estimate, setEstimate] = useState<CostEstimate>();
+  useEffect(() => {
+    if (!projectId || !enabled) return;
+    let alive = true;
+    api.getEstimate(projectId, type).then(
+      (e) => alive && setEstimate(e),
+      () => alive && setEstimate(undefined),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [api, projectId, type, enabled]);
+  return enabled ? estimate : undefined;
+}
+
 function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueue">; onDone: () => void }) {
   const api = useApi();
   const detail = useEditor((s) => s.detail);
   const [preset, setPreset] = useState<Preset>("hd_1080p");
   const [burn, setBurn] = useState(detail?.project.settings.subtitles.burnIn ?? true);
   const renderJob = detail?.activeJobs.find((j) => j.type === "render_video");
-  const rendering = !!renderJob;
 
   const video = useMemo(() => (detail ? latestProjectAsset(detail.assets, detail.scenes, "video") : undefined), [detail]);
   const srt = useMemo(() => (detail ? latestProjectAsset(detail.assets, detail.scenes, "subtitle") : undefined), [detail]);
   const videoUrl = useAssetUrl(detail?.project.id, video?.id);
   const srtUrl = useAssetUrl(detail?.project.id, srt?.id);
+
+  const scenes = detail ? visibleScenes(detail).filter((s) => !s.muted) : [];
+  const audioNotReady = scenes.filter((s) => s.audio.status !== "ready").map((s) => s.index + 1);
+  const avatarNotReady =
+    detail?.project.settings.avatar.enabled && detail.project.settings.avatar.avatarId
+      ? scenes.filter((s) => s.avatar.status !== "ready").map((s) => s.index + 1)
+      : [];
+  const speechCost = usePendingEstimate(detail?.project.id, "synthesize_speech", audioNotReady.length > 0);
+  const avatarCost = usePendingEstimate(detail?.project.id, "generate_avatar", audioNotReady.length === 0 && avatarNotReady.length > 0);
   if (!detail) return null;
 
-  const scenes = visibleScenes(detail).filter((s) => !s.muted);
-  const audioNotReady = scenes.filter((s) => s.audio.status !== "ready").map((s) => s.index + 1);
-  const avatarNotReady = detail.project.settings.avatar.enabled
-    ? scenes.filter((s) => s.avatar.status !== "ready").map((s) => s.index + 1)
-    : [];
   const videoOutdated =
     !!video && detail.currentRenderHashes.length > 0 && !detail.currentRenderHashes.includes(video.inputHash ?? "");
-
   const baseName = detail.project.name.replace(/[\\/:*?"<>|]+/g, "_");
-
-  const render = async () => {
-    const job = await actions.enqueue({
-      type: "render_video",
-      preset,
-      burnSubtitles: burn && detail.project.settings.subtitles.enabled,
-    });
-    if (job) {
-      toast(t.export.queued);
-      // Stay open: the panel now shows the progress bar in place of 開始匯出.
-    }
+  const renderRequest = {
+    type: "render_video" as const,
+    preset,
+    burnSubtitles: burn && detail.project.settings.subtitles.enabled,
   };
 
-  const save = (source: Parameters<typeof saveFileAs>[0], filename: string, type: { description: string; mime: string }, big = false) => {
+  const render = async () => {
+    const job = await actions.enqueue(renderRequest);
+    // Stay open: the panel now shows the progress bar in place of 開始匯出.
+    if (job) toast(t.export.queued);
+  };
+
+  // Make what's missing, then export by itself once that job succeeds.
+  const makeThenExport = async (type: "synthesize_speech" | "generate_avatar") => {
+    const job = await actions.enqueue({ type, force: false });
+    if (!job) return;
+    armAutoExport(job.id, renderRequest);
+    toast(t.export.autoExportArmed);
     onDone();
-    return saveWithToasts(source, filename, type, big);
+  };
+
+  const save = (source: Parameters<typeof saveFileAs>[0], filename: string, type: { description: string; mime: string }, big = false, onSaved?: () => void) => {
+    onDone();
+    return saveWithToasts(source, filename, type, big, onSaved);
   };
 
   const exportScript = (format: "txt" | "md") =>
@@ -157,8 +186,17 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
       mime: format === "md" ? "text/markdown" : "text/plain",
     });
 
+  const costLabel = (e: CostEstimate | undefined) => (e ? twdShort(e.total, e.currency) : "…");
+
   const item =
     "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-neutral-200 hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent";
+
+  const preflightNote = (text: string) => (
+    <p className="flex gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
+      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+      {text}
+    </p>
+  );
 
   return (
     <div
@@ -168,18 +206,16 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
       {video && videoUrl && (
         <button
           type="button"
-          className={`${item} mb-1 ${videoOutdated ? "bg-amber-500/10 text-amber-200" : "bg-emerald-500/10 text-emerald-300"}`}
-          onClick={() => void save(videoUrl, `${baseName}.mp4`, { description: t.export.videoFile, mime: "video/mp4" }, true)}
+          className={`${item} mb-1 flex-wrap ${videoOutdated ? "bg-amber-500/10 text-amber-200" : "bg-emerald-500/10 text-emerald-300"}`}
+          onClick={() => void save(videoUrl, `${baseName}.mp4`, VIDEO_FILE_TYPE, true, () => markDownloaded(video.id))}
           title={canChooseSaveLocation() ? t.export.chooseLocation : undefined}
           data-testid="download-video"
         >
           {videoOutdated ? <AlertTriangle className="size-4" aria-hidden /> : <Download className="size-4" aria-hidden />}
-          <span className="flex-1">
-            {videoOutdated ? t.export.downloadOld : t.export.download}
-            {videoOutdated && <span className="block text-[11px] text-amber-300/90">{t.export.outdated}</span>}
-          </span>
-          <span className="text-[11px] text-neutral-400">
-            {fmt(t.export.latestVideo, { time: formatRelativeTime(video.createdAt) })} · {formatBytes(video.sizeBytes)}
+          <span className="flex-1">{videoOutdated ? t.export.downloadOld : t.export.download}</span>
+          <span className="basis-full pl-6 text-[11px] text-neutral-400">
+            {videoOutdated && <span className="text-amber-300/90">{t.export.outdated}・</span>}
+            {fmt(videoOutdated ? t.export.lastVideo : t.export.latestVideo, { time: formatRelativeTime(video.createdAt) })} · {formatBytes(video.sizeBytes)}
           </span>
         </button>
       )}
@@ -187,7 +223,7 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
         <div className="mb-2 flex items-center gap-2 text-sm font-medium text-neutral-100">
           <Film className="size-4" aria-hidden /> {t.export.video}
         </div>
-        <fieldset className="mb-2 flex flex-col gap-1 text-xs text-neutral-300">
+        <fieldset className="mb-2 flex flex-col gap-1 text-xs text-neutral-300" disabled={!!renderJob}>
           <legend className="mb-1 text-neutral-500">{t.export.preset}</legend>
           {(["hd_1080p", "preview_540p"] as const).map((p) => (
             <label key={p} className="flex items-center gap-2">
@@ -200,54 +236,33 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
           <input
             type="checkbox"
             checked={burn}
-            disabled={!detail.project.settings.subtitles.enabled}
+            disabled={!detail.project.settings.subtitles.enabled || !!renderJob}
             onChange={(e) => setBurn(e.target.checked)}
           />
           {t.export.burnSubtitles}
         </label>
-        {audioNotReady.length > 0 ? (
+        {renderJob ? (
+          // A running export always shows its progress, whatever else is still missing.
+          <RenderProgress job={renderJob} />
+        ) : audioNotReady.length > 0 ? (
           <div className="flex flex-col gap-2" data-testid="export-preflight">
-            <p className="flex gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
-              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-              {fmt(t.export.preflightAudio, { pages: pageRanges(audioNotReady) })}
-            </p>
-            <Button
-              variant="primary"
-              size="sm"
-              className="w-full"
-              onClick={() => {
-                onDone();
-                void actions.enqueue({ type: "synthesize_speech", force: false });
-              }}
-            >
-              {t.export.fixAudio}
+            {preflightNote(fmt(t.export.preflightAudio, { pages: pageRanges(audioNotReady) }))}
+            <Button variant="primary" size="sm" className="w-full" onClick={() => void makeThenExport("synthesize_speech")} data-testid="fix-audio">
+              {fmt(t.export.fixAudioThenExport, { cost: costLabel(speechCost) })}
             </Button>
           </div>
         ) : avatarNotReady.length > 0 ? (
           <div className="flex flex-col gap-2" data-testid="export-preflight">
-            <p className="flex gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
-              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-              {fmt(t.export.preflightAvatar, { pages: pageRanges(avatarNotReady) })}
-            </p>
+            {preflightNote(fmt(t.export.preflightAvatar, { pages: pageRanges(avatarNotReady) }))}
             <div className="flex gap-2">
-              <Button
-                variant="primary"
-                size="sm"
-                className="flex-1"
-                onClick={() => {
-                  onDone();
-                  void actions.enqueue({ type: "generate_avatar", force: false });
-                }}
-              >
-                {t.export.fixAvatar}
+              <Button variant="primary" size="sm" className="flex-1" onClick={() => void makeThenExport("generate_avatar")} data-testid="fix-avatar">
+                {fmt(t.export.fixAvatarThenExport, { cost: costLabel(avatarCost) })}
               </Button>
-              <Button size="sm" className="flex-1" disabled={rendering} onClick={() => void render()}>
+              <Button size="sm" className="flex-1" onClick={() => void render()}>
                 {t.export.exportAnyway}
               </Button>
             </div>
           </div>
-        ) : renderJob ? (
-          <RenderProgress job={renderJob} />
         ) : (
           <Button variant="primary" size="sm" className="w-full" onClick={() => void render()}>
             {t.export.start}

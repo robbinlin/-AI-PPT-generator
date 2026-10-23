@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { CostEstimate } from "@lvs/shared";
-import { formatCostTwd, formatWait, remainingSec } from "./format";
-import { confirmContent, estimateLines, needsConfirm } from "./paidJobs";
+import type { CostEstimate, Scene } from "@lvs/shared";
+import { activeFields, statusSummary } from "../components/editor/StatusDots";
+import { minReadableSize } from "../components/editor/StudioPanel";
+import { totalDurationLabel } from "../components/editor/Timeline";
+import { armAutoExport, isAutoExportArmed, takeAutoExport } from "./autoExport";
+import { formatCostTwd, formatTwdFirst, formatWait, remainingSec } from "./format";
+import { confirmContent, estimateLines, needsConfirm, needsConfirmWithoutEstimate, twdShort, unknownEstimateContent } from "./paidJobs";
 import { pageRanges, pickLike } from "./settingsImpact";
 
 const est = (total: number, sceneCount: number, extra: Partial<CostEstimate> = {}): CostEstimate => ({
@@ -66,6 +70,55 @@ describe("pageRanges", () => {
     expect(pageRanges([2, 3, 4, 5, 6])).toBe("2–6");
     expect(pageRanges([5, 1, 3, 2])).toBe("1–3、5");
     expect(pageRanges([4])).toBe("4");
+  });
+});
+
+describe("review fixes", () => {
+  it("never starts avatars or forced reruns unasked when the estimate is unavailable", () => {
+    expect(needsConfirmWithoutEstimate({ type: "generate_avatar", force: false })).toBe(true);
+    expect(needsConfirmWithoutEstimate({ type: "synthesize_speech", force: true })).toBe(true);
+    expect(needsConfirmWithoutEstimate({ type: "synthesize_speech", force: false })).toBe(false);
+    const c = unknownEstimateContent("generate_avatar", "heygen");
+    expect(c.lines.join()).toContain("無法取得預估費用");
+    expect(c.lines.join()).toContain("NT$96");
+    expect(c.confirmLabel).toBe("仍要開始");
+  });
+  it("puts NT$ first and calls zero 免費", () => {
+    expect(formatTwdFirst(10.02)).toMatch(/^約 NT\$321（US\$10\.02）$/);
+    expect(formatTwdFirst(0)).toBe("免費");
+    expect(twdShort(10.02)).toBe("約 NT$321");
+    expect(twdShort(0.004)).toBe("不到 NT$1");
+    const c = confirmContent("generate_avatar", { type: "generate_avatar", force: false }, est(0, 2), "local");
+    expect(c.lines[1]).toContain("免費（使用本機 GPU）");
+    expect(c.confirmLabel).toBe("確定開始（免費）");
+  });
+  it("arms one auto-export per job and only fires it on success", () => {
+    const render = { type: "render_video" as const, preset: "hd_1080p" as const, burnSubtitles: true };
+    armAutoExport("j1", render);
+    expect(takeAutoExport("j1", "running")).toBeUndefined();
+    expect(isAutoExportArmed("j1")).toBe(true);
+    expect(takeAutoExport("j1", "succeeded")).toEqual(render);
+    expect(takeAutoExport("j1", "succeeded")).toBeUndefined();
+    armAutoExport("j2", render);
+    expect(takeAutoExport("j2", "failed")).toBeUndefined();
+    expect(isAutoExportArmed("j2")).toBe(false);
+  });
+  it("leaves switched-off avatar/subtitles out of the page status", () => {
+    expect(activeFields({ avatar: { enabled: false }, subtitles: { enabled: true } } as never)).toEqual(["script", "audio", "subtitle"]);
+    const scene = {
+      script: { status: "ready" },
+      audio: { status: "ready" },
+      avatar: { status: "stale" },
+      subtitle: { status: "ready" },
+    } as unknown as Scene;
+    expect(statusSummary(scene)?.text).toContain("人像");
+    expect(statusSummary(scene, ["script", "audio", "subtitle"])).toBeNull();
+  });
+  it("flags avatars too small for readable lips and marks estimated totals", () => {
+    expect(minReadableSize({ shape: "circle" })).toBe(0.35);
+    expect(minReadableSize({ shape: "rect" })).toBe(0.5);
+    expect(totalDurationLabel({ blocks: [{ estimated: true }], totalSec: 167 })).toBe("總長約 2:47");
+    expect(totalDurationLabel({ blocks: [{ estimated: false }], totalSec: 167 })).toBe("總長 2:47");
   });
 });
 

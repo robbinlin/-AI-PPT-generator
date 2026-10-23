@@ -85,6 +85,14 @@ export function StepBar({ actions }: { actions: EditorActions }) {
     }
   };
 
+  const stepTitle: Record<StepId, string> = {
+    upload: t.steps.titleUpload,
+    script: t.steps.titleScript,
+    voice: t.steps.titleStudio,
+    avatar: t.steps.titleStudio,
+    export: t.steps.titleExport,
+  };
+
   const nextLabel: Record<StepId, string> = {
     upload: t.editor.upload,
     script: t.editor.generateScripts,
@@ -103,11 +111,17 @@ export function StepBar({ actions }: { actions: EditorActions }) {
               {i > 0 && <ChevronRight className="size-3.5 shrink-0 text-neutral-600" aria-hidden />}
               <button
                 type="button"
-                onClick={() => step.tab && openEditorTab(step.tab)}
+                onClick={() => {
+                  // Every step does something: open its tab, the upload dialog, or the export menu.
+                  if (step.id === "export") window.dispatchEvent(new Event(OPEN_EXPORT_EVENT));
+                  else if (step.id === "upload") fileInput.current?.click();
+                  else if (step.tab) openEditorTab(step.tab);
+                }}
+                title={stepTitle[step.id]}
                 aria-current={current ? "step" : undefined}
-                className={`flex items-center gap-1.5 rounded-full px-2 py-1 whitespace-nowrap ${
+                className={`flex items-center gap-1.5 rounded-full px-2 py-1 whitespace-nowrap hover:bg-neutral-800 ${
                   current ? "bg-accent-500/15 text-accent-200 ring-1 ring-accent-500/50" : step.done ? "text-emerald-300" : "text-neutral-400"
-                } ${step.tab ? "hover:bg-neutral-800" : "cursor-default"}`}
+                }`}
               >
                 <span
                   className={`flex size-4 items-center justify-center rounded-full text-[10px] font-semibold ${

@@ -204,7 +204,8 @@ function AvatarOverlay({
       {status !== "ready" && (
         <span
           data-testid="avatar-status-badge"
-          className="pointer-events-none absolute inset-x-0 bottom-1 mx-auto w-fit max-w-full rounded bg-black/75 px-1.5 py-0.5 text-center text-[10px] leading-tight font-medium text-amber-200"
+          // Top edge of the avatar: the bottom is where subtitles usually sit.
+          className="pointer-events-none absolute inset-x-0 top-1 z-10 mx-auto w-fit max-w-full rounded bg-black/80 px-1.5 py-0.5 text-center text-[11px] leading-tight font-medium text-amber-200"
         >
           {status === "missing"
             ? t.preview.avatarMissing
@@ -222,9 +223,22 @@ function AvatarOverlay({
           <span
             data-testid="avatar-resize"
             role="slider"
+            tabIndex={0}
             aria-label={t.studio.resizeHandle}
+            aria-valuemin={10}
+            aria-valuemax={100}
             aria-valuenow={Math.round(layout.size * 100)}
-            className="absolute -right-1.5 -bottom-1.5 size-3.5 cursor-nwse-resize rounded-sm border-2 border-white bg-accent-500 opacity-0 shadow transition group-hover:opacity-100"
+            aria-valuetext={`${Math.round(layout.size * 100)}%`}
+            title={t.studio.resizeKeys}
+            // Always visible (not hover-only) and operable with the arrow keys.
+            className="absolute -right-1.5 -bottom-1.5 size-4 cursor-nwse-resize rounded-sm border-2 border-white bg-accent-500 opacity-80 shadow transition group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-300 focus-visible:outline-none"
+            onKeyDown={(e) => {
+              const step = e.key === "ArrowUp" || e.key === "ArrowRight" ? 0.02 : e.key === "ArrowDown" || e.key === "ArrowLeft" ? -0.02 : 0;
+              if (!step) return;
+              e.preventDefault();
+              e.stopPropagation();
+              onCommit?.(resizeTo(layout, ratio, Math.min(1, Math.max(0.1, layout.size + step))));
+            }}
             onPointerDown={start("resize")}
             onPointerMove={move}
             onPointerUp={end}

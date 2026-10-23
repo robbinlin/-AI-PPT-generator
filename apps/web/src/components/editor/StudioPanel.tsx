@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Ban, Check, ChevronDown, Loader2, Play, Plus, RotateCcw, Search, Square, Trash2 } from "lucide-react";
+import { Ban, Check, ChevronDown, Loader2, Play, Plus, RotateCcw, Search, Square, Trash2, UserRound } from "lucide-react";
 import type { AvatarLayout, AvatarSettings, Project, ProviderInfo, SubtitleSettings, SubtitleStyle, UpdateProjectRequest, VoiceSettings } from "@lvs/shared";
 import { useApi } from "../../api/context";
 import { errorMessage, type AvatarOption, type VoiceOption } from "../../api/types";
@@ -225,6 +225,7 @@ function AvatarSection({
     >
       <ProviderPills providers={providers} kind="avatar" value={s.providerId} onChange={(providerId) => setAvatar({ providerId, enabled: true })} />
       {provider?.hint && <p className="text-[11px] text-amber-300/90">{provider.hint}</p>}
+      <AvatarProviderCompare providers={providers} selected={s.enabled ? s.providerId : undefined} />
       <div className="grid grid-cols-4 gap-2" data-testid="avatar-gallery">
         {custom && (
           <button
@@ -311,7 +312,54 @@ function AvatarSection({
   );
 }
 
+/** VoAI-style plan card: what each avatar provider gives (gestures, lips, cost, wait). */
+function AvatarProviderCompare({ providers, selected }: { providers: ProviderInfo[]; selected: string | undefined }) {
+  const ids = (["heygen", "local"] as const).filter((id) => providers.some((p) => p.kind === "avatar" && p.id === id));
+  if (ids.length < 2) return null;
+  const c = t.studio.compare;
+  const rows = [
+    [c.gestures, "gestures"],
+    [c.lips, "lips"],
+    [c.cost, "cost"],
+    [c.wait, "wait"],
+  ] as const;
+  const name = (id: (typeof ids)[number]) => c[id].name;
+  return (
+    <div className="rounded-md border border-neutral-800 text-[11px]" data-testid="avatar-compare">
+      <table className="w-full table-fixed border-collapse">
+        <caption className="px-2 pt-1.5 pb-1 text-left text-xs font-medium text-neutral-300">{c.title}</caption>
+        <thead>
+          <tr className="text-neutral-400">
+            <th className="w-[30%] px-2 py-1 text-left font-normal" />
+            {ids.map((id) => (
+              <th key={id} scope="col" className={`px-2 py-1 text-left font-medium ${selected === id ? "text-accent-200" : "text-neutral-200"}`}>
+                {name(id)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([label, key]) => (
+            <tr key={key} className="border-t border-neutral-800/70">
+              <th scope="row" className="px-2 py-1 text-left font-normal text-neutral-400">
+                {label}
+              </th>
+              {ids.map((id) => (
+                <td key={id} className={`px-2 py-1 ${selected === id ? "bg-accent-500/10 text-neutral-100" : "text-neutral-300"}`}>
+                  {c[id][key]}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="border-t border-neutral-800/70 px-2 py-1.5 text-neutral-400">{c.tip}</p>
+    </div>
+  );
+}
+
 function AvatarTile({
+  a,
   label,
   url,
   selected,
@@ -324,6 +372,10 @@ function AvatarTile({
   onPick: () => void;
 }) {
   const [broken, setBroken] = useState(false);
+  // "Name #2" → the running number goes in the corner tag, where a two-line clamp can't cut it off.
+  const m = /^(.*) (#\d+)$/.exec(label);
+  const name = m ? m[1]! : label;
+  const number = m ? m[2]! : "";
   return (
     <button
       type="button"
@@ -338,9 +390,17 @@ function AvatarTile({
       {url && !broken ? (
         <img src={url} alt="" loading="lazy" className="size-full object-cover object-top" onError={() => setBroken(true)} />
       ) : (
-        <span className="flex size-full items-center justify-center p-1 text-center text-[10px] text-neutral-400" aria-hidden />
+        // No picture (or it failed to load): a figure, so the tile never looks like an empty slot.
+        <span className="flex size-full items-center justify-center pb-6 text-neutral-500" aria-hidden>
+          <UserRound className="size-7" />
+        </span>
       )}
-      <span className="absolute inset-x-0 bottom-0 truncate bg-black/70 px-1 py-0.5 text-[10px] text-neutral-100">{label}</span>
+      {(a.source || number) && (
+        <span className="absolute top-1 left-1 rounded bg-black/70 px-1 py-px text-[10px] leading-tight text-neutral-100">
+          {[a.source ? t.studio.source[a.source] : "", number].filter(Boolean).join(" ")}
+        </span>
+      )}
+      <span className="absolute inset-x-0 bottom-0 line-clamp-2 bg-black/75 px-1 py-0.5 text-[11px] leading-tight break-all text-neutral-100">{name}</span>
       {selected && (
         <span className="absolute top-1 right-1 rounded-full bg-accent-500 p-0.5 text-white">
           <Check className="size-3" aria-hidden />
@@ -453,6 +513,11 @@ function LayoutSection({
       <Field label={t.settings.size}>
         <CommitRange label={t.settings.size} value={layout.size} min={0.1} max={1} step={0.01} format={pct} onCommit={(size) => setLayout({ size })} />
       </Field>
+      {s.avatar.enabled && layout.visible !== false && layout.size < minReadableSize(layout) && (
+        <p className="text-[11px] text-amber-300" role="note" data-testid="avatar-size-hint">
+          {fmt(t.studio.sizeSmall, { min: pct(minReadableSize(layout)) })}
+        </p>
+      )}
       <Field label={t.studio.slideScale}>
         <CommitRange label={t.studio.slideScale} value={layout.slideScale ?? 1} min={0.5} max={1} step={0.01} format={pct} onCommit={(slideScale) => setLayout({ slideScale })} />
       </Field>
@@ -463,6 +528,14 @@ function LayoutSection({
       )}
     </Section>
   );
+}
+
+/**
+ * Below this (fraction of the frame height) the mouth is a few pixels tall in a 1080p video:
+ * a circle crops to the face, a half-body box shows much more than the face.
+ */
+export function minReadableSize(layout: Pick<AvatarLayout, "shape">): number {
+  return layout.shape === "circle" ? 0.35 : 0.5;
 }
 
 /** Tiny SVG mock of a frame layout: slide rectangle + avatar silhouette. */

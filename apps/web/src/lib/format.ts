@@ -124,6 +124,15 @@ export function formatCostTwd(amount: number, currency = "USD"): string {
   return `${base}（${twd < 1 ? "不到 NT$1" : `約 NT$${Math.round(twd).toLocaleString("zh-TW")}`}）`;
 }
 
+/** NT$ first for Taiwanese readers: "約 NT$321（US$10.02）", "不到 NT$1（US$0.004）", "免費". */
+export function formatTwdFirst(amount: number, currency = "USD"): string {
+  if (amount <= 0) return "免費";
+  const base = formatCost(amount, currency);
+  if (currency !== "USD") return base;
+  const twd = amount * TWD_PER_USD;
+  return `${twd < 1 ? "不到 NT$1" : `約 NT$${Math.round(twd).toLocaleString("zh-TW")}`}（${base}）`;
+}
+
 /** "約 3 分鐘" / "不到 1 分鐘" / "約 1 小時 10 分鐘" for waits. */
 export function formatWait(seconds: number): string {
   const min = Math.round(seconds / 60);

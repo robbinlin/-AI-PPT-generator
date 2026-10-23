@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import type { Job } from "@lvs/shared";
-import { CircleCheck, CircleSlash, CircleX, ListChecks, X } from "lucide-react";
-import { useApi } from "../../api/context";
+import { CircleCheck, CircleSlash, CircleX, Download, ListChecks, X } from "lucide-react";
+import { useApi, useAssetUrl } from "../../api/context";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
 import { formatRelativeTime, formatWait, remainingSec } from "../../lib/format";
 import { editorStore, useEditor } from "../../store/editorStore";
 import { Button, IconButton } from "../ui/Button";
 import { ProgressBar, Spinner } from "../ui/Misc";
+import { saveVideo } from "../../lib/saveFiles";
 
 /** Header button: spinner + progress text of the most recent active job; opens the drawer. */
 /** Re-renders every few seconds so remaining-time estimates move between progress events. */
@@ -141,9 +142,26 @@ function RecentJob({ job }: { job: Job }) {
           <span className="text-neutral-200">{t.jobs.types[job.type]}</span>
           <span className="text-neutral-500">{formatRelativeTime(job.finishedAt ?? job.createdAt)}</span>
         </div>
-        <div className={color}>{t.jobs.statuses[job.status]}</div>
+        <div className="flex items-center justify-between gap-2">
+          <span className={color}>{t.jobs.statuses[job.status]}</span>
+          {job.type === "render_video" && job.status === "succeeded" && <RenderDownload job={job} />}
+        </div>
         {job.error && <div className="mt-0.5 break-words text-rose-300">{job.error}</div>}
       </div>
     </li>
+  );
+}
+
+/** 下載 next to a finished export, so the video can be fetched after its toast is gone. */
+function RenderDownload({ job }: { job: Job }) {
+  const projectName = useEditor((s) => s.detail?.project.name ?? "video");
+  const assetId = (job.result as { videoAssetId?: string } | undefined)?.videoAssetId;
+  const url = useAssetUrl(job.projectId, assetId);
+  if (!assetId || !url) return null;
+  return (
+    <button type="button" className="flex items-center gap-1 rounded px-1.5 py-0.5 text-accent-300 hover:bg-neutral-800" onClick={() => void saveVideo(url, projectName, assetId)}>
+      <Download className="size-3.5" aria-hidden />
+      {t.jobs.download}
+    </button>
   );
 }

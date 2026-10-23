@@ -163,6 +163,7 @@ describe("local avatar provider", () => {
       name: "me",
       kind: "personal",
       previewImageUrl: "http://avatar.test/characters/c1/preview.jpg",
+      source: "photo",
     });
     expect((await p.listAvatars())[0]!.id).toBe("c1");
     const { taskId } = await p.createTask({

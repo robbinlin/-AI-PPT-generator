@@ -5,7 +5,16 @@ import { errorMessage, type EstimateType } from "../api/types";
 import { fmt, t } from "../i18n";
 import { formatCostTwd } from "../lib/format";
 import { requestNotifyPermission } from "../lib/notify";
-import { confirmContent, ESTIMATED_TYPES, estimateWaitSec, isForced, needsConfirm, requestedScenes } from "../lib/paidJobs";
+import {
+  confirmContent,
+  ESTIMATED_TYPES,
+  estimateWaitSec,
+  isForced,
+  needsConfirm,
+  needsConfirmWithoutEstimate,
+  requestedScenes,
+  unknownEstimateContent,
+} from "../lib/paidJobs";
 import { pickLike, visibleScenes } from "../lib/settingsImpact";
 import { confirmAction } from "../store/confirmStore";
 import { editorStore } from "../store/editorStore";
@@ -63,6 +72,10 @@ export function useEditorActions() {
         const avatarProvider = store().detail?.project.settings.avatar.providerId;
         if (estimate && needsConfirm(req, estimate)) {
           const ok = await confirmAction(confirmContent(type, req, estimate, avatarProvider));
+          if (!ok) return null;
+        } else if (!estimate && needsConfirmWithoutEstimate(req)) {
+          // No estimate (network/API error) must never mean "start paid avatars unasked".
+          const ok = await confirmAction(unknownEstimateContent(type, avatarProvider));
           if (!ok) return null;
         }
         if (estimate && estimateWaitSec(type, estimate, avatarProvider) > 90) requestNotifyPermission();
@@ -141,6 +154,23 @@ export function useEditorActions() {
       return changed;
     };
 
+    const reorder = async (slideIds: string[], options: { undoable?: boolean } = {}): Promise<void> => {
+      const before = store().detail;
+      const previousOrder = before ? [...before.slides].sort((a, b) => a.index - b.index).map((s) => s.id) : undefined;
+      store().reorderLocal(slideIds);
+      try {
+        const { slides, scenes } = await api.reorderSlides(projectId(), { slideIds });
+        store().setSlidesAndScenes(slides, scenes);
+        // A drag can move a page by accident; offer the way back.
+        if (options.undoable !== false && previousOrder) {
+          toast(t.pageList.reordered, "info", { label: t.impact.undo, run: () => void reorder(previousOrder, { undoable: false }) });
+        }
+      } catch (err) {
+        if (before) store().setSlidesAndScenes(before.slides, before.scenes);
+        toast(errorMessage(err), "error");
+      }
+    };
+
     return {
       enqueue,
       updateProject,
@@ -180,17 +210,7 @@ export function useEditorActions() {
         }
       },
 
-      async reorder(slideIds: string[]): Promise<void> {
-        const before = store().detail;
-        store().reorderLocal(slideIds);
-        try {
-          const { slides, scenes } = await api.reorderSlides(projectId(), { slideIds });
-          store().setSlidesAndScenes(slides, scenes);
-        } catch (err) {
-          if (before) store().setSlidesAndScenes(before.slides, before.scenes);
-          toast(errorMessage(err), "error");
-        }
-      },
+      reorder,
 
       async upload(file: File): Promise<void> {
         const invalid = validateUpload(file);

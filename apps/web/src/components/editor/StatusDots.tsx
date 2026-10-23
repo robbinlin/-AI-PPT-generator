@@ -1,5 +1,6 @@
-import type { DerivedStatus, Scene } from "@lvs/shared";
+import type { DerivedStatus, ProjectSettings, Scene } from "@lvs/shared";
 import { fmt, t } from "../../i18n";
+import { useEditor } from "../../store/editorStore";
 
 export const STATUS_FIELDS = ["script", "audio", "avatar", "subtitle"] as const;
 export type StatusField = (typeof STATUS_FIELDS)[number];
@@ -27,12 +28,41 @@ export function statusLabel(field: StatusField, status: DerivedStatus): string {
   return `${t.status[field]}：${t.status[status]}`;
 }
 
+/** Fields the project actually produces: no avatar / subtitles when they are switched off. */
+export function activeFields(settings: Pick<ProjectSettings, "avatar" | "subtitles"> | undefined): StatusField[] {
+  if (!settings) return [...STATUS_FIELDS];
+  return STATUS_FIELDS.filter((f) => (f === "avatar" ? settings.avatar.enabled : f === "subtitle" ? settings.subtitles.enabled : true));
+}
+
+function useActiveFields(): StatusField[] {
+  const avatarOn = useEditor((s) => s.detail?.project.settings.avatar.enabled ?? true);
+  const subtitlesOn = useEditor((s) => s.detail?.project.settings.subtitles.enabled ?? true);
+  return activeFields({ avatar: { enabled: avatarOn }, subtitles: { enabled: subtitlesOn } } as Pick<ProjectSettings, "avatar" | "subtitles">);
+}
+
 /** Four labelled chips (講/語/人/字), each showing its asset's state by colour and border. */
 export function StatusDots({ scene }: { scene: Scene }) {
+  const fields = useActiveFields();
   return (
     <ul className="flex items-center gap-1" aria-label={t.pageList.title}>
       {STATUS_FIELDS.map((field) => {
         const state = scene[field];
+        if (!fields.includes(field)) {
+          const label = `${t.status[field]}：${t.status.unused}`;
+          return (
+            <li
+              key={field}
+              role="img"
+              aria-label={label}
+              title={label}
+              data-field={field}
+              data-status="unused"
+              className="flex h-4 min-w-4 items-center justify-center rounded border border-neutral-700 px-0.5 text-[10px] leading-none font-medium text-neutral-500 line-through"
+            >
+              {t.status[field].slice(0, 1)}
+            </li>
+          );
+        }
         const label = statusLabel(field, state.status) + (state.error ? ` (${state.error})` : "");
         return (
           <li
@@ -53,19 +83,22 @@ export function StatusDots({ scene }: { scene: Scene }) {
 }
 
 /** One line in words for the most urgent state, e.g. "語音、人像需更新". Null when all is fine. */
-export function statusSummary(scene: Scene): { text: string; tone: "error" | "warn" | "muted" } | null {
-  const fields = (status: DerivedStatus) => STATUS_FIELDS.filter((f) => scene[f].status === status).map((f) => t.status[f]);
+export function statusSummary(
+  scene: Scene,
+  active: readonly StatusField[] = STATUS_FIELDS,
+): { text: string; tone: "error" | "warn" | "muted" } | null {
+  const fields = (status: DerivedStatus) => active.filter((f) => scene[f].status === status).map((f) => t.status[f]);
   const failed = fields("failed");
   if (failed.length) return { text: fmt(t.pageList.failed, { list: failed.join("、") }), tone: "error" };
   const stale = fields("stale");
   if (stale.length) return { text: fmt(t.pageList.needsWork, { list: stale.join("、") }), tone: "warn" };
   const missing = fields("missing");
-  if (missing.length && missing.length < STATUS_FIELDS.length) return { text: fmt(t.pageList.notMade, { list: missing.join("、") }), tone: "muted" };
+  if (missing.length && missing.length < active.length) return { text: fmt(t.pageList.notMade, { list: missing.join("、") }), tone: "muted" };
   return null;
 }
 
 export function StatusSummary({ scene }: { scene: Scene }) {
-  const summary = statusSummary(scene);
+  const summary = statusSummary(scene, useActiveFields());
   if (!summary) return null;
   const color = summary.tone === "error" ? "text-rose-300" : summary.tone === "warn" ? "text-amber-200" : "text-neutral-400";
   return <p className={`mt-1 text-[11px] leading-snug ${color}`}>{summary.text}</p>;

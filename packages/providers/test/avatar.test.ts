@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildHeyGenGenerateBody,
   HeyGenAvatarProvider,
+  heyGenLookSource,
   mapHeyGenLooks,
   mapHeyGenGenerateResponse,
   mapHeyGenStatus,
@@ -41,6 +42,14 @@ describe("heygen mapping (v3)", () => {
       { id: "lk1", name: "Business Suit", kind: "stock", previewImageUrl: "p" },
     ]);
     expect(mapHeyGenLooks({ data: [{ id: "me", name: "Me" }] }, "private")).toEqual([{ id: "me", name: "我的人像・Me", kind: "personal" }]);
+  });
+  it("tells photo avatars from video-trained ones (avatar_type, else the preview path)", () => {
+    expect(heyGenLookSource({ avatar_type: "talking_photo" })).toBe("photo");
+    expect(heyGenLookSource({ avatar_type: "studio_avatar" })).toBe("video");
+    expect(heyGenLookSource({ preview_image_url: "https://files2.heygen.ai/talking_photo/x/y.WEBP?Expires=1" })).toBe("photo");
+    expect(heyGenLookSource({ preview_image_url: "https://files2.heygen.ai/avatar/v3/x/full/2.2/preview_target.webp" })).toBe("video");
+    expect(heyGenLookSource({ preview_image_url: "p" })).toBeUndefined();
+    expect(mapHeyGenLooks({ data: [{ id: "a", name: "A", preview_image_url: "https://h/talking_photo/a.webp" }] }, "private")[0]).toMatchObject({ source: "photo" });
   });
   it("uploads audio as an asset, then hits the v3 endpoints with x-api-key", async () => {
     const seen: string[] = [];

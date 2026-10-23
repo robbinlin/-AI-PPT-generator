@@ -6,8 +6,9 @@ import { useCostEstimate } from "../../hooks/useCostEstimate";
 import { ACCEPTED_EXTENSIONS } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
 import { toast } from "../../store/toastStore";
-import { formatCost, formatCostTwd, formatDuration } from "../../lib/format";
-import { estimateLines } from "../../lib/paidJobs";
+import { formatDuration, formatTwdFirst } from "../../lib/format";
+import { estimateLines, twdShort } from "../../lib/paidJobs";
+import { buildTimeline } from "../../lib/timelineModel";
 import { useEditor } from "../../store/editorStore";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Misc";
@@ -42,6 +43,11 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
   const { project, sourceDocument } = detail;
   const hasSlides = detail.slides.length > 0;
   const busy = (type: string) => detail.activeJobs.some((j) => j.type === type);
+  // Same numbers as the timeline: estimated narration counts until the audio exists (then "約").
+  const timeline = buildTimeline(detail.scenes, detail.slides, detail.scripts);
+  const durationLabel = fmt(timeline.blocks.some((b) => b.estimated) ? t.editor.totalDurationEstimated : t.editor.totalDuration, {
+    time: formatDuration(timeline.totalSec),
+  });
 
   const pickFile = () => {
     if (sourceDocument && !window.confirm(t.upload.replaceConfirm)) return;
@@ -72,7 +78,7 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
           <span className="hidden min-[1200px]:contents">
             <Badge>
               <Clock className="size-3" aria-hidden />
-              {fmt(t.editor.totalDuration, { time: formatDuration(detail.totalDurationSec) })}
+              {durationLabel}
             </Badge>
           </span>
           {estimate && (
@@ -81,10 +87,10 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
               title={[
                 t.editor.estimateTitle,
                 ...Object.values(estimate.parts).flatMap((p) => (p ? estimateLines(p) : [])),
-                fmt(t.paid.cost, { cost: formatCostTwd(estimate.total, estimate.currency) }),
+                fmt(t.paid.cost, { cost: formatTwdFirst(estimate.total, estimate.currency) }),
               ].join("\n")}
             >
-              {estimate.total > 0 ? fmt(t.editor.estimate, { cost: formatCost(estimate.total, estimate.currency) }) : t.editor.estimateNone}
+              {estimate.total > 0 ? fmt(t.editor.estimate, { cost: twdShort(estimate.total, estimate.currency) }) : t.editor.estimateNone}
             </Badge>
           )}
         </div>
@@ -93,10 +99,11 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
       <div className="flex shrink-0 items-center gap-1.5">
         <JobsIndicator onOpen={onOpenJobs} />
         <Button icon={Upload} onClick={pickFile} title={t.editor.upload} aria-label={t.editor.upload}>
+          <span className="min-[1360px]:hidden">{t.editor.uploadShort}</span>
           <span className="hidden min-[1360px]:inline">{t.editor.upload}</span>
         </Button>
-        <GenerateButton kind="generate_script" icon={NotebookPen} label={t.editor.generateScripts} actions={actions} disabled={!hasSlides || busy("generate_script")} />
-        <GenerateButton kind="synthesize_speech" icon={AudioLines} label={t.editor.generateSpeech} actions={actions} disabled={!hasSlides || busy("synthesize_speech")} />
+        <GenerateButton kind="generate_script" icon={NotebookPen} label={t.editor.generateScripts} shortLabel={t.editor.scriptsShort} actions={actions} disabled={!hasSlides || busy("generate_script")} />
+        <GenerateButton kind="synthesize_speech" icon={AudioLines} label={t.editor.generateSpeech} shortLabel={t.editor.speechShort} actions={actions} disabled={!hasSlides || busy("synthesize_speech")} />
         <Button
           icon={UserRound}
           disabled={!hasSlides || busy("generate_avatar")}
@@ -106,6 +113,7 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
             avatarEnabled ? void actions.enqueue({ type: "generate_avatar", force: false }) : toast(t.editor.avatarDisabled, "info")
           }
         >
+          <span className="min-[1200px]:hidden">{t.editor.avatarShort}</span>
           <span className="hidden min-[1200px]:inline">{t.editor.generateAvatar}</span>
         </Button>
         <ExportMenu actions={actions} disabled={!hasSlides} />

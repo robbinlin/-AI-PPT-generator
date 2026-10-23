@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNarrationSync } from "../../lib/narrationClock";
 
 /** Providers whose clips come on chroma green (mirrors CHROMA_KEY_BY_PROVIDER in the API). */
@@ -49,7 +49,8 @@ export function KeyedVideo({ src, poster, className }: { src: string; poster?: s
       // Key only new frames; a paused clip would otherwise be re-keyed every animation frame.
       if (v.readyState >= 2 && v.videoWidth && v.currentTime !== lastTime) {
         lastTime = v.currentTime;
-        const h = Math.min(360, v.videoHeight);
+        // 540 px keeps the mouth readable in the preview at a modest per-frame keying cost.
+        const h = Math.min(540, v.videoHeight);
         const w = Math.round((v.videoWidth / v.videoHeight) * h);
         if (c.width !== w || c.height !== h) {
           c.width = w;
