@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import type { Project, ProviderInfo } from "@lvs/shared";
+import { VoiceSettings } from "@lvs/shared";
 import { useApi } from "../api/context";
 import { errorMessage, type AvatarOption, type VoiceOption } from "../api/types";
 import { t } from "../i18n";
 import { toast } from "../store/toastStore";
 import type { EditorActions } from "./useEditorActions";
+
+/** Picked when the current voice is not offered by the chosen provider (matches the schema default). */
+const DEFAULT_VOICE_ID = VoiceSettings.parse({}).voiceId;
 
 /** Avatar lists are fetched by several components (panel, preview); share one request per provider. */
 const avatarCache = new Map<string, Promise<AvatarOption[]>>();
@@ -113,7 +117,8 @@ export function useStudioLists(project: Project | undefined, actions: Pick<Edito
   const currentVoiceId = project?.settings.voice.voiceId;
   useEffect(() => {
     if (!project || voices.length === 0 || voices.some((v) => v.id === currentVoiceId)) return;
-    void actions.updateProject({ settings: { voice: { ...project.settings.voice, voiceId: voices[0]!.id } } });
+    const fallback = voices.find((v) => v.id === DEFAULT_VOICE_ID) ?? voices[0]!;
+    void actions.updateProject({ settings: { voice: { ...project.settings.voice, voiceId: fallback.id } } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voices, currentVoiceId]);
 

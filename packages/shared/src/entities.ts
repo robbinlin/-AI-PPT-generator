@@ -63,7 +63,7 @@ export type SubtitleStyle = z.infer<typeof SubtitleStyle>;
 
 export const VoiceSettings = z.object({
   providerId: z.string().default("gemini"),
-  voiceId: z.string().default("Kore"),
+  voiceId: z.string().default("Orus"),
   /** 1.0 = provider default. Changing this re-synthesizes audio. */
   speed: z.number().min(0.5).max(2).default(1),
   /** Default pause inserted between sentences, in seconds. */

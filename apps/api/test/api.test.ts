@@ -27,7 +27,7 @@ describe("project lifecycle", () => {
     const p = res.json();
     projectId = p.id;
     expect(p.settings.language).toBe("zh-TW");
-    expect(p.settings.voice.voiceId).toBe("Kore");
+    expect(p.settings.voice.voiceId).toBe("Orus");
     const list = await t.app.inject({ method: "GET", url: "/projects" });
     expect(list.json()).toHaveLength(1);
   });
