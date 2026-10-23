@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+﻿import { randomUUID } from "node:crypto";
 import { RenderScene, SubtitleStyle } from "@lvs/shared";
 import { describe, expect, it } from "vitest";
 import {
@@ -163,7 +163,8 @@ describe("command building", () => {
       avatarDecoder: "libvpx-vp9",
     });
     const joined = args.join(" ");
-    expect(joined).toContain("-c:v libvpx-vp9 -stream_loop -1 -i /a.webm");
+    expect(joined).toContain("-c:v libvpx-vp9 -i /a.webm");
+    expect(joined).not.toContain("-stream_loop");
     expect(joined).toContain("alphaextract");
     expect(joined).toContain("blend=all_mode=multiply");
     expect(joined).toContain("overlay=x=W-w-14:y=14");

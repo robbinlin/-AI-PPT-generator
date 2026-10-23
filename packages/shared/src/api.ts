@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { Id } from "./ids.js";
 import {
   Asset,
@@ -13,6 +13,7 @@ import {
   Slide,
   SourceDocument,
   AvatarLayout,
+  MAX_TAIL_PAUSE_SEC,
 } from "./entities.js";
 import { Transition } from "./enums.js";
 
@@ -76,7 +77,7 @@ export const UpdateSceneRequest = z.object({
   muted: z.boolean().optional(),
   avatarLayout: AvatarLayout.nullable().optional(),
   transitionIn: Transition.nullable().optional(),
-  tailPauseSec: z.number().min(0).max(10).optional(),
+  tailPauseSec: z.number().min(0).max(MAX_TAIL_PAUSE_SEC).optional(),
 });
 export type UpdateSceneRequest = z.infer<typeof UpdateSceneRequest>;
 

@@ -4,6 +4,7 @@ import { ListVideo, Pause, Play, Square } from "lucide-react";
 import { useAssetUrl } from "../../api/context";
 import { t } from "../../i18n";
 import { formatDuration } from "../../lib/format";
+import { setNarrationAudio } from "../../lib/narrationClock";
 import { editorStore, useEditor } from "../../store/editorStore";
 import { Button } from "../ui/Button";
 
@@ -71,7 +72,10 @@ export function ScenePlayer({ projectId, scene, hidden }: ScenePlayerProps) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
       <audio
-        ref={audioRef}
+        ref={(el) => {
+          audioRef.current = el;
+          setNarrationAudio(el);
+        }}
         src={url}
         preload="auto"
         onEnded={onEnded}

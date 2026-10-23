@@ -3,7 +3,7 @@ import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type D
 import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { SlidersHorizontal, Volume2, VolumeX, ZoomIn } from "lucide-react";
-import type { Scene, Transition } from "@lvs/shared";
+import { MAX_TAIL_PAUSE_SEC, type Scene, type Transition } from "@lvs/shared";
 import { useAssetUrl } from "../../api/context";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
@@ -27,6 +27,8 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
   const [width, setWidth] = useState(600);
   const [zoom, setZoom] = useState(1);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  // Page length being dragged, or committed and still being saved.
+  const [resize, setResize] = useState<ResizeState | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   useLayoutEffect(() => {
@@ -39,10 +41,30 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
   }, []);
 
   const model = useMemo(
-    () => (detail ? buildTimeline(detail.scenes, detail.slides, detail.scripts) : { blocks: [], totalSec: 0 }),
-    [detail],
+    () => (detail ? buildTimeline(detail.scenes, detail.slides, detail.scripts, resize ?? undefined) : { blocks: [], totalSec: 0 }),
+    [detail, resize],
   );
-  const fitPx = model.totalSec > 0 ? Math.max(2, (width - LABEL_W - 16) / model.totalSec) : 20;
+
+  const commitTail = (sceneId: string, tail: number) => {
+    const current = detail?.scenes.find((s) => s.id === sceneId)?.tailPauseSec;
+    if (current !== undefined && Math.abs(current - tail) < 0.05) return setResize(null);
+    setResize({ sceneId, tail });
+    // The store holds the saved scene once this settles (or the old one if saving failed).
+    void actions
+      .updateScene(sceneId, { tailPauseSec: tail })
+      .finally(() => setResize((r) => (r && !r.dragging && r.sceneId === sceneId && r.tail === tail ? null : r)));
+  };
+  const resizeProps = (b: TimelineBlock): ResizeHandleProps => ({
+    block: b,
+    pxPerSec,
+    state: resize?.sceneId === b.scene.id ? resize : undefined,
+    onDrag: (tail, limit) => setResize({ sceneId: b.scene.id, tail, dragging: true, ...(limit ? { limit } : {}) }),
+    onCommit: (tail) => commitTail(b.scene.id, tail),
+  });
+  // Keep the scale fixed while an edge is dragged; refitting would slide the edge out from under the pointer.
+  const scaleTotal = useRef(0);
+  if (!resize?.dragging) scaleTotal.current = model.totalSec;
+  const fitPx = scaleTotal.current > 0 ? Math.max(2, (width - LABEL_W - 16) / scaleTotal.current) : 20;
   const pxPerSec = fitPx * zoom;
   const selected = model.blocks.find((b) => b.scene.id === selectedSceneId);
   const playhead = selected ? selected.start + Math.min(currentTime, selected.total) : 0;
@@ -73,7 +95,11 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
     <div className="rounded-lg border border-neutral-800 bg-neutral-900" data-testid="timeline">
       <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-3 py-1.5 text-xs text-neutral-400">
         <span className="font-semibold text-neutral-300">{t.timeline.title}</span>
-        <span className="tabular-nums">{fmt(t.timeline.total, { time: formatDuration(model.totalSec) })}</span>
+        {resize?.dragging ? (
+          <ResizeReadout block={model.blocks.find((b) => b.scene.id === resize.sceneId)} state={resize} />
+        ) : (
+          <span className="tabular-nums">{fmt(t.timeline.total, { time: formatDuration(model.totalSec) })}</span>
+        )}
         <label className="flex items-center gap-1.5">
           <ZoomIn className="size-3.5" aria-hidden />
           <span className="sr-only">{t.timeline.zoom}</span>
@@ -94,6 +120,7 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
                     pxPerSec={pxPerSec}
                     selected={b.scene.id === selectedSceneId}
                     onMenu={() => setMenuFor(menuFor === b.scene.id ? null : b.scene.id)}
+                    resize={resizeProps(b)}
                   />
                 ))}
               </TrackRow>
@@ -101,7 +128,14 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
           </DndContext>
           <TrackRow label={t.timeline.narration} height={TRACK_H.narration}>
             {model.blocks.map((b) => (
-              <NarrationBlock key={b.scene.id} block={b} projectId={detail.project.id} pxPerSec={pxPerSec} selected={b.scene.id === selectedSceneId} />
+              <NarrationBlock
+                key={b.scene.id}
+                block={b}
+                projectId={detail.project.id}
+                pxPerSec={pxPerSec}
+                selected={b.scene.id === selectedSceneId}
+                resize={resizeProps(b)}
+              />
             ))}
           </TrackRow>
           {detail.project.settings.avatar.enabled && (
@@ -178,12 +212,14 @@ function SlideBlock({
   pxPerSec,
   selected,
   onMenu,
+  resize,
 }: {
   block: TimelineBlock;
   projectId: string;
   pxPerSec: number;
   selected: boolean;
   onMenu: () => void;
+  resize: ResizeHandleProps;
 }) {
   const thumb = useAssetUrl(projectId, block.slide.thumbnailAssetId ?? block.slide.imageAssetId);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id: block.slide.id });
@@ -222,7 +258,110 @@ function SlideBlock({
       >
         <SlidersHorizontal className="size-3" aria-hidden />
       </button>
+      <ResizeHandle {...resize} />
     </div>
+  );
+}
+
+interface ResizeState {
+  sceneId: string;
+  tail: number;
+  dragging?: boolean;
+  /** Set while the drag is pinned at the shortest / longest allowed length. */
+  limit?: "min" | "max";
+}
+
+interface ResizeHandleProps {
+  block: TimelineBlock;
+  pxPerSec: number;
+  state: ResizeState | undefined;
+  onDrag: (tail: number, limit?: "min" | "max") => void;
+  onCommit: (tail: number) => void;
+  /** False for the duplicate handle on the narration track (one tab stop per page). */
+  keyboard?: boolean;
+}
+
+const roundTail = (v: number) => Math.round(v * 10) / 10;
+
+/** Tail pause after dragging the page's right edge by `dxPx`, clamped to 0…MAX_TAIL_PAUSE_SEC. */
+export function tailAfterDrag(startTail: number, dxPx: number, pxPerSec: number): { tail: number; limit?: "min" | "max" } {
+  const raw = startTail + dxPx / pxPerSec;
+  if (raw <= 0) return { tail: 0, limit: "min" };
+  if (raw >= MAX_TAIL_PAUSE_SEC) return { tail: MAX_TAIL_PAUSE_SEC, limit: "max" };
+  return { tail: roundTail(raw) };
+}
+
+export function pageLengthLabel(b: TimelineBlock): string {
+  const source = b.scene.muted ? t.timeline.sourceHold : b.estimated ? t.timeline.sourceEstimate : t.timeline.sourceVoice;
+  return fmt(t.timeline.length, { total: b.total.toFixed(1), source, narration: b.narration.toFixed(1), tail: b.tail.toFixed(1) });
+}
+
+/**
+ * The page's right edge: drag it to make the page longer or shorter. The narration can't be cut,
+ * so the length moves between "narration only" and narration + MAX_TAIL_PAUSE_SEC of hold.
+ */
+function ResizeHandle({ block, pxPerSec, state, onDrag, onCommit, keyboard = true }: ResizeHandleProps) {
+  const start = useRef<{ x: number; tail: number; pxPerSec: number } | null>(null);
+  const tail = state?.tail ?? block.tail;
+  const dragging = !!state?.dragging;
+  const end = (e: React.PointerEvent) => {
+    if (!start.current) return;
+    const { tail: next } = tailAfterDrag(start.current.tail, e.clientX - start.current.x, start.current.pxPerSec);
+    start.current = null;
+    onCommit(next);
+  };
+  return (
+    <>
+      <div
+        role="slider"
+        tabIndex={keyboard ? 0 : -1}
+        aria-hidden={keyboard ? undefined : true}
+        aria-label={fmt(t.timeline.resize, { n: block.index + 1 })}
+        aria-valuemin={roundTail(block.narration)}
+        aria-valuemax={roundTail(block.narration + MAX_TAIL_PAUSE_SEC)}
+        aria-valuenow={roundTail(block.narration + tail)}
+        aria-valuetext={pageLengthLabel(block)}
+        title={`${pageLengthLabel(block)}\n${t.timeline.resizeHint}`}
+        data-testid="timeline-resize"
+        className="absolute inset-y-0 right-0 z-10 flex w-2.5 cursor-ew-resize touch-none items-center justify-center rounded-r bg-white/0 hover:bg-accent-400/40 focus-visible:bg-accent-400/50 focus-visible:outline-none"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          start.current = { x: e.clientX, tail: block.tail, pxPerSec };
+          onDrag(block.tail);
+        }}
+        onPointerMove={(e) => {
+          if (!start.current) return;
+          const r = tailAfterDrag(start.current.tail, e.clientX - start.current.x, start.current.pxPerSec);
+          onDrag(r.tail, r.limit);
+        }}
+        onPointerUp={end}
+        onPointerCancel={end}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+          e.preventDefault();
+          e.stopPropagation();
+          const step = (e.shiftKey ? 0.1 : 0.5) * (e.key === "ArrowLeft" ? -1 : 1);
+          onCommit(roundTail(Math.min(MAX_TAIL_PAUSE_SEC, Math.max(0, block.tail + step))));
+        }}
+      >
+        <span className={`h-4 w-0.5 rounded ${dragging ? "bg-accent-300" : "bg-neutral-300/70"}`} aria-hidden />
+      </div>
+    </>
+  );
+}
+
+/** Live readout in the timeline header while a page edge is being dragged. */
+function ResizeReadout({ block, state }: { block: TimelineBlock | undefined; state: ResizeState }) {
+  if (!block) return null;
+  return (
+    <span className="min-w-0 truncate text-accent-200" role="status" data-testid="timeline-resize-readout">
+      {pageLengthLabel(block)}
+      {state.limit === "min" && <span className="ml-2 text-amber-300">{t.timeline.atMinimum}</span>}
+      {state.limit === "max" && <span className="ml-2 text-amber-300">{fmt(t.timeline.atMaximum, { max: MAX_TAIL_PAUSE_SEC })}</span>}
+    </span>
   );
 }
 
@@ -259,7 +398,19 @@ function usePeaks(url: string | undefined, buckets: number): number[] | undefine
   return peaks;
 }
 
-function NarrationBlock({ block, projectId, pxPerSec, selected }: { block: TimelineBlock; projectId: string; pxPerSec: number; selected: boolean }) {
+function NarrationBlock({
+  block,
+  projectId,
+  pxPerSec,
+  selected,
+  resize,
+}: {
+  block: TimelineBlock;
+  projectId: string;
+  pxPerSec: number;
+  selected: boolean;
+  resize: ResizeHandleProps;
+}) {
   const ready = !block.scene.muted && block.scene.audio.status !== "missing" ? block.scene.audio.assetId : undefined;
   const url = useAssetUrl(projectId, ready);
   const narrW = Math.max(2, block.narration * pxPerSec);
@@ -296,6 +447,8 @@ function NarrationBlock({ block, projectId, pxPerSec, selected }: { block: Timel
           title={`${t.timeline.tailPause} ${block.tail.toFixed(1)}s`}
         />
       )}
+      {/* Same edge as the slide block above; only that one is a keyboard stop. */}
+      <ResizeHandle {...resize} keyboard={false} />
     </div>
   );
 }
@@ -324,6 +477,37 @@ function CueBlock({ block, pxPerSec }: { block: TimelineBlock; pxPerSec: number 
   );
 }
 
+/** Page length in seconds; anything below the narration snaps back to it. */
+function PageLengthInput({ block, onCommit }: { block: TimelineBlock; onCommit: (total: number) => void }) {
+  const [value, setValue] = useState(block.total.toFixed(1));
+  const min = roundTail(block.narration);
+  const commit = () => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return setValue(block.total.toFixed(1));
+    const total = Math.max(min, n);
+    setValue(total.toFixed(1));
+    if (Math.abs(total - block.total) >= 0.05) onCommit(total);
+  };
+  return (
+    <label className="flex items-center gap-1" title={`${pageLengthLabel(block)}\n${t.timeline.atMinimum}`}>
+      {t.timeline.pageLength}
+      <input
+        type="number"
+        min={min}
+        max={roundTail(block.narration + MAX_TAIL_PAUSE_SEC)}
+        step={0.5}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && commit()}
+        className="w-16 rounded border border-neutral-700 bg-neutral-950 px-1 py-0.5 text-right tabular-nums"
+        data-testid="timeline-page-length"
+      />
+      <span className="text-neutral-500">{t.timeline.seconds}</span>
+    </label>
+  );
+}
+
 function PageMenu({
   block,
   projectTransition,
@@ -338,10 +522,11 @@ function PageMenu({
   if (!block) return null;
   const s = block.scene;
   const tail = s.tailPauseSec ?? 0.5;
-  const setTail = (v: number) => onChange({ tailPauseSec: Math.round(Math.min(10, Math.max(0, v)) * 10) / 10 });
+  const setTail = (v: number) => onChange({ tailPauseSec: roundTail(Math.min(MAX_TAIL_PAUSE_SEC, Math.max(0, v))) });
   return (
     <div className="flex flex-wrap items-center gap-3 border-t border-neutral-800 px-3 py-2 text-xs text-neutral-300" data-testid="timeline-page-menu">
       <span className="font-semibold">{fmt(t.timeline.pageMenu, { n: block.index + 1 })}</span>
+      <PageLengthInput key={`${s.id}:${block.total}`} block={block} onCommit={(total) => setTail(total - block.narration)} />
       <label className="flex items-center gap-1">
         {t.timeline.tailPause}
         <button type="button" className="rounded border border-neutral-700 px-1.5" onClick={() => setTail(tail - 0.5)} aria-label="-0.5s">

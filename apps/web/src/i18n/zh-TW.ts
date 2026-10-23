@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Every user-facing string in the web app. An English table with the same shape will be
  * added later; keep keys stable and use `{name}` placeholders with `fmt()` from ./index.
  */
@@ -245,7 +245,17 @@ export const zhTW = {
     transition: "轉場",
     pageMenu: "第 {n} 頁設定",
     estimated: "預估",
-    dragToReorder: "拖曳可調整頁面順序",
+    dragToReorder: "拖曳可調整頁面順序；拖曳右邊緣可調整本頁長度",
+    resize: "第 {n} 頁長度",
+    resizeHint: "拖曳調整本頁長度（左右方向鍵 ±0.5 秒）",
+    length: "本頁 {total} 秒（{source} {narration} 秒＋停頓 {tail} 秒）",
+    sourceVoice: "語音",
+    sourceHold: "靜音停留",
+    sourceEstimate: "預估語音",
+    atMinimum: "已是最短：頁面至少要播完語音。要更短請精簡講稿或調快語速。",
+    atMaximum: "停頓最多 {max} 秒",
+    pageLength: "頁面長度",
+    seconds: "秒",
   },
   script: {
     heading: "第 {n} 頁 · 講稿",
@@ -431,6 +441,11 @@ export const zhTW = {
     exportAnyway: "照樣匯出",
     outdated: "這支影片產生後內容已變更，是舊版",
     downloadOld: "下載舊版影片",
+    chooseLocation: "點一下可選擇存檔位置與檔名",
+    saving: "正在儲存「{name}」…",
+    saved: "已儲存「{name}」",
+    videoFile: "MP4 影片",
+    textFile: "文字檔",
   },
   jobs: {
     title: "工作",

@@ -194,6 +194,21 @@ describe("generation handlers", () => {
     expect(row.error).toBe("第 1、3 頁的語音不是最新的，請先按「產生全部語音」");
   });
 
+  it("typing a script back to what the audio was made from makes audio, subtitles and avatar ready again", async () => {
+    const d = await detail();
+    for (const i of [0, 2]) {
+      expect(d.scenes[i]!.audio.status).toBe("stale");
+      expect(d.scenes[i]!.avatar.status).toBe("stale");
+      await t.app.inject({ method: "PUT", url: `/projects/${projectId}/scenes/${d.scenes[i]!.id}/script`, payload: { script: `這是第 ${i + 1} 頁的講稿內容。`.repeat(i + 1) } });
+    }
+    const after = await detail();
+    for (const sc of after.scenes) {
+      expect(sc.audio.status).toBe("ready");
+      expect(sc.avatar.status).toBe("ready");
+    }
+    expect((await estimate("type=generate_avatar")).sceneCount).toBe(0); // nothing to pay for again
+  });
+
   it("zh-TW errors for a disabled avatar and a project without slides", async () => {
     await t.app.inject({ method: "PATCH", url: `/projects/${projectId}`, payload: { settings: { avatar: { enabled: false } } } });
     const off = await run({ type: "generate_avatar" });

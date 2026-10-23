@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { Id, IsoDate } from "./ids.js";
 import {
   AspectRatio,
@@ -190,6 +190,9 @@ export const SceneAssetState = z.object({
 });
 export type SceneAssetState = z.infer<typeof SceneAssetState>;
 
+/** Longest hold after the narration (the timeline's page-length handle stops here). */
+export const MAX_TAIL_PAUSE_SEC = 60;
+
 export const Scene = z.object({
   id: Id,
   projectId: Id,
@@ -201,7 +204,7 @@ export const Scene = z.object({
   /** Overrides project transition for this scene only. */
   transitionIn: Transition.optional(),
   /** Extra hold time after narration ends, in seconds. */
-  tailPauseSec: z.number().min(0).max(10).default(0.5),
+  tailPauseSec: z.number().min(0).max(MAX_TAIL_PAUSE_SEC).default(0.5),
   /** Latest script revision chosen for this scene. */
   scriptRevisionId: Id.optional(),
   script: SceneAssetState.default({}),

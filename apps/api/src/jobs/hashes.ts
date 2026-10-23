@@ -73,9 +73,14 @@ export function renderInputHash(args: { scenesInOrder: Scene[]; settings: Projec
   });
 }
 
-/** Status a scene asset state should display given the hash its inputs produce now. */
-export function effectiveStatus(state: { status: DerivedStatus; inputHash?: string }, currentHash: string): DerivedStatus {
+/**
+ * Status a scene asset state should display given the hash its inputs produce now. A `stale`
+ * mark whose asset was made from exactly the current inputs is ready again (e.g. a script edit
+ * that was typed back to the original), so nothing is regenerated or paid for twice.
+ */
+export function effectiveStatus(state: { status: DerivedStatus; inputHash?: string; assetId?: string }, currentHash: string): DerivedStatus {
   if (state.status === "ready" && state.inputHash !== currentHash) return "stale";
+  if (state.status === "stale" && state.assetId && state.inputHash === currentHash) return "ready";
   return state.status;
 }
 

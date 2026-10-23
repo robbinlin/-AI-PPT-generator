@@ -415,7 +415,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         const image = imageId ? assetMap.get(imageId) : undefined;
         if (!image) throw new NonRetryableJobError(`第 ${s.index + 1} 頁沒有投影片圖片，請重新上傳簡報`);
         const audio = !s.muted && s.audio.assetId ? assetMap.get(s.audio.assetId) : undefined;
-        const narration = audio?.durationSec ?? s.durationSec ?? (s.muted ? MUTED_SCENE_SEC : 0);
+        const narration = s.muted ? MUTED_SCENE_SEC : (audio?.durationSec ?? s.durationSec ?? 0);
         const durationSec = Math.max(0.5, narration + s.tailPauseSec);
         const avatarAsset = settings.avatar.enabled && !s.muted && s.avatar.status === "ready" && s.avatar.assetId ? assetMap.get(s.avatar.assetId) : undefined;
         const layout = s.avatarLayout ?? settings.avatar.layout;

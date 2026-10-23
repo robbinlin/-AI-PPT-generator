@@ -19,14 +19,27 @@ describe("buildTimeline", () => {
     ]);
     expect(totalSec).toBe(18);
   });
-  it("skips hidden slides and holds muted pages without a tail", () => {
+  it("skips hidden slides and holds muted pages for the hold time plus their tail, as the renderer does", () => {
     const { blocks } = buildTimeline(
-      [scene("a", "s1", 0, { durationSec: 4 }), scene("b", "s2", 1, { muted: true }), scene("c", "s3", 2, { durationSec: 2 })],
+      [scene("a", "s1", 0, { durationSec: 4 }), scene("b", "s2", 1, { muted: true, durationSec: 9 }), scene("c", "s3", 2, { durationSec: 2 })],
       [slide("s1", 0), slide("s2", 1), slide("s3", 2, true)],
       {},
     );
     expect(blocks.map((b) => b.scene.id)).toEqual(["a", "b"]);
-    expect(blocks[1]).toMatchObject({ narration: MUTED_SCENE_SEC, tail: 0, start: 4.5 });
+    expect(blocks[1]).toMatchObject({ narration: MUTED_SCENE_SEC, tail: 0.5, start: 4.5, total: MUTED_SCENE_SEC + 0.5 });
+  });
+  it("previews a dragged tail pause for one page and shifts the pages after it", () => {
+    const { blocks, totalSec } = buildTimeline(
+      [scene("a", "s1", 0, { durationSec: 4 }), scene("b", "s2", 1, { durationSec: 2 })],
+      [slide("s1", 0), slide("s2", 1)],
+      {},
+      { sceneId: "a", tail: 6 },
+    );
+    expect(blocks.map((b) => [b.start, b.total])).toEqual([
+      [0, 10],
+      [10, 2.5],
+    ]);
+    expect(totalSec).toBe(12.5);
   });
 });
 

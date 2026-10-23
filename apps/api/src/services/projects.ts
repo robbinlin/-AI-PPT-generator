@@ -238,7 +238,8 @@ export async function getProjectDetail(db: Db, ownerId: string, projectId: strin
   for (const s of sceneListEffective) {
     const slide = slidesById.get(s.slideId);
     if (slide?.hidden) continue;
-    const d = s.durationSec ?? scripts[s.id]?.estimatedDurationSec ?? 0;
+    // Muted pages hold for MUTED_SCENE_SEC (generation.ts) whatever audio they once had.
+    const d = s.muted ? 3 : (s.durationSec ?? scripts[s.id]?.estimatedDurationSec ?? 0);
     totalDurationSec += d + (d > 0 ? s.tailPauseSec : 0);
   }
 

@@ -1,4 +1,4 @@
-import { fmt, t } from "../i18n";
+﻿import { fmt, t } from "../i18n";
 
 /** 75 → "1:15"; 3725 → "1:02:05". */
 export function formatDuration(totalSec: number): string {
@@ -52,6 +52,65 @@ export function downloadFile(source: Blob | string, filename: string): void {
   a.click();
   a.remove();
   if (typeof source !== "string") setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+interface SavePickerWindow {
+  showSaveFilePicker?: (opts: {
+    suggestedName: string;
+    id?: string;
+    startIn?: string;
+    types?: { description: string; accept: Record<string, string[]> }[];
+  }) => Promise<{ createWritable: () => Promise<WritableStream<Uint8Array>> }>;
+}
+
+/** Whether the browser can ask where to save (Chrome/Edge); elsewhere files go to Downloads. */
+export function canChooseSaveLocation(): boolean {
+  return typeof window !== "undefined" && typeof (window as SavePickerWindow).showSaveFilePicker === "function";
+}
+
+/**
+ * Asks where to save `filename` and streams `source` there; falls back to a normal download when
+ * the browser has no save dialog. Must be called straight from a click (the dialog needs it).
+ */
+export async function saveFileAs(
+  source: Blob | string | (() => Promise<Blob>),
+  filename: string,
+  type: { description: string; mime: string },
+  /** Called once the location is chosen, before the (possibly long) copy starts. */
+  onStart?: () => void,
+): Promise<"saved" | "cancelled" | "downloaded"> {
+  const picker = (window as SavePickerWindow).showSaveFilePicker;
+  if (!picker) {
+    downloadFile(typeof source === "function" ? await source() : source, filename);
+    return "downloaded";
+  }
+  const ext = filename.slice(filename.lastIndexOf("."));
+  let handle;
+  try {
+    handle = await picker({
+      suggestedName: filename,
+      id: "lvs-export", // the dialog reopens in the folder chosen last time
+      startIn: ext === ".mp4" ? "videos" : "documents",
+      types: [{ description: type.description, accept: { [type.mime]: [ext] } }],
+    });
+  } catch (err) {
+    if ((err as Error).name === "AbortError") return "cancelled";
+    throw err;
+  }
+  const writable = await handle.createWritable();
+  onStart?.();
+  const data = typeof source === "function" ? await source() : source;
+  if (typeof data === "string") {
+    const res = await fetch(data);
+    if (!res.ok || !res.body) {
+      await writable.abort();
+      throw new Error(`下載失敗（HTTP ${res.status}）`);
+    }
+    await res.body.pipeTo(writable);
+  } else {
+    await data.stream().pipeTo(writable);
+  }
+  return "saved";
 }
 
 /** Rough rate for showing NT$ next to provider prices (they bill in USD). */

@@ -1,4 +1,4 @@
-import { constants as fsc } from "node:fs";
+﻿import { constants as fsc } from "node:fs";
 import { copyFile, link, mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { contentHash, sha256Hex, type AvatarLayout, type RenderScene, type SubtitleStyle } from "@lvs/shared";
@@ -7,7 +7,7 @@ import { DEFAULT_FFMPEG, DEFAULT_FFPROBE, ffprobe, num, runFfmpeg, throwIfAborte
 import { buildAss } from "./subtitles.js";
 
 /** Bump when the scene command line changes in a way that alters output. */
-export const SCENE_RENDER_VERSION = 2;
+export const SCENE_RENDER_VERSION = 3;
 
 export const VIDEO_ENCODE_ARGS = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"];
 export const AUDIO_ENCODE_ARGS = ["-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2"];
@@ -173,11 +173,12 @@ export function buildSceneArgs(input: SceneCommandInput): string[] {
 
   let videoLabel = "bg";
 
-  // 2: avatar, looped to cover the scene.
+  // 2: avatar. Clips are lip-synced to this scene's audio, so they play once from t=0 and the
+  // overlay holds the last frame through the tail pause (looping would restart the talking).
   if (scene.avatar && avatarVisible(scene)) {
     const { layout, hasAlpha } = scene.avatar;
     if (input.avatarDecoder) args.push("-c:v", input.avatarDecoder);
-    args.push("-stream_loop", "-1", "-i", scene.avatar.videoPath);
+    args.push("-i", scene.avatar.videoPath);
     const size = even(layout.size * H);
     const margin = Math.round(layout.margin * H);
     const pre = `[2:v]setpts=PTS-STARTPTS,fps=${fps}`;

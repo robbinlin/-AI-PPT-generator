@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as R
 import type { Asset, AvatarLayout, DerivedStatus, Project, Scene, Slide } from "@lvs/shared";
 import { EyeOff, ImageOff, Move, UserRound } from "lucide-react";
 import { useAssetUrl } from "../../api/context";
-import { CHROMA_PROVIDERS, KeyedVideo } from "./KeyedVideo";
+import { CHROMA_PROVIDERS, KeyedVideo, SyncedVideo } from "./KeyedVideo";
 import { t } from "../../i18n";
 import { avatarBox, moveTo, resizeTo, slideBox, type Box } from "../../lib/avatarGeometry";
 import { effectiveAvatarLayout, firstSubtitleCue } from "../../lib/scenes";
@@ -192,7 +192,7 @@ function AvatarOverlay({
         {url && asset?.mimeType.startsWith("video/") && keyed ? (
           <KeyedVideo src={url} poster={stillUrl} className="size-full object-cover object-top" />
         ) : url && asset?.mimeType.startsWith("video/") ? (
-          <video src={url} className="size-full object-cover" muted loop autoPlay playsInline />
+          <SyncedVideo src={url} className="size-full object-cover" />
         ) : url || stillUrl ? (
           <img src={url ?? stillUrl} alt={t.preview.avatar} className={`size-full object-cover ${circle ? "" : "object-top"}`} draggable={false} />
         ) : (

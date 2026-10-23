@@ -1,4 +1,4 @@
-# @lvs/render
+﻿# @lvs/render
 
 ffmpeg-only renderer: `RenderSpec` (from `@lvs/shared`) → MP4 (H.264 yuv420p + AAC 48 kHz
 stereo) and optionally SRT. No browser, no native deps beyond `ffmpeg`/`ffprobe` (≥ 6, built
@@ -40,7 +40,7 @@ the `RenderResult` JSON. Exit codes: 0 ok, 1 error, 2 usage, 130 aborted (SIGINT
    slide image looped and letterboxed with `backgroundColor`; narration resampled to 48 kHz
    stereo and padded with `apad` (or `anullsrc` silence when there is no audio); output cut
    to exactly `durationSec` with `-t`. Result: `<workDir>/scenes/<sceneId>.mp4`.
-   * **Avatar**: looped with `-stream_loop -1`, scaled to `layout.size × height`, placed by
+   * **Avatar**: played once from the scene start (it is lip-synced to the scene audio) with the last frame held, scaled to `layout.size × height`, placed by
      `anchor` + `margin × height`. `circle` crops a square and applies an anti-aliased disc
      mask (computed once with `geq`, then looped) via `alphamerge`; with `hasAlpha` the
      provider alpha is multiplied with the disc (VP8/VP9 are decoded with libvpx so the

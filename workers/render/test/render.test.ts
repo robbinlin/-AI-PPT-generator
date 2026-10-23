@@ -109,7 +109,7 @@ describe("render (real ffmpeg)", () => {
       },
     ]);
     const result = await render(spec, opts("t3"));
-    // Sample after the 1 s avatar clip has looped once.
+    // Sample after the 1 s avatar clip has ended (its last frame is held).
     const frame = await grabFrame(result.mp4Path, 1.5, path.join(dir, "t3", "frame.png"));
     expect(frame.width).toBe(W);
 
@@ -122,6 +122,30 @@ describe("render (real ffmpeg)", () => {
     expect(colorDistance(frame.pixel(W - margin - size + 3, H - margin - size + 3), SLIDE_RGB)).toBeLessThan(25);
     // Far away from the avatar the slide is untouched.
     expect(colorDistance(frame.pixel(100, 100), SLIDE_RGB)).toBeLessThan(25);
+  });
+
+  it("3a. plays a lip-synced avatar once and holds its last frame through the tail pause", async () => {
+    const avatar = path.join(dir, "avatar.mp4");
+    if (!existsSync(avatar)) await makeTestsrcVideo(avatar, 1);
+    const spec = baseSpec("t3a", [
+      {
+        sceneId: randomUUID(),
+        imagePath: slideA,
+        durationSec: 2.5,
+        avatar: { videoPath: avatar, layout: { shape: "rect", anchor: "bottom-right", size: 0.6, margin: 0, visible: true, slideScale: 1, slideAlign: "center" } },
+      },
+    ]);
+    const result = await render(spec, opts("t3a"));
+    const grab = (sec: number, name: string) => grabFrame(result.mp4Path, sec, path.join(dir, "t3a", name));
+    const [start, last, tail] = await Promise.all([grab(0.07, "start.png"), grab(0.94, "last.png"), grab(2.2, "tail.png")]);
+    // Avatar box: 216 px tall, 162 px wide, flush with the bottom-right corner.
+    const diff = (a: typeof start, b: typeof start) => {
+      let sum = 0;
+      for (let x = W - 160; x < W; x += 8) for (let y = H - 214; y < H; y += 8) sum += colorDistance(a.pixel(x, y), b.pixel(x, y));
+      return sum;
+    };
+    expect(diff(tail, last)).toBeLessThan(diff(tail, start) / 4); // held, not restarted
+    expect(diff(tail, start)).toBeGreaterThan(0);
   });
 
   it("3b. visible:false skips the avatar overlay", async () => {
@@ -272,7 +296,8 @@ describe("render (real ffmpeg)", () => {
       onProgress: (_p, m) => messages.push(m),
     }));
     expect(second.map((s) => s.cached)).toEqual([true, true]);
-    expect(second.map((s) => s.cacheKey)).toEqual(first.map((s) => s.cacheKey));
+    // Scenes render concurrently, so they may report in either order.
+    expect(second.map((s) => s.cacheKey).sort()).toEqual(first.map((s) => s.cacheKey).sort());
     expect(messages.filter((m) => m.includes("cache hit"))).toHaveLength(2);
     const mtimes2 = await Promise.all(cached.map(async (f) => (await stat(path.join(cacheDir, f))).mtimeMs));
     expect(mtimes2).toEqual(mtimes);

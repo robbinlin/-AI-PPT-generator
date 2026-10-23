@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
+import { useNarrationSync } from "../../lib/narrationClock";
 
 /** Providers whose clips come on chroma green (mirrors CHROMA_KEY_BY_PROVIDER in the API). */
 export const CHROMA_PROVIDERS = new Set(["heygen", "local"]);
@@ -18,15 +19,23 @@ export function keyGreen(d: Uint8ClampedArray): void {
   }
 }
 
+/** A plain (already transparent or framed) avatar clip that follows the narration clock. */
+export function SyncedVideo({ src, className }: { src: string; className?: string }) {
+  const video = useRef<HTMLVideoElement>(null);
+  useNarrationSync(video, src);
+  return <video ref={video} src={src} className={className} muted preload="auto" playsInline />;
+}
+
 /**
  * Plays a green-screen clip with the green removed, so the editor preview matches the render.
  * The video is drawn to a small canvas each frame; strongly green pixels become transparent and
- * green spill on the edges is pulled back to grey.
+ * green spill on the edges is pulled back to grey. Playback follows the narration clock.
  */
 export function KeyedVideo({ src, poster, className }: { src: string; poster?: string; className?: string }) {
   const video = useRef<HTMLVideoElement>(null);
   const [drawn, setDrawn] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
+  useNarrationSync(video, src);
 
   useEffect(() => {
     const v = video.current;
@@ -35,8 +44,11 @@ export function KeyedVideo({ src, poster, className }: { src: string; poster?: s
     const ctx = c.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
     let raf = 0;
+    let lastTime = -1;
     const draw = () => {
-      if (v.readyState >= 2 && v.videoWidth) {
+      // Key only new frames; a paused clip would otherwise be re-keyed every animation frame.
+      if (v.readyState >= 2 && v.videoWidth && v.currentTime !== lastTime) {
+        lastTime = v.currentTime;
         const h = Math.min(360, v.videoHeight);
         const w = Math.round((v.videoWidth / v.videoHeight) * h);
         if (c.width !== w || c.height !== h) {
@@ -57,7 +69,7 @@ export function KeyedVideo({ src, poster, className }: { src: string; poster?: s
 
   return (
     <>
-      <video ref={video} src={src} className="hidden" muted loop autoPlay playsInline crossOrigin="anonymous" />
+      <video ref={video} src={src} className="hidden" muted preload="auto" playsInline crossOrigin="anonymous" />
       {!drawn && poster && <img src={poster} alt="" className={className} draggable={false} />}
       <canvas ref={canvas} className={`${className ?? ""} ${drawn ? "" : "hidden"}`} data-testid="keyed-video" />
     </>

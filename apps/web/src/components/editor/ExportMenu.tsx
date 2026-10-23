@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Download, FileText, Film, Subtitles } from "lucide-react";
 import { useApi, useAssetUrl } from "../../api/context";
 import { errorMessage } from "../../api/types";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
-import { downloadFile, formatBytes, formatRelativeTime } from "../../lib/format";
+import { canChooseSaveLocation, formatBytes, formatRelativeTime, saveFileAs } from "../../lib/format";
 import { latestProjectAsset } from "../../lib/scenes";
 import { pageRanges, visibleScenes } from "../../lib/settingsImpact";
 import { useEditor } from "../../store/editorStore";
@@ -90,14 +90,22 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
     }
   };
 
-  const exportScript = async (format: "txt" | "md") => {
+  // Asks where to save (Chrome/Edge); other browsers drop the file in Downloads as before.
+  const save = async (source: Parameters<typeof saveFileAs>[0], filename: string, type: { description: string; mime: string }, big = false) => {
+    onDone();
     try {
-      downloadFile(await api.exportScript(detail.project.id, format), `${baseName}.${format}`);
-      onDone();
+      const result = await saveFileAs(source, filename, type, big ? () => toast(fmt(t.export.saving, { name: filename })) : undefined);
+      if (result === "saved") toast(fmt(t.export.saved, { name: filename }), "success");
     } catch (err) {
       toast(errorMessage(err), "error");
     }
   };
+
+  const exportScript = (format: "txt" | "md") =>
+    save(() => api.exportScript(detail.project.id, format), `${baseName}.${format}`, {
+      description: format === "md" ? "Markdown" : t.export.textFile,
+      mime: format === "md" ? "text/markdown" : "text/plain",
+    });
 
   const item =
     "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-neutral-200 hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent";
@@ -108,11 +116,11 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
       className="absolute top-10 right-0 z-30 w-80 rounded-lg border border-neutral-700 bg-neutral-900 p-2 shadow-2xl"
     >
       {video && videoUrl && (
-        <a
-          href={videoUrl}
-          download={`${baseName}.mp4`}
+        <button
+          type="button"
           className={`${item} mb-1 ${videoOutdated ? "bg-amber-500/10 text-amber-200" : "bg-emerald-500/10 text-emerald-300"}`}
-          onClick={onDone}
+          onClick={() => void save(videoUrl, `${baseName}.mp4`, { description: t.export.videoFile, mime: "video/mp4" }, true)}
+          title={canChooseSaveLocation() ? t.export.chooseLocation : undefined}
           data-testid="download-video"
         >
           {videoOutdated ? <AlertTriangle className="size-4" aria-hidden /> : <Download className="size-4" aria-hidden />}
@@ -123,7 +131,7 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
           <span className="text-[11px] text-neutral-400">
             {fmt(t.export.latestVideo, { time: formatRelativeTime(video.createdAt) })} · {formatBytes(video.sizeBytes)}
           </span>
-        </a>
+        </button>
       )}
       <div className="rounded-md border border-neutral-800 p-2">
         <div className="mb-2 flex items-center gap-2 text-sm font-medium text-neutral-100">
@@ -196,9 +204,9 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
       </div>
       <div className="mt-1 flex flex-col">
         {srt && srtUrl ? (
-          <a href={srtUrl} download={`${baseName}.srt`} className={item} onClick={onDone}>
+          <button type="button" className={item} onClick={() => void save(srtUrl, `${baseName}.srt`, { description: t.export.srt, mime: "application/x-subrip" })}>
             <Subtitles className="size-4" aria-hidden /> {t.export.srt}
-          </a>
+          </button>
         ) : (
           <button type="button" className={item} disabled title={t.export.srtUnavailable}>
             <Subtitles className="size-4" aria-hidden /> {t.export.srt}
