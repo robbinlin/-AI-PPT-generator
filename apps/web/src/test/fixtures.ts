@@ -102,5 +102,6 @@ export function makeDetail(pages = 3): ProjectDetail {
     assets: {},
     activeJobs: [],
     totalDurationSec: 10.5,
+    currentRenderHashes: [],
   };
 }

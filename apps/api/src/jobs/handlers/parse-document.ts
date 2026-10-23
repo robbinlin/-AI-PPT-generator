@@ -28,7 +28,7 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
   const { db, storage, job } = ctx;
   const docId = job.payload.sourceDocumentId;
   const [doc] = await db.select().from(sourceDocuments).where(eq(sourceDocuments.id, docId)).limit(1);
-  if (!doc) throw new NonRetryableJobError(`source document ${docId} not found`);
+  if (!doc) throw new NonRetryableJobError(`找不到上傳的簡報檔（${docId}），請重新上傳`);
   await db.update(sourceDocuments).set({ parseStatus: "running", parseJobId: job.id }).where(eq(sourceDocuments.id, docId));
 
   const scratch = await mkdtemp(join(tmpdir(), "lvs-parse-"));

@@ -32,7 +32,7 @@ export class NonRetryableJobError extends Error {
 /** Marker for job handlers whose integration is pending. Never retried. */
 export class NotImplementedJobError extends NonRetryableJobError {
   constructor(what: string) {
-    super(`${what} is not implemented yet`);
+    super(`尚未支援這項功能（${what}）`);
     this.name = "NotImplementedJobError";
   }
 }

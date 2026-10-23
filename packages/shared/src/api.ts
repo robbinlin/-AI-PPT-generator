@@ -64,6 +64,11 @@ export const ProjectDetail = z.object({
   assets: z.record(Id, Asset),
   activeJobs: z.array(Job),
   totalDurationSec: z.number().nonnegative(),
+  /**
+   * Render input hashes the project would produce right now (every preset x burn-in choice).
+   * A rendered video whose `inputHash` is not listed is out of date.
+   */
+  currentRenderHashes: z.array(z.string()).default([]),
 });
 export type ProjectDetail = z.infer<typeof ProjectDetail>;
 

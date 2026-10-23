@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import { FileStack, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
-import { useApi } from "../api/context";
+import { Copy, FileStack, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { useApi, useAssetUrl } from "../api/context";
 import { errorMessage, type ProjectSummary } from "../api/types";
 import { NewProjectDialog } from "../components/projects/NewProjectDialog";
 import { Button, IconButton } from "../components/ui/Button";
@@ -35,6 +35,16 @@ export function ProjectsPage() {
   const rename = async (project: ProjectSummary, name: string) => {
     const updated = await api.updateProject(project.id, { name });
     setProjects((list) => list?.map((p) => (p.id === project.id ? { ...p, name: updated.name, updatedAt: updated.updatedAt } : p)) ?? null);
+  };
+  // Reuse last week's setup (voice, avatar, layout, subtitles) for a new deck.
+  const duplicate = async (project: ProjectSummary) => {
+    try {
+      const created = await api.createProject({ name: fmt(t.projects.copyName, { name: project.name }).slice(0, 200), settings: project.settings });
+      toast(t.projects.duplicated, "success");
+      navigate(`/projects/${created.id}`);
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    }
   };
   const remove = async (project: ProjectSummary) => {
     await api.deleteProject(project.id);
@@ -71,6 +81,7 @@ export function ProjectsPage() {
             <ProjectCard
               project={p}
               onRename={() => setPending({ kind: "rename", project: p })}
+              onDuplicate={() => void duplicate(p)}
               onDelete={() => setPending({ kind: "delete", project: p })}
             />
           </li>
@@ -107,8 +118,19 @@ export function ProjectsPage() {
   );
 }
 
-function ProjectCard({ project, onRename, onDelete }: { project: ProjectSummary; onRename: () => void; onDelete: () => void }) {
+function ProjectCard({
+  project,
+  onRename,
+  onDuplicate,
+  onDelete,
+}: {
+  project: ProjectSummary;
+  onRename: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const thumbUrl = useAssetUrl(project.id, project.thumbnailAssetId);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -138,8 +160,12 @@ function ProjectCard({ project, onRename, onDelete }: { project: ProjectSummary;
         to={`/projects/${project.id}`}
         className="flex h-full flex-col gap-3 rounded-lg border border-neutral-800 bg-neutral-900 p-4 transition-colors hover:border-neutral-600"
       >
-        <div className="flex aspect-video items-center justify-center rounded-md bg-neutral-800/60">
-          <FileStack className="size-8 text-neutral-600" aria-hidden />
+        <div className="flex aspect-video items-center justify-center overflow-hidden rounded-md bg-neutral-800/60">
+          {thumbUrl ? (
+            <img src={thumbUrl} alt="" className="size-full object-contain" loading="lazy" draggable={false} />
+          ) : (
+            <FileStack className="size-8 text-neutral-600" aria-hidden />
+          )}
         </div>
         <div className="min-w-0 pr-8">
           <h2 className="truncate text-sm font-semibold text-neutral-100">{project.name}</h2>
@@ -165,9 +191,10 @@ function ProjectCard({ project, onRename, onDelete }: { project: ProjectSummary;
         {menuOpen && (
           <div
             role="menu"
-            className="absolute right-0 bottom-9 z-20 w-40 overflow-hidden rounded-md border border-neutral-700 bg-neutral-800 py-1 shadow-xl"
+            className="absolute right-0 bottom-9 z-20 w-52 overflow-hidden rounded-md border border-neutral-700 bg-neutral-800 py-1 shadow-xl"
           >
             <MenuItem icon={Pencil} label={t.projects.rename} onClick={pick(onRename)} />
+            <MenuItem icon={Copy} label={t.projects.duplicate} onClick={pick(onDuplicate)} />
             <MenuItem icon={Trash2} label={t.projects.delete} onClick={pick(onDelete)} danger />
           </div>
         )}
@@ -266,10 +293,10 @@ function DeleteDialog({ project, onClose, onConfirm }: { project: ProjectSummary
       onClose={onClose}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose} disabled={busy}>
+          <Button variant="ghost" data-autofocus onClick={onClose} disabled={busy}>
             {t.common.cancel}
           </Button>
-          <Button variant="danger" data-autofocus onClick={() => void confirm()} disabled={busy}>
+          <Button variant="danger" onClick={() => void confirm()} disabled={busy}>
             {busy ? t.projects.deleting : t.projects.delete}
           </Button>
         </>

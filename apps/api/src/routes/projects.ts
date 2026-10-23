@@ -24,7 +24,7 @@ import { jobs, projects, scenes, scriptRevisions, slides, sourceDocuments } from
 import { badRequest, notFound } from "../errors.js";
 import { renderScriptDocument } from "../jobs/handlers/export-script.js";
 import { estimateJob } from "../services/estimate.js";
-import { getProjectDetail, latestOutline, latestSourceDocument, requireProject } from "../services/projects.js";
+import { getProjectDetail, latestOutline, latestSourceDocument, projectListExtras, requireProject } from "../services/projects.js";
 import { createScriptRevision } from "../services/scripts.js";
 import { SOURCE_MIME, sniffSourceKind } from "../util/magic.js";
 import { parse } from "../util/validate.js";
@@ -49,9 +49,14 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
   app.get("/projects", async (req) => {
     const { ownerId } = ctx.auth.resolve(req);
     const rows = await db.select().from(projects).where(eq(projects.ownerId, ownerId)).orderBy(desc(projects.updatedAt));
-    return Promise.all(
-      rows.map(async (r) => ({ ...toProject(r), pageCount: (await latestSourceDocument(db, r.id))?.pageCount })),
+    const extras = await projectListExtras(
+      db,
+      rows.map((r) => r.id),
     );
+    return rows.map((r) => {
+      const e = extras.get(r.id) ?? {};
+      return { ...toProject(r), pageCount: e.pageCount, ...(e.thumbnailAssetId ? { thumbnailAssetId: e.thumbnailAssetId } : {}) };
+    });
   });
 
   app.post("/projects", async (req, reply) => {
@@ -272,11 +277,14 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const project = await requireProject(db, ownerId, req.params.id);
     const payload = parse(EnqueueJobRequest, req.body);
     const dedupeKey = payload.type === "generate_outline" || payload.type === "render_video" ? `${payload.type}:${JSON.stringify(payload)}` : undefined;
-    const job = await ctx.runner.enqueue(project.id, payload, { dedupeKey });
+    // Estimate before enqueueing (the runner may start the job right away) with the job's own
+    // selection: force → everything, sceneIds respected.
     let estimate;
     if (["generate_outline", "generate_script", "synthesize_speech", "generate_avatar", "render_video"].includes(payload.type)) {
-      estimate = estimateJob(await getProjectDetail(db, ownerId, project.id), payload.type);
+      const sel = payload as { force?: boolean; sceneIds?: string[] };
+      estimate = estimateJob(await getProjectDetail(db, ownerId, project.id), payload.type, { force: !!sel.force, sceneIds: sel.sceneIds });
     }
+    const job = await ctx.runner.enqueue(project.id, payload, { dedupeKey });
     reply.code(202);
     return { job, estimate };
   });
@@ -299,10 +307,14 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     return (await ctx.runner.cancel(row.id)) ?? toJob(row);
   });
 
-  app.get<{ Params: { id: string }; Querystring: { type?: string } }>("/projects/:id/estimate", async (req) => {
+  app.get<{ Params: { id: string }; Querystring: { type?: string; scope?: string; sceneIds?: string } }>("/projects/:id/estimate", async (req) => {
     const { ownerId } = ctx.auth.resolve(req);
     const type = parse(JobType, req.query.type, "query.type");
-    return estimateJob(await getProjectDetail(db, ownerId, req.params.id), type);
+    const scope = parse(z.enum(["pending", "all"]).default("pending"), req.query.scope, "query.scope");
+    const sceneIds = req.query.sceneIds
+      ? parse(z.array(z.string().uuid()), req.query.sceneIds.split(",").map((x) => x.trim()).filter(Boolean), "query.sceneIds")
+      : undefined;
+    return estimateJob(await getProjectDetail(db, ownerId, req.params.id), type, { force: scope === "all", sceneIds });
   });
 
   app.get<{ Params: { id: string }; Querystring: { format?: string } }>("/projects/:id/export/script", async (req, reply) => {

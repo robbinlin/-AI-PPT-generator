@@ -31,9 +31,9 @@ export function renderScriptDocument(detail: ProjectDetail, format: "txt" | "md"
 export const exportScript: JobHandler<{ type: "export_script"; format: "txt" | "md" | "docx" }> = async (ctx) => {
   const { db, storage, job } = ctx;
   const [project] = await db.select().from(projects).where(eq(projects.id, job.projectId)).limit(1);
-  if (!project) throw new NonRetryableJobError("project not found");
+  if (!project) throw new NonRetryableJobError("找不到這個專案");
   const format = job.payload.format;
-  if (format === "docx") throw new NonRetryableJobError("docx export is not implemented yet"); // TODO(v2): docx via `docx` package
+  if (format === "docx") throw new NonRetryableJobError("尚未支援匯出 Word（docx）講稿，請改用 Markdown 或純文字"); // TODO(v2): docx via `docx` package
   const detail = await getProjectDetail(db, project.ownerId, job.projectId);
   const text = renderScriptDocument(detail, format);
   const assetId = randomUUID();

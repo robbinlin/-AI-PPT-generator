@@ -1,24 +1,44 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { Job } from "@lvs/shared";
 import { CircleCheck, CircleSlash, CircleX, ListChecks, X } from "lucide-react";
 import { useApi } from "../../api/context";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
-import { formatRelativeTime } from "../../lib/format";
+import { formatRelativeTime, formatWait, remainingSec } from "../../lib/format";
 import { editorStore, useEditor } from "../../store/editorStore";
 import { Button, IconButton } from "../ui/Button";
 import { ProgressBar, Spinner } from "../ui/Misc";
 
 /** Header button: spinner + progress text of the most recent active job; opens the drawer. */
+/** Re-renders every few seconds so remaining-time estimates move between progress events. */
+function useTick(ms: number, enabled: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!enabled) return;
+    const id = setInterval(() => setNow(Date.now()), ms);
+    return () => clearInterval(id);
+  }, [ms, enabled]);
+  return now;
+}
+
+function etaText(job: Job, now: number): string | null {
+  if (job.status !== "running") return null;
+  const sec = remainingSec(job.startedAt, job.progress, now);
+  return sec === null ? null : fmt(t.jobs.eta, { wait: formatWait(sec) });
+}
+
 export function JobsIndicator({ onOpen }: { onOpen: () => void }) {
   const jobs = useEditor((s) => s.detail?.activeJobs);
   const active = jobs ?? [];
   const lead = active[active.length - 1];
+  const now = useTick(5000, !!lead);
+  const eta = lead ? etaText(lead, now) : null;
   return (
     <button
       type="button"
       onClick={onOpen}
       aria-label={t.jobs.title}
+      title={lead ? undefined : t.jobs.idle}
       className="flex h-8 max-w-64 items-center gap-2 rounded-md border border-neutral-800 px-2.5 text-xs text-neutral-300 hover:bg-neutral-800"
     >
       {lead ? (
@@ -26,9 +46,9 @@ export function JobsIndicator({ onOpen }: { onOpen: () => void }) {
       ) : (
         <ListChecks className="size-3.5 shrink-0 text-neutral-500" aria-hidden />
       )}
-      <span className="truncate">
+      <span className={`truncate ${lead ? "" : "hidden min-[1360px]:inline"}`}>
         {lead
-          ? `${t.jobs.types[lead.type]} ${Math.round(lead.progress * 100)}%${active.length > 1 ? ` · ${fmt(t.jobs.count, { n: active.length })}` : ""}`
+          ? `${t.jobs.types[lead.type]} ${Math.round(lead.progress * 100)}%${eta ? ` · ${eta}` : ""}${active.length > 1 ? ` · ${fmt(t.jobs.count, { n: active.length })}` : ""}`
           : t.jobs.idle}
       </span>
     </button>
@@ -46,6 +66,7 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
   const projectId = useEditor((s) => s.detail?.project.id);
   const active = useEditor((s) => s.detail?.activeJobs);
   const recent = useEditor((s) => s.recentJobs);
+  const now = useTick(5000, open && (active?.length ?? 0) > 0);
 
   useEffect(() => {
     if (!open || !projectId) return;
@@ -74,7 +95,8 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <h3 className="mb-2 text-xs font-semibold text-neutral-400">{t.jobs.active}</h3>
-          {activeJobs.length === 0 && <p className="mb-4 text-xs text-neutral-500">{t.jobs.none}</p>}
+          {activeJobs.length === 0 && <p className="mb-4 text-xs text-neutral-400">{t.jobs.none}</p>}
+          {activeJobs.length > 0 && <p className="mb-2 text-xs text-neutral-400">{t.jobs.closeHint}</p>}
           <ul className="mb-6 flex flex-col gap-2">
             {activeJobs.map((job) => (
               <li key={job.id} className="rounded-md border border-neutral-800 p-3">
@@ -85,9 +107,12 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
                   </Button>
                 </div>
                 <ProgressBar value={job.progress} indeterminate={job.status === "queued"} />
-                <div className="mt-1.5 flex justify-between text-[11px] text-neutral-500">
+                <div className="mt-1.5 flex justify-between gap-2 text-[11px] text-neutral-400">
                   <span className="truncate">{job.progressMessage ?? t.jobs.statuses[job.status]}</span>
-                  <span>{Math.round(job.progress * 100)}%</span>
+                  <span className="shrink-0">{Math.round(job.progress * 100)}%</span>
+                </div>
+                <div className="mt-1 text-[11px] text-neutral-400">
+                  {job.status === "running" ? (etaText(job, now) ?? t.jobs.etaPending) : t.jobs.statuses[job.status]}
                 </div>
               </li>
             ))}

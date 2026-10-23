@@ -1,6 +1,12 @@
 import { X } from "lucide-react";
 import { t } from "../i18n";
-import { useToasts } from "../store/toastStore";
+import { useToasts, type ToastTone } from "../store/toastStore";
+
+const toneClass: Record<ToastTone, string> = {
+  error: "border-rose-500/40 bg-rose-950 text-rose-100",
+  success: "border-emerald-500/40 bg-emerald-950 text-emerald-100",
+  info: "border-neutral-700 bg-neutral-800 text-neutral-100",
+};
 
 export function Toasts() {
   const toasts = useToasts((s) => s.toasts);
@@ -14,13 +20,22 @@ export function Toasts() {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`pointer-events-auto flex items-center gap-3 rounded-md border px-3 py-2 text-sm shadow-lg ${
-            toast.tone === "error"
-              ? "border-rose-500/40 bg-rose-950 text-rose-100"
-              : "border-neutral-700 bg-neutral-800 text-neutral-100"
-          }`}
+          role={toast.tone === "error" ? "alert" : "status"}
+          className={`pointer-events-auto flex items-center gap-3 rounded-md border px-3 py-2 text-sm shadow-lg ${toneClass[toast.tone]}`}
         >
           <span>{toast.text}</span>
+          {toast.action && (
+            <button
+              type="button"
+              className="rounded px-2 py-0.5 text-sm font-semibold text-accent-300 hover:bg-white/10"
+              onClick={() => {
+                toast.action!.run();
+                dismiss(toast.id);
+              }}
+            >
+              {toast.action.label}
+            </button>
+          )}
           <button
             type="button"
             aria-label={t.common.close}

@@ -66,7 +66,12 @@ export type AvatarOption = z.infer<typeof AvatarCharacterSchema>;
 export const ProjectSummary = Project.extend({ pageCount: z.number().int().nonnegative().optional() });
 export type ProjectSummary = z.infer<typeof ProjectSummary>;
 
-export type EstimateType = "synthesize_speech" | "generate_avatar" | "render_video";
+export type EstimateType = "generate_script" | "synthesize_speech" | "generate_avatar" | "render_video";
+/** `pending` (default): only pages the job would actually process; `all`: a forced regeneration. */
+export interface EstimateOptions {
+  scope?: "pending" | "all";
+  sceneIds?: string[];
+}
 export type ScriptExportFormat = "txt" | "md";
 
 export interface UploadOptions {
@@ -115,7 +120,7 @@ export interface ApiClient {
   listJobs(projectId: string, status?: JobStatus): Promise<Job[]>;
   cancelJob(projectId: string, jobId: string): Promise<Job>;
 
-  getEstimate(projectId: string, type: EstimateType): Promise<CostEstimate>;
+  getEstimate(projectId: string, type: EstimateType, options?: EstimateOptions): Promise<CostEstimate>;
   exportScript(projectId: string, format: ScriptExportFormat): Promise<Blob>;
   getAssetUrl(projectId: string, assetId: string): Promise<AssetUrlResponse>;
 

@@ -212,7 +212,7 @@ function SlideBlock({
       <button
         type="button"
         aria-label={fmt(t.timeline.pageMenu, { n: block.index + 1 })}
-        className="ml-auto mr-1 hidden shrink-0 rounded bg-black/50 p-0.5 text-neutral-200 group-hover:block"
+        className="ml-auto mr-1 shrink-0 rounded bg-black/50 p-0.5 text-neutral-200 opacity-70 hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-400"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();

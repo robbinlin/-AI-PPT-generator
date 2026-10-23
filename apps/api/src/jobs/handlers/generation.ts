@@ -5,20 +5,26 @@
  */
 import { eq } from "drizzle-orm";
 import type { OutlineRevision, ProjectSettings, Scene, ScriptRevision, Slide } from "@lvs/shared";
-import { projects } from "../../db/schema.js";
+import { toScene } from "../../db/mappers.js";
+import { projects, scenes } from "../../db/schema.js";
 import { NonRetryableJobError, NotImplementedJobError } from "../../errors.js";
 import { getProjectDetail } from "../../services/projects.js";
 import type { JobContext, JobHandler } from "../context.js";
-import { audioInputHash, avatarInputHash, outlineInputHash, renderInputHash, selectScenesToProcess } from "../hashes.js";
+import { audioInputHash, avatarInputHash, outlineInputHash, renderInputHash } from "../hashes.js";
+import { audioReady, avatarTargets, narratedCandidates, pageList, pageNo, scriptTargets, speechTargets, visibleScenesOf } from "../plan.js";
 
 async function loadDetail(ctx: JobContext) {
   const [project] = await ctx.db.select().from(projects).where(eq(projects.id, ctx.job.projectId)).limit(1);
-  if (!project) throw new NonRetryableJobError("project not found");
+  if (!project) throw new NonRetryableJobError("找不到這個專案");
   const detail = await getProjectDetail(ctx.db, project.ownerId, ctx.job.projectId);
   const slidesById = new Map(detail.slides.map((s) => [s.id, s]));
-  const visibleScenes = detail.scenes.filter((sc) => !slidesById.get(sc.slideId)?.hidden);
+  const visibleScenes = visibleScenesOf(detail);
   return { project, detail, slidesById, visibleScenes };
 }
+
+const NO_SLIDES = "專案還沒有投影片，請先上傳簡報";
+export const AVATAR_DISABLED = "這個專案沒有啟用虛擬人像，請到「虛擬人與聲音」分頁開啟";
+export const AVATAR_NOT_SELECTED = "請先在「虛擬人與聲音」分頁選擇虛擬人像";
 
 // ---------------------------------------------------------------------------
 // Seams. Replace the bodies; keep the signatures.
@@ -111,7 +117,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
   const generateOutline: JobHandler<{ type: "generate_outline"; force: boolean }> = async (ctx) => {
     const { detail, visibleScenes, slidesById } = await loadDetail(ctx);
     const slidesInOrder = visibleScenes.map((sc) => slidesById.get(sc.slideId)!).filter(Boolean);
-    if (slidesInOrder.length === 0) throw new NonRetryableJobError("project has no slides");
+    if (slidesInOrder.length === 0) throw new NonRetryableJobError(NO_SLIDES);
     const inputHash = outlineInputHash(slidesInOrder, detail.project.settings);
     if (!ctx.job.payload.force && detail.outline?.inputHash === inputHash) {
       return { outlineRevisionId: detail.outline.id, reused: true };
@@ -127,7 +133,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
     // The editor's single "產生講稿" button must work on a fresh project: plan the outline first
     // when it is missing or no longer matches the slides/settings, then write the scripts.
     const slidesInOrder = visibleScenes.map((sc) => slidesById.get(sc.slideId)!).filter(Boolean);
-    if (slidesInOrder.length === 0) throw new NonRetryableJobError("project has no slides");
+    if (slidesInOrder.length === 0) throw new NonRetryableJobError(NO_SLIDES);
     const outlineHash = outlineInputHash(slidesInOrder, detail.project.settings);
     if (!detail.outline || detail.outline.inputHash !== outlineHash) {
       await ctx.emit(0.02, "規劃全篇大綱");
@@ -135,7 +141,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
       ctx.publish({ kind: "outline", outline });
       ({ detail, visibleScenes, slidesById } = await loadDetail(ctx));
     }
-    const targets = selectScenesToProcess(visibleScenes, ctx.job.payload.sceneIds, ctx.job.payload.force, (s) => s.script.status);
+    const targets = scriptTargets(detail, { sceneIds: ctx.job.payload.sceneIds, force: ctx.job.payload.force });
     const ids: string[] = [];
     // Scenes are processed in deck order so each prompt can see the script written just before it.
     const latestScript = new Map(Object.entries(detail.scripts).map(([sceneId, rev]) => [sceneId, rev.script]));
@@ -155,7 +161,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
         const pos = visibleScenes.findIndex((s) => s.id === scene.id);
         const slide = slidesById.get(scene.slideId)!;
         const prevScene = pos > 0 ? visibleScenes[pos - 1] : undefined;
-        await ctx.emit(plan.start(scene), `生成第 ${slide.pageNumber} 頁講稿`);
+        await ctx.emit(plan.start(scene), `正在產生第 ${pageNo(scene)} 頁講稿`);
         const rev = await seams.generateScript({
           ctx,
           scene,
@@ -169,7 +175,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
         latestScript.set(scene.id, rev.script);
         results.set(scene.id, rev.id);
         ctx.publish({ kind: "script", script: rev });
-        await ctx.emit(plan.finish(scene), `第 ${slide.pageNumber} 頁講稿完成`);
+        await ctx.emit(plan.finish(scene), `第 ${pageNo(scene)} 頁講稿完成`);
       }
     };
     await Promise.all(Array.from({ length: concurrency }, () => worker()));
@@ -180,55 +186,79 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
     return { scriptRevisionIds: ids, processed: targets.length, skipped: visibleScenes.length - targets.length };
   };
 
+  /** Runs the speech seam for one scene; shared by synthesize_speech and generate_avatar. */
+  async function speakScene(
+    ctx: JobContext,
+    detail: Awaited<ReturnType<typeof loadDetail>>["detail"],
+    scene: Scene,
+    progress: (stage: number, message: string) => Promise<void>,
+  ) {
+    const script = detail.scripts[scene.id]!;
+    const inputHash = audioInputHash({ pronunciationText: script.pronunciationText, settings: detail.project.settings, glossaryReadings: detail.outline?.glossary });
+    await seams.synthesizeSpeech({ ctx, scene, script, settings: detail.project.settings, inputHash, outline: detail.outline, progress });
+  }
+
+  const narrationWeight = (detail: Awaited<ReturnType<typeof loadDetail>>["detail"]) => (s: Scene) =>
+    s.durationSec ?? detail.scripts[s.id]?.estimatedDurationSec ?? (detail.scripts[s.id]?.script.length ?? 0) / 4.5;
+
   const synthesizeSpeech: JobHandler<{ type: "synthesize_speech"; sceneIds?: string[]; force: boolean }> = async (ctx) => {
-    const { detail, visibleScenes } = await loadDetail(ctx);
-    const withScript = visibleScenes.filter((s) => !s.muted && detail.scripts[s.id]);
-    const targets = selectScenesToProcess(withScript, ctx.job.payload.sceneIds, ctx.job.payload.force, (s) => s.audio.status);
-    const plan = progressPlan(withScript, targets, (s) => s.durationSec ?? detail.scripts[s.id]?.estimatedDurationSec ?? detail.scripts[s.id]!.script.length / 4.5);
-    for (let i = 0; i < targets.length; i++) {
-      const scene = targets[i]!;
-      const script = detail.scripts[scene.id]!;
-      const inputHash = audioInputHash({ pronunciationText: script.pronunciationText, settings: detail.project.settings, glossaryReadings: detail.outline?.glossary });
-      await ctx.emit(plan.start(scene), `合成第 ${scene.index + 1} 段語音`);
-      await seams.synthesizeSpeech({
-        ctx,
-        scene,
-        script,
-        settings: detail.project.settings,
-        inputHash,
-        outline: detail.outline,
-        progress: (stage, message) => ctx.emit(plan.within(scene, stage), `第 ${scene.index + 1} 段：${message}`),
-      });
-      await ctx.emit(plan.finish(scene), `第 ${scene.index + 1} 段語音完成`);
+    const { detail } = await loadDetail(ctx);
+    const withScript = narratedCandidates(detail);
+    const targets = speechTargets(detail, { sceneIds: ctx.job.payload.sceneIds, force: ctx.job.payload.force });
+    const plan = progressPlan(withScript, targets, narrationWeight(detail));
+    for (const scene of targets) {
+      const n = pageNo(scene);
+      await ctx.emit(plan.start(scene), `正在產生第 ${n} 頁語音`);
+      await speakScene(ctx, detail, scene, (stage, message) => ctx.emit(plan.within(scene, stage), `第 ${n} 頁：${message}`));
+      await ctx.emit(plan.finish(scene), `第 ${n} 頁語音完成`);
     }
     return { processed: targets.length, skipped: withScript.length - targets.length };
   };
 
   const generateAvatar: JobHandler<{ type: "generate_avatar"; sceneIds?: string[]; force: boolean }> = async (ctx) => {
-    const { detail, visibleScenes } = await loadDetail(ctx);
-    if (!detail.project.settings.avatar.enabled) throw new NonRetryableJobError("avatar is disabled in project settings");
-    const withAudio = visibleScenes.filter((s) => !s.muted && s.audio.status === "ready" && s.audio.assetId);
-    const targets = selectScenesToProcess(withAudio, ctx.job.payload.sceneIds, ctx.job.payload.force, (s) => s.avatar.status);
-    const plan = progressPlan(withAudio, targets, (s) => s.durationSec ?? 30);
-    for (let i = 0; i < targets.length; i++) {
-      const scene = targets[i]!;
-      const inputHash = avatarInputHash({ audioAssetId: scene.audio.assetId!, settings: detail.project.settings });
-      await ctx.emit(plan.start(scene), `生成第 ${scene.index + 1} 段人像`);
-      await seams.generateAvatar({ ctx, scene, audioAssetId: scene.audio.assetId!, settings: detail.project.settings, inputHash });
-      await ctx.emit(plan.finish(scene), `第 ${scene.index + 1} 段人像完成`);
+    const { detail } = await loadDetail(ctx);
+    const settings = detail.project.settings;
+    if (!settings.avatar.enabled) throw new NonRetryableJobError(AVATAR_DISABLED);
+    if (!settings.avatar.providerId || !settings.avatar.avatarId) throw new NonRetryableJobError(AVATAR_NOT_SELECTED);
+    // Every narrated page with a script is a candidate; pages whose audio is missing or stale
+    // get it synthesized first, so "產生人像" never silently skips them.
+    const candidates = narratedCandidates(detail);
+    const targets = avatarTargets(detail, { sceneIds: ctx.job.payload.sceneIds, force: ctx.job.payload.force });
+    const plan = progressPlan(candidates, targets, narrationWeight(detail));
+    let synthesized = 0;
+    for (const target of targets) {
+      const n = pageNo(target);
+      let scene = target;
+      // Share of this page's progress spent on speech when it has to be synthesized first.
+      let speechShare = 0;
+      if (!audioReady(scene)) {
+        speechShare = 0.3;
+        await ctx.emit(plan.start(scene), `正在產生第 ${n} 頁語音`);
+        await speakScene(ctx, detail, scene, (stage, message) => ctx.emit(plan.within(target, stage * speechShare), `第 ${n} 頁：${message}`));
+        synthesized++;
+        const [row] = await ctx.db.select().from(scenes).where(eq(scenes.id, scene.id)).limit(1);
+        if (!row?.audio.assetId || row.audio.status !== "ready") throw new NonRetryableJobError(`第 ${n} 頁語音產生失敗，無法產生人像`);
+        scene = { ...toScene(row), index: target.index };
+      }
+      const audioAssetId = scene.audio.assetId!;
+      const inputHash = avatarInputHash({ audioAssetId, settings });
+      await ctx.emit(plan.within(target, speechShare), `正在產生第 ${n} 頁人像`);
+      await seams.generateAvatar({ ctx, scene, audioAssetId, settings, inputHash });
+      await ctx.emit(plan.finish(target), `第 ${n} 頁人像完成`);
     }
-    return { processed: targets.length, skipped: withAudio.length - targets.length };
+    return { processed: targets.length, skipped: candidates.length - targets.length, synthesized };
   };
 
   const renderVideo: JobHandler<{ type: "render_video"; preset: "preview_540p" | "hd_1080p"; burnSubtitles?: boolean }> = async (ctx) => {
     const { detail, visibleScenes } = await loadDetail(ctx);
     const burn = ctx.job.payload.burnSubtitles ?? detail.project.settings.subtitles.burnIn;
+    if (visibleScenes.length === 0) throw new NonRetryableJobError(NO_SLIDES);
     const notReady = visibleScenes.filter((s) => !s.muted && s.audio.status !== "ready");
     if (notReady.length) {
-      throw new NonRetryableJobError(`${notReady.length} scene(s) have no up-to-date audio; run synthesize_speech first`);
+      throw new NonRetryableJobError(`第 ${pageList(notReady)} 頁的語音不是最新的，請先按「產生全部語音」`);
     }
     const inputHash = renderInputHash({ scenesInOrder: visibleScenes, settings: detail.project.settings, preset: ctx.job.payload.preset, burnSubtitles: burn });
-    await ctx.emit(0.05, "準備渲染");
+    await ctx.emit(0.05, "準備合成影片");
     const out = await seams.renderVideo({ ctx, scenesInOrder: visibleScenes, settings: detail.project.settings, inputHash, preset: ctx.job.payload.preset, burnSubtitles: burn });
     return { ...out, inputHash };
   };

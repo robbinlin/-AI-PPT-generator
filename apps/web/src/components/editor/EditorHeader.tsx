@@ -6,10 +6,10 @@ import { useCostEstimate } from "../../hooks/useCostEstimate";
 import { ACCEPTED_EXTENSIONS } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
 import { toast } from "../../store/toastStore";
-import { formatCost, formatDuration } from "../../lib/format";
+import { formatCost, formatCostTwd, formatDuration } from "../../lib/format";
+import { estimateLines } from "../../lib/paidJobs";
 import { useEditor } from "../../store/editorStore";
 import { Button } from "../ui/Button";
-import { Modal } from "../ui/Modal";
 import { Badge } from "../ui/Misc";
 import { ExportMenu } from "./ExportMenu";
 import { GenerateButton } from "./GenerateButton";
@@ -23,15 +23,15 @@ export interface EditorHeaderProps {
 export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
   const detail = useEditor((s) => s.detail);
   const fileInput = useRef<HTMLInputElement>(null);
-  const [avatarConfirm, setAvatarConfirm] = useState(false);
 
   // Changes whenever a scene's derived state or a script changes, which is what estimates depend on.
   const revision = useMemo(
     () =>
       detail
         ? detail.scenes
-            .map((s) => `${s.id}:${s.audio.status}:${s.avatar.status}:${s.muted}:${detail.scripts[s.id]?.version ?? 0}`)
-            .join("|")
+            .map((s) => `${s.id}:${s.script.status}:${s.audio.status}:${s.avatar.status}:${s.muted}:${detail.scripts[s.id]?.version ?? 0}`)
+            .join("|") +
+          `|${detail.project.settings.voice.providerId}:${detail.project.settings.avatar.providerId ?? ""}:${detail.slides.filter((sl) => sl.hidden).length}`
         : "",
     [detail],
   );
@@ -69,13 +69,22 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2 pl-2">
-          <Badge>
-            <Clock className="size-3" aria-hidden />
-            {fmt(t.editor.totalDuration, { time: formatDuration(detail.totalDurationSec) })}
-          </Badge>
+          <span className="hidden min-[1200px]:contents">
+            <Badge>
+              <Clock className="size-3" aria-hidden />
+              {fmt(t.editor.totalDuration, { time: formatDuration(detail.totalDurationSec) })}
+            </Badge>
+          </span>
           {estimate && (
-            <Badge tone="accent" title={t.editor.estimateTitle}>
-              {fmt(t.editor.estimate, { cost: formatCost(estimate.total, estimate.currency) })}
+            <Badge
+              tone="accent"
+              title={[
+                t.editor.estimateTitle,
+                ...Object.values(estimate.parts).flatMap((p) => (p ? estimateLines(p) : [])),
+                fmt(t.paid.cost, { cost: formatCostTwd(estimate.total, estimate.currency) }),
+              ].join("\n")}
+            >
+              {estimate.total > 0 ? fmt(t.editor.estimate, { cost: formatCost(estimate.total, estimate.currency) }) : t.editor.estimateNone}
             </Badge>
           )}
         </div>
@@ -83,18 +92,21 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
 
       <div className="flex shrink-0 items-center gap-1.5">
         <JobsIndicator onOpen={onOpenJobs} />
-        <Button icon={Upload} onClick={pickFile}>
-          {t.editor.upload}
+        <Button icon={Upload} onClick={pickFile} title={t.editor.upload} aria-label={t.editor.upload}>
+          <span className="hidden min-[1360px]:inline">{t.editor.upload}</span>
         </Button>
         <GenerateButton kind="generate_script" icon={NotebookPen} label={t.editor.generateScripts} actions={actions} disabled={!hasSlides || busy("generate_script")} />
         <GenerateButton kind="synthesize_speech" icon={AudioLines} label={t.editor.generateSpeech} actions={actions} disabled={!hasSlides || busy("synthesize_speech")} />
         <Button
           icon={UserRound}
           disabled={!hasSlides || busy("generate_avatar")}
-          title={avatarEnabled ? undefined : t.editor.avatarDisabled}
-          onClick={() => (avatarEnabled ? setAvatarConfirm(true) : toast(t.editor.avatarDisabled, "info"))}
+          title={avatarEnabled ? t.editor.generateAvatar : t.editor.avatarDisabled}
+          aria-label={t.editor.generateAvatar}
+          onClick={() =>
+            avatarEnabled ? void actions.enqueue({ type: "generate_avatar", force: false }) : toast(t.editor.avatarDisabled, "info")
+          }
         >
-          {t.editor.generateAvatar}
+          <span className="hidden min-[1200px]:inline">{t.editor.generateAvatar}</span>
         </Button>
         <ExportMenu actions={actions} disabled={!hasSlides} />
       </div>
@@ -111,37 +123,6 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
         }}
       />
 
-      <Modal
-        open={avatarConfirm}
-        onClose={() => setAvatarConfirm(false)}
-        title={t.editor.avatarConfirmTitle}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setAvatarConfirm(false)}>
-              {t.common.cancel}
-            </Button>
-            <Button
-              variant="primary"
-              data-autofocus
-              onClick={() => {
-                setAvatarConfirm(false);
-                void actions.enqueue({ type: "generate_avatar", force: false });
-              }}
-            >
-              {t.common.confirm}
-            </Button>
-          </>
-        }
-      >
-        <p className="text-sm text-neutral-300">{t.editor.avatarConfirmBody}</p>
-        {estimate?.parts.generate_avatar && (
-          <p className="mt-3 text-sm font-medium text-neutral-100">
-            {fmt(t.editor.avatarConfirmCost, {
-              cost: formatCost(estimate.parts.generate_avatar.total, estimate.parts.generate_avatar.currency),
-            })}
-          </p>
-        )}
-      </Modal>
     </header>
   );
 }
@@ -181,7 +162,7 @@ function ProjectName({ name, onRename }: { name: string; onRename: (name: string
     <button
       type="button"
       title={t.editor.renameHint}
-      className="max-w-72 truncate rounded px-1.5 py-0.5 text-left text-sm font-semibold text-neutral-100 hover:bg-neutral-800"
+      className="max-w-36 truncate rounded px-1.5 py-0.5 text-left text-sm font-semibold text-neutral-100 hover:bg-neutral-800 min-[1360px]:max-w-72"
       onClick={() => {
         setValue(name);
         setEditing(true);

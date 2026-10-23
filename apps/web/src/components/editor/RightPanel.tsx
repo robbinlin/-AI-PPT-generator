@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { t } from "../../i18n";
 import { OutlinePanel } from "./OutlinePanel";
@@ -6,9 +6,16 @@ import { ScriptPanel } from "./ScriptPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { StudioPanel } from "./StudioPanel";
 
-type Tab = "script" | "studio" | "settings" | "outline";
-const TABS: Tab[] = ["script", "studio", "settings", "outline"];
+export type Tab = "script" | "studio" | "settings" | "outline";
+/** Work order: plan the outline, write the scripts, pick voice/avatar, fine-tune. */
+const TABS: Tab[] = ["outline", "script", "studio", "settings"];
 const TAB_KEY = "lvs.editor.tab";
+export const OPEN_TAB_EVENT = "lvs:open-tab";
+
+/** Lets other parts of the editor (the step bar) switch the right panel's tab. */
+export function openEditorTab(tab: Tab): void {
+  window.dispatchEvent(new CustomEvent<Tab>(OPEN_TAB_EVENT, { detail: tab }));
+}
 
 function initialTab(): Tab {
   try {
@@ -30,6 +37,14 @@ export function RightPanel({ actions }: { actions: EditorActions }) {
       /* ignore */
     }
   };
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const next = (e as CustomEvent<Tab>).detail;
+      if ((TABS as string[]).includes(next)) choose(next);
+    };
+    window.addEventListener(OPEN_TAB_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_TAB_EVENT, onOpen);
+  }, []);
 
   return (
     <aside className="flex min-h-0 flex-col border-l border-neutral-800 bg-neutral-900">
@@ -43,7 +58,7 @@ export function RightPanel({ actions }: { actions: EditorActions }) {
             aria-selected={tab === id}
             aria-controls={`panel-${id}`}
             onClick={() => choose(id)}
-            className={`-mb-px border-b-2 px-3 py-2.5 text-sm transition-colors ${
+            className={`-mb-px border-b-2 px-2.5 py-2.5 text-sm whitespace-nowrap transition-colors ${
               tab === id ? "border-accent-500 text-neutral-50" : "border-transparent text-neutral-400 hover:text-neutral-200"
             }`}
           >

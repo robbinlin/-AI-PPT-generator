@@ -68,7 +68,7 @@ export class PythonParserRunner implements ParserRunner {
         input.signal?.removeEventListener("abort", onAbort);
         if (input.signal?.aborted) return reject(Object.assign(new Error("parser aborted"), { name: "AbortError" }));
         if (code === 0) return resolveRun();
-        const msg = `parser exited with ${code ?? sig}: ${stderrTail.trim()}`;
+        const msg = `簡報解析失敗（parser exited with ${code ?? sig}）：${stderrTail.trim()}`;
         // Exit code 2 is reserved by the worker for "unsupported / corrupt input".
         reject(code === 2 ? new NonRetryableJobError(msg) : new Error(msg));
       });

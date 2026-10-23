@@ -17,15 +17,18 @@ export function invalidateAvatars(providerId: string): void {
   avatarCache.delete(providerId);
 }
 
-export function useAvatarList(providerId: string | undefined): [AvatarOption[], (list: AvatarOption[]) => void] {
+export function useAvatarList(providerId: string | undefined): [AvatarOption[], (list: AvatarOption[]) => void, boolean] {
   const api = useApi();
   const [avatars, setAvatars] = useState<AvatarOption[]>([]);
+  const [loading, setLoading] = useState(false);
   useEffect(() => {
     if (!providerId) {
       setAvatars([]);
+      setLoading(false);
       return;
     }
     let alive = true;
+    setLoading(true);
     let p = avatarCache.get(providerId);
     if (!p) {
       p = api.listAvatars(providerId);
@@ -33,10 +36,15 @@ export function useAvatarList(providerId: string | undefined): [AvatarOption[], 
       p.catch(() => avatarCache.delete(providerId));
     }
     p.then(
-      (list) => alive && setAvatars(list),
+      (list) => {
+        if (!alive) return;
+        setAvatars(list);
+        setLoading(false);
+      },
       (err: unknown) => {
         if (!alive) return;
         setAvatars([]);
+        setLoading(false);
         toast(`${t.settings.avatarListFailed}：${errorMessage(err)}`, "error");
       },
     );
@@ -48,7 +56,7 @@ export function useAvatarList(providerId: string | undefined): [AvatarOption[], 
     if (providerId) avatarCache.set(providerId, Promise.resolve(list));
     setAvatars(list);
   };
-  return [avatars, set];
+  return [avatars, set, loading];
 }
 
 /**
@@ -62,7 +70,7 @@ export function useStudioLists(project: Project | undefined, actions: Pick<Edito
   const [voices, setVoices] = useState<VoiceOption[]>([]);
   const voiceProvider = project?.settings.voice.providerId;
   const avatarProvider = project?.settings.avatar.providerId;
-  const [avatars, setAvatars] = useAvatarList(avatarProvider);
+  const [avatars, setAvatars, avatarsLoading] = useAvatarList(avatarProvider);
 
   useEffect(() => {
     api.listProviders().then(setProviders, () => setProviders([]));
@@ -122,7 +130,7 @@ export function useStudioLists(project: Project | undefined, actions: Pick<Edito
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voices, currentVoiceId]);
 
-  return { providers, voices, setVoices, avatars, setAvatars };
+  return { providers, voices, setVoices, avatars, setAvatars, avatarsLoading };
 }
 
 /** Image to show for an avatar character: local characters are proxied through the API. */

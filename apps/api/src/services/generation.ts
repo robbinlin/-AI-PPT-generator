@@ -35,12 +35,12 @@ import type { Config } from "../config.js";
 import type { Db } from "../db/client.js";
 import { toAsset, toOutline, toScene } from "../db/mappers.js";
 import { assets, outlineRevisions, projects, scenes, timelineRevisions, type SceneRow } from "../db/schema.js";
-import { NonRetryableJobError } from "../errors.js";
+import { NonRetryableJobError, providerErrorMessage } from "../errors.js";
 import type { JobContext } from "../jobs/context.js";
 import { throwIfAborted } from "../jobs/context.js";
-import type { GenerationSeams } from "../jobs/handlers/generation.js";
+import { AVATAR_NOT_SELECTED, type GenerationSeams } from "../jobs/handlers/generation.js";
 import { scriptInputHash, subtitleInputHash } from "../jobs/hashes.js";
-import { ProviderNotConfiguredError, type ProviderService } from "./providers.js";
+import { ProviderNotConfiguredError, providerLabel, type ProviderService } from "./providers.js";
 import { createScriptRevision } from "./scripts.js";
 import { recordUsage, type UsageLine } from "./usage.js";
 import type { StorageService } from "../storage/types.js";
@@ -71,6 +71,23 @@ const AUDIO_EXT: Record<string, string> = { "audio/wav": "wav", "audio/x-wav": "
 // The local worker composites its own person matte onto the same green (lvs_avatar/matting.py).
 const CHROMA_KEY_BY_PROVIDER: Record<string, string> = { heygen: "#00FF00", local: "#00FF00" };
 
+/**
+ * Prefix a provider failure with a Chinese summary for the editor ("HeyGen 產生失敗：HTTP 401 …")
+ * while keeping its retry semantics: non-retryable stays non-retryable, aborts pass through.
+ */
+async function labelled<P>(label: string, fn: () => Promise<P>): Promise<P> {
+  try {
+    return await fn();
+  } catch (e) {
+    const err = e as Error;
+    if (err?.name === "AbortError" || err instanceof ProviderNotConfiguredError) throw e;
+    const msg = providerErrorMessage(e);
+    if (msg.startsWith(label)) throw e;
+    const wrapped = err instanceof NonRetryableJobError ? new NonRetryableJobError(`${label}：${msg}`) : new Error(`${label}：${msg}`);
+    throw Object.assign(wrapped, { cause: e });
+  }
+}
+
 /** Hold time for a muted scene with no narration. */
 const MUTED_SCENE_SEC = 3;
 
@@ -79,7 +96,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
 
   async function ownerOf(ctx: JobContext): Promise<string> {
     const [p] = await ctx.db.select({ ownerId: projects.ownerId }).from(projects).where(eq(projects.id, ctx.job.projectId)).limit(1);
-    if (!p) throw new NonRetryableJobError("project not found");
+    if (!p) throw new NonRetryableJobError("找不到這個專案");
     return p.ownerId;
   }
 
@@ -95,13 +112,13 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
 
   async function assetById(db: Db, id: string): Promise<Asset> {
     const [row] = await db.select().from(assets).where(eq(assets.id, id)).limit(1);
-    if (!row) throw new NonRetryableJobError(`asset ${id} not found`);
+    if (!row) throw new NonRetryableJobError(`找不到素材檔案（${id}）`);
     return toAsset(row);
   }
 
   async function sceneRow(db: Db, id: string): Promise<SceneRow> {
     const [row] = await db.select().from(scenes).where(eq(scenes.id, id)).limit(1);
-    if (!row) throw new NonRetryableJobError(`scene ${id} not found`);
+    if (!row) throw new NonRetryableJobError(`找不到頁面（${id}），可能已重新上傳簡報`);
     return row;
   }
 
@@ -183,7 +200,9 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       const slides = await toPipelineSlides(ctx, slidesInOrder, config.OUTLINE_MAX_IMAGES);
       throwIfAborted(ctx.signal);
       ctx.log.info("calling LLM for the outline", { provider: llm.id, model: llm.defaultModel, slides: slides.length, images: Math.min(slides.length, config.OUTLINE_MAX_IMAGES) });
-      const { outline, usage: used } = await pipelineOutline({ llm, slides, settings, maxImages: config.OUTLINE_MAX_IMAGES, attachImages: config.OUTLINE_MAX_IMAGES > 0 });
+      const { outline, usage: used } = await labelled(`${providerLabel(llm.id)} 大綱產生失敗`, () =>
+        pipelineOutline({ llm, slides, settings, maxImages: config.OUTLINE_MAX_IMAGES, attachImages: config.OUTLINE_MAX_IMAGES > 0 }),
+      );
       ctx.log.info("outline received", { sections: outline.sections.length, glossary: outline.glossary.length });
       await usage(ctx, llm.id, used);
       const [latest] = await ctx.db
@@ -211,7 +230,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
     },
 
     async generateScript({ ctx, scene, slide, prev, next, outline, settings, previousScript }) {
-      if (!outline) throw new NonRetryableJobError("no outline yet; run generate_outline first");
+      if (!outline) throw new NonRetryableJobError("還沒有全篇大綱，請先產生大綱");
       const ownerId = await ownerOf(ctx);
       const llm = await withProvider(() => providers.llm(ownerId, settings.llmProviderId));
       const mk = async (s: Slide | undefined, index: number, withImage: boolean): Promise<PipelineSlide | undefined> => {
@@ -220,17 +239,20 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         return { id: s.id, index, content: s.content, ...(img ? { imagePng: new Uint8Array(await readAsset(ctx.storage, img)) } : {}) };
       };
       const allocated = outline.timeAllocation[slide.id] ?? 30;
-      const result = await generateSceneScript({
+      const thisSlide = (await mk(slide, scene.index, config.SCRIPT_ATTACH_IMAGE))!;
+      const prevSlide = await mk(prev, scene.index - 1, false);
+      const nextSlide = await mk(next, scene.index + 1, false);
+      const result = await labelled(`第 ${scene.index + 1} 頁講稿產生失敗（${providerLabel(llm.id)}）`, () => generateSceneScript({
         llm,
-        slide: (await mk(slide, scene.index, config.SCRIPT_ATTACH_IMAGE))!,
-        prevSlide: await mk(prev, scene.index - 1, false),
-        nextSlide: await mk(next, scene.index + 1, false),
+        slide: thisSlide,
+        prevSlide,
+        nextSlide,
         outline,
         settings,
         allocatedSec: allocated,
         previousScripts: previousScript ? [previousScript] : [],
         attachImage: config.SCRIPT_ATTACH_IMAGE,
-      });
+      }));
       await usage(ctx, llm.id, result.usage);
       throwIfAborted(ctx.signal);
       const { revision } = await createScriptRevision(ctx.db, {
@@ -255,14 +277,14 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       const tts = await withProvider(() => providers.tts(ownerId, settings.voice.providerId));
       await report(0.1, "呼叫語音服務");
       const glossary = outline?.glossary ?? [];
-      const res = await tts.synthesize({
+      const res = await labelled(`${providerLabel(tts.id)} 語音產生失敗`, () => tts.synthesize({
         text: script.pronunciationText,
         voiceId: settings.voice.voiceId,
         language: settings.language,
         speed: settings.voice.speed,
         sentencePauseSec: settings.voice.sentencePauseSec,
         pronunciation: glossary,
-      });
+      }));
       await usage(ctx, tts.id, res.usage);
       await report(0.7, "儲存語音");
       throwIfAborted(ctx.signal);
@@ -319,7 +341,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
     async generateAvatar({ ctx, scene, audioAssetId, settings, inputHash }) {
       const providerId = settings.avatar.providerId;
       const avatarId = settings.avatar.avatarId;
-      if (!providerId || !avatarId) throw new NonRetryableJobError("avatar provider and avatarId must be set in project settings");
+      if (!providerId || !avatarId) throw new NonRetryableJobError(AVATAR_NOT_SELECTED);
       const ownerId = await ownerOf(ctx);
       const provider = await withProvider(() => providers.avatar(ownerId, providerId));
       const audioAsset = await assetById(ctx.db, audioAssetId);
@@ -332,20 +354,23 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         // Hand the provider the bytes as well as a URL: HeyGen uploads them as an asset, which
         // also works when the API runs on localhost where no vendor could fetch the URL.
         const audioBytes = await streamToBuffer((await ctx.storage.getStream(audioAsset.storageKey)).stream);
-        const created = await provider.createTask({
+        const created = await labelled(`${providerLabel(provider.id)} 產生失敗`, () => provider.createTask({
           avatarId,
           aspectRatio: settings.aspectRatio,
           audio: { data: audioBytes, mimeType: audioAsset.mimeType, fileName: `scene-${scene.index + 1}.${AUDIO_EXT[audioAsset.mimeType] ?? "bin"}` },
           audioUrl: url,
           clientReference: ctx.job.id,
-        });
+        }));
         taskId = created.taskId;
         await ctx.setProviderTaskId(prefix + taskId);
       }
 
-      const status = await pollAvatar(provider, taskId, ctx, config.AVATAR_POLL_INTERVAL_MS, scene.index);
-      if (!status.resultUrl) throw new Error(`avatar task ${taskId} succeeded without a result url`);
-      const clip = await download(status.resultUrl);
+      const label = `${providerLabel(provider.id)} 產生失敗`;
+      const polledTaskId = taskId;
+      const status = await labelled(label, () => pollAvatar(provider, polledTaskId, ctx, config.AVATAR_POLL_INTERVAL_MS, scene.index));
+      const resultUrl = status.resultUrl;
+      if (!resultUrl) throw new Error(`${label}：第 ${scene.index + 1} 頁的人像影片沒有回傳下載網址（task ${taskId}）`);
+      const clip = await labelled(`下載第 ${scene.index + 1} 頁人像影片失敗`, () => download(resultUrl));
       const durationSec = status.durationSec ?? audioAsset.durationSec ?? 0;
       await usage(ctx, provider.id, [{ unit: "avatar_seconds", quantity: durationSec }]);
       const asset = await putAsset(ctx, {
@@ -367,7 +392,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
 
     async renderVideo({ ctx, scenesInOrder, settings, inputHash, preset, burnSubtitles }) {
       const size = PRESETS[preset]?.[settings.aspectRatio];
-      if (!size) throw new NonRetryableJobError(`unknown render preset ${preset}`);
+      if (!size) throw new NonRetryableJobError(`不支援的影片規格：${preset}`);
       const workDir = resolve(config.RENDER_WORK_DIR, ctx.job.projectId, ctx.job.id);
       const cacheDir = resolve(config.RENDER_WORK_DIR, ctx.job.projectId, "cache");
       await mkdir(workDir, { recursive: true });
@@ -388,7 +413,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         const s = scenesInOrder[i]!;
         const imageId = imageBySlide.get(slideIdByScene.get(s.id) ?? "");
         const image = imageId ? assetMap.get(imageId) : undefined;
-        if (!image) throw new NonRetryableJobError(`scene ${s.index + 1} has no slide image`);
+        if (!image) throw new NonRetryableJobError(`第 ${s.index + 1} 頁沒有投影片圖片，請重新上傳簡報`);
         const audio = !s.muted && s.audio.assetId ? assetMap.get(s.audio.assetId) : undefined;
         const narration = audio?.durationSec ?? s.durationSec ?? (s.muted ? MUTED_SCENE_SEC : 0);
         const durationSec = Math.max(0.5, narration + s.tailPauseSec);
@@ -422,18 +447,18 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         backgroundColor: settings.backgroundColor ?? "#000000",
         outputs: { mp4Path: join(workDir, "output.mp4"), srtPath: join(workDir, "output.srt") },
       };
-      await ctx.emit(0.1, "渲染場景");
+      await ctx.emit(0.1, "正在合成影片");
       const result = await render(spec, {
         workDir,
         cacheDir,
         ffmpegBin: config.FFMPEG_BIN,
         ffprobeBin: config.FFPROBE_BIN,
         signal: ctx.signal,
-        onProgress: (p: number, msg: string) => void ctx.emit(0.1 + p * 0.8, msg),
+        onProgress: (p: number, msg: string) => void ctx.emit(0.1 + p * 0.8, renderProgressMessage(msg, scenesInOrder)),
       });
       await usage(ctx, "render", [{ unit: "render_seconds", quantity: result.renderSeconds }]);
 
-      await ctx.emit(0.92, "儲存輸出");
+      await ctx.emit(0.92, "儲存影片");
       const base = `projects/${ctx.job.projectId}/renders/${inputHash.slice(0, 12)}`;
       const video = await putAsset(ctx, {
         kind: "video",
@@ -466,7 +491,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         totalDurationSec: result.durationSec,
         tracks,
       });
-      await ctx.emit(1, "完成");
+      await ctx.emit(1, "影片合成完成");
       return { videoAssetId: video.id, ...(srtAssetId ? { srtAssetId } : {}) };
     },
   };
@@ -481,9 +506,9 @@ async function pollAvatar(provider: AvatarProvider, taskId: string, ctx: JobCont
     }
     const st = await provider.getTask(taskId);
     if (st.status === "succeeded") return st;
-    if (st.status === "failed") throw new NonRetryableJobError(`avatar provider failed: ${st.error ?? "unknown error"}`);
+    if (st.status === "failed") throw new NonRetryableJobError(`第 ${sceneIndex + 1} 頁：${st.error ?? "未知錯誤"}`);
     if (st.status === "cancelled") throw Object.assign(new Error("avatar task cancelled"), { name: "AbortError" });
-    await ctx.emit(Math.min(0.95, 0.1 + (st.progress ?? 0) * 0.8), `等待第 ${sceneIndex + 1} 段人像生成`);
+    await ctx.emit(Math.min(0.95, 0.1 + (st.progress ?? 0) * 0.8), `等待第 ${sceneIndex + 1} 頁人像產生`);
     await sleep(delay, ctx.signal);
     delay = Math.min(delay * 1.5, Math.max(intervalMs, 30_000));
   }
@@ -504,7 +529,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 async function download(url: string): Promise<Buffer> {
   if (url.startsWith("file://")) return readFile(fileURLToPath(url));
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`download failed: ${res.status} ${url.split("?")[0]}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
 }
 
@@ -538,6 +563,20 @@ function buildTimelineTracks(renderScenes: RenderScene[], scenesInOrder: Scene[]
 }
 
 const round = (n: number) => Math.round(n * 1000) / 1000;
+
+/** @lvs/render reports English progress ("scene 2/6 rendered"); show it in Chinese with editor page numbers. */
+export function renderProgressMessage(msg: string, scenesInOrder: Array<Pick<Scene, "index">>): string {
+  const m = /^scene (\d+)\/(\d+)/.exec(msg);
+  if (m) {
+    const i = Number(m[1]) - 1;
+    const page = (scenesInOrder[i]?.index ?? i) + 1;
+    return `正在合成第 ${page} 頁（${m[1]}/${m[2]}）`;
+  }
+  if (/^rendering/.test(msg)) return "準備合成影片";
+  if (/^(assembling|concatenating)/.test(msg)) return "正在串接各頁影片";
+  if (msg === "done") return "影片合成完成";
+  return "正在合成影片";
+}
 
 
 async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {

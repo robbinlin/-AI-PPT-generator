@@ -6,7 +6,7 @@ import { MockApiClient } from "../../api/mock";
 import { editorStore } from "../../store/editorStore";
 import { makeDetail, testId } from "../../test/fixtures";
 import { PageList } from "./PageList";
-import { StatusDots } from "./StatusDots";
+import { StatusDots, StatusSummary } from "./StatusDots";
 
 function renderList() {
   const actions = {
@@ -38,9 +38,19 @@ describe("StatusDots", () => {
     render(<StatusDots scene={{ ...scene, avatar: { status: "generating" }, subtitle: { status: "failed", error: "boom" } }} />);
     const dots = screen.getAllByRole("img");
     expect(dots.map((d) => d.getAttribute("data-field"))).toEqual(["script", "audio", "avatar", "subtitle"]);
-    expect(screen.getByLabelText("講稿：就緒")).toHaveClass("bg-emerald-500");
+    expect(screen.getByLabelText("講稿：就緒")).toHaveClass("bg-emerald-500/20");
     expect(screen.getByLabelText("人像：產生中")).toHaveClass("animate-pulse");
-    expect(screen.getByLabelText("字幕：失敗 (boom)")).toHaveClass("bg-rose-500");
+    expect(screen.getByLabelText("字幕：失敗 (boom)")).toHaveClass("bg-rose-500/30");
+    // Each chip carries its field's first character, so state is not conveyed by colour alone.
+    expect(screen.getByLabelText("語音：就緒")).toHaveTextContent("語");
+  });
+
+  it("summarises the most urgent state in words", () => {
+    const detail = makeDetail();
+    const scene = detail.scenes[0];
+    if (!scene) throw new Error("fixture");
+    render(<StatusSummary scene={{ ...scene, audio: { status: "stale" }, avatar: { status: "stale" } }} />);
+    expect(screen.getByText("語音、人像需更新")).toBeInTheDocument();
   });
 });
 

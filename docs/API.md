@@ -18,7 +18,7 @@ All DTOs are defined in `@lvs/shared` (`src/api.ts`); this file lists routes onl
 | DELETE | /providers/:providerId/characters/:characterId | — | 204 |
 | GET | /providers/:providerId/characters/:characterId/preview | — | image bytes |
 | GET | `/providers/:providerId/avatars` | – | `AvatarCharacter[]` (avatar providers; `400` when no key is configured) |
-| GET | `/projects` | – | `Project[]` |
+| GET | `/projects` | – | `Project[]` (with `pageCount` and `thumbnailAssetId` = first visible page's thumbnail/image) |
 | POST | `/projects` | `CreateProjectRequest` | `Project` |
 | GET | `/projects/:id` | – | `ProjectDetail` |
 | PATCH | `/projects/:id` | `UpdateProjectRequest` | `Project` |
@@ -33,7 +33,7 @@ All DTOs are defined in `@lvs/shared` (`src/api.ts`); this file lists routes onl
 | GET | `/projects/:id/jobs` | `?status=` | `Job[]` |
 | POST | `/projects/:id/jobs/:jobId/cancel` | – | `Job` |
 | GET | `/projects/:id/events` | SSE | stream of `ProjectEvent` (`event: <kind>`, `data: <json>`) |
-| GET | `/projects/:id/estimate` | `?type=synthesize_speech|generate_avatar|render_video` | `CostEstimate` |
+| GET | `/projects/:id/estimate` | `?type=<JobType>&scope=pending|all&sceneIds=<id,id,…>` | `CostEstimate` (with `sceneCount`, `seconds`) |
 | GET | `/projects/:id/export/script` | `?format=txt|md` | file |
 | GET | `/assets/:assetId` | `?sig=&exp=` (signed) | file stream; `Range` supported |
 | GET | `/projects/:id/assets/:assetId/url` | – | `{ url, expiresAt }` |
@@ -47,6 +47,20 @@ Conventions
   revision) so autosave does not create empty history.
 * Enqueuing `generate_script` without `sceneIds` processes every scene whose script state
   is `missing` or `stale`; with `force: true` it processes all. Same for speech/avatar.
+* `generate_avatar` works on every visible, non-muted page with a script. A page whose audio
+  is not `ready` counts as needing an avatar, and its audio is synthesized first in the same job
+  (same input hash as `synthesize_speech`), so the button never silently skips pages.
+* Estimates count only the pages the job would actually process: `scope=pending` (default)
+  mirrors `force: false`, `scope=all` mirrors `force: true`; `sceneIds` narrows the pool like the
+  job payload. `sceneCount` is the number of pages, `seconds` their narration time (audio length
+  when ready, else the script's estimate). The `generate_avatar` estimate includes a TTS line for
+  pages whose audio has to be made first; `generate_script` includes the outline when it must be
+  (re)planned. `POST …/jobs` attaches the estimate for the job's own payload.
+* `ProjectDetail.currentRenderHashes` lists the render input hashes the project would produce
+  now (`preview_540p`/`hd_1080p` × burn-in on/off). A `video` asset whose `inputHash` is not in
+  the list is out of date.
+* Job errors and progress messages are user-facing Traditional Chinese and use the editor's
+  page numbers (P1, P2… = `scene.index + 1`), e.g. 「正在產生第 2 頁語音」.
 * The runner emits a `job` event on every status/progress change, a `scene` event when a
   scene's asset state changes, an `asset` event for every stored asset, `script` for new
   revisions and `outline` after planning.

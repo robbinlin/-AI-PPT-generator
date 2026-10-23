@@ -59,6 +59,7 @@ import {
   type ApiClient,
   type AssetUrlResponse,
   type AvatarOption,
+  type EstimateOptions,
   type EstimateType,
   type HealthResponse,
   type ProjectEventListener,
@@ -282,6 +283,7 @@ export class MockApiClient implements ApiClient {
         assets: {},
         activeJobs: [],
         totalDurationSec: 0,
+        currentRenderHashes: [],
       },
       jobs: [],
       revisions: {},
@@ -1275,12 +1277,15 @@ export class MockApiClient implements ApiClient {
     await this.wait();
     const ps = this.state(projectId);
     const estimateType: EstimateType | undefined =
+      req.type === "generate_script" ||
       req.type === "synthesize_speech" ||
       req.type === "generate_avatar" ||
       req.type === "render_video"
         ? req.type
         : undefined;
-    const estimate = estimateType ? this.estimate(ps, estimateType) : undefined;
+    const force = "force" in req && req.force === true;
+    const sceneIds = "sceneIds" in req ? req.sceneIds : undefined;
+    const estimate = estimateType ? this.estimate(ps, estimateType, { scope: force ? "all" : "pending", sceneIds }) : undefined;
     const job = this.startJob(ps, req);
     return clone({ job, ...(estimate ? { estimate } : {}) });
   }
@@ -1312,12 +1317,18 @@ export class MockApiClient implements ApiClient {
 
   // ===================================================== estimate/export
 
-  private estimate(ps: ProjectState, type: EstimateType): CostEstimate {
+  private estimate(ps: ProjectState, type: EstimateType, options: EstimateOptions = {}): CostEstimate {
     const settings = ps.detail.project.settings;
-    const scenes = this.visibleScenes(ps);
+    const all = options.scope === "all";
+    const scenes = this.visibleScenes(ps).filter((s) => !options.sceneIds || options.sceneIds.includes(s.id));
+    if (type === "generate_script") {
+      const pending = scenes.filter((s) => all || s.script.status !== "ready");
+      const cost = round(pending.length * 0.002);
+      return { lines: [{ providerId: settings.llmProviderId, unit: "tokens_out", quantity: pending.length * 600, estimatedCost: cost }], total: cost, currency: "USD", sceneCount: pending.length };
+    }
     if (type === "synthesize_speech") {
-      const chars = scenes
-        .filter((s) => !s.muted && s.audio.status !== "ready")
+      const pending = scenes.filter((s) => !s.muted && (all || s.audio.status !== "ready"));
+      const chars = pending
         .reduce(
           (n, s) =>
             n +
@@ -1336,11 +1347,12 @@ export class MockApiClient implements ApiClient {
         ],
         total: cost,
         currency: "USD",
+        sceneCount: pending.length,
       };
     }
     if (type === "generate_avatar") {
-      const seconds = scenes
-        .filter((s) => !s.muted && s.avatar.status !== "ready")
+      const pending = scenes.filter((s) => !s.muted && (all || s.avatar.status !== "ready"));
+      const seconds = pending
         .reduce(
           (n, s) =>
             n +
@@ -1362,6 +1374,8 @@ export class MockApiClient implements ApiClient {
         ],
         total: cost,
         currency: "USD",
+        sceneCount: pending.length,
+        seconds,
       };
     }
     const seconds = ps.detail.totalDurationSec;
@@ -1382,9 +1396,10 @@ export class MockApiClient implements ApiClient {
   async getEstimate(
     projectId: string,
     type: EstimateType,
+    options?: EstimateOptions,
   ): Promise<CostEstimate> {
     await this.wait();
-    return this.estimate(this.state(projectId), type);
+    return this.estimate(this.state(projectId), type, options);
   }
 
   private scriptExportText(

@@ -53,3 +53,35 @@ export function downloadFile(source: Blob | string, filename: string): void {
   a.remove();
   if (typeof source !== "string") setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
+
+/** Rough rate for showing NT$ next to provider prices (they bill in USD). */
+export const TWD_PER_USD = 32;
+
+/** "US$1.25（約 NT$40）"; tiny amounts read as "不到 NT$1". */
+export function formatCostTwd(amount: number, currency = "USD"): string {
+  const base = formatCost(amount, currency);
+  if (currency !== "USD" || amount <= 0) return base;
+  const twd = amount * TWD_PER_USD;
+  return `${base}（${twd < 1 ? "不到 NT$1" : `約 NT$${Math.round(twd).toLocaleString("zh-TW")}`}）`;
+}
+
+/** "約 3 分鐘" / "不到 1 分鐘" / "約 1 小時 10 分鐘" for waits. */
+export function formatWait(seconds: number): string {
+  const min = Math.round(seconds / 60);
+  if (min < 1) return "不到 1 分鐘";
+  if (min < 60) return `約 ${min} 分鐘`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `約 ${h} 小時 ${m} 分鐘` : `約 ${h} 小時`;
+}
+
+/**
+ * Remaining time from elapsed time and progress, once there is enough progress to extrapolate.
+ * Returns null while the estimate would be noise (under 5% or under 10 s in).
+ */
+export function remainingSec(startedAt: string | undefined, progress: number, now: number = Date.now()): number | null {
+  if (!startedAt || progress < 0.05 || progress >= 1) return null;
+  const elapsed = (now - Date.parse(startedAt)) / 1000;
+  if (!(elapsed >= 10)) return null;
+  return (elapsed * (1 - progress)) / progress;
+}

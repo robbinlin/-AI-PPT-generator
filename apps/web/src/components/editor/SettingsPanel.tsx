@@ -57,7 +57,7 @@ function providerOptions(
 export function SettingsPanel({
   actions,
 }: {
-  actions: Pick<EditorActions, "updateProject">;
+  actions: Pick<EditorActions, "updateProject" | "changeSettings">;
 }) {
   const project = useEditor((s) => s.detail?.project);
   const { providers } = useStudioLists(project, actions);
@@ -157,7 +157,7 @@ export function SettingsPanel({
             <Select
               value={s.aspectRatio}
               options={opts(RATIOS, t.aspectRatios)}
-              onChange={(aspectRatio) => patch({ aspectRatio })}
+              onChange={(aspectRatio) => void actions.changeSettings({ aspectRatio }, "avatar")}
             />
           </Field>
         </div>

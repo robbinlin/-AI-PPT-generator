@@ -4,7 +4,7 @@ import type { Scene, Slide } from "@lvs/shared";
 import { Eye, EyeOff, GripVertical, ImageOff, MoreHorizontal, Volume2, VolumeX } from "lucide-react";
 import { fmt, t } from "../../i18n";
 import { firstLine } from "../../lib/scenes";
-import { StatusDots } from "./StatusDots";
+import { StatusDots, StatusSummary } from "./StatusDots";
 
 export interface PageListItemProps {
   slide: Slide;
@@ -78,6 +78,7 @@ export function PageListItem(props: PageListItemProps) {
         <p className={`mt-1.5 line-clamp-2 text-xs leading-snug ${line ? "text-neutral-300" : "text-neutral-500 italic"}`}>
           {line || t.pageList.noScript}
         </p>
+        {scene && <StatusSummary scene={scene} />}
       </button>
       <div className="mt-1.5 flex items-center justify-between">
         {scene ? <StatusDots scene={scene} /> : <span />}

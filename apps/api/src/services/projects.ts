@@ -4,7 +4,66 @@ import type { Db } from "../db/client.js";
 import { toAsset, toJob, toOutline, toProject, toScene, toScriptRevision, toSlide, toSourceDocument } from "../db/mappers.js";
 import { assets, jobs, outlineRevisions, projects, scenes, scriptRevisions, slides, sourceDocuments } from "../db/schema.js";
 import { notFound } from "../errors.js";
-import { audioInputHash, effectiveStatus, outlineInputHash, scriptInputHash, subtitleInputHash, avatarInputHash } from "../jobs/hashes.js";
+import {
+  audioInputHash,
+  avatarInputHash,
+  effectiveStatus,
+  outlineInputHash,
+  renderInputHash,
+  scriptInputHash,
+  subtitleInputHash,
+} from "../jobs/hashes.js";
+
+/** Render variants the editor can produce; `currentRenderHashes` covers each of them. */
+export const RENDER_PRESETS = ["preview_540p", "hd_1080p"] as const;
+
+/**
+ * Render input hashes the project would produce right now, computed exactly like the
+ * render_video handler does (visible scenes in order, current settings).
+ */
+export function currentRenderHashes(scenesInOrder: Scene[], slidesById: Map<string, Slide>, settings: ProjectDetail["project"]["settings"]): string[] {
+  const visible = scenesInOrder.filter((sc) => !slidesById.get(sc.slideId)?.hidden);
+  const out: string[] = [];
+  for (const preset of RENDER_PRESETS) {
+    for (const burnSubtitles of [true, false]) out.push(renderInputHash({ scenesInOrder: visible, settings, preset, burnSubtitles }));
+  }
+  return out;
+}
+
+/**
+ * List-page extras for many projects at once (two queries, no N+1): page count of the latest
+ * source document and the image of the first visible page.
+ */
+export async function projectListExtras(db: Db, projectIds: string[]): Promise<Map<string, { pageCount?: number; thumbnailAssetId?: string }>> {
+  const out = new Map<string, { pageCount?: number; thumbnailAssetId?: string }>();
+  if (projectIds.length === 0) return out;
+  const [docRows, slideRows] = await Promise.all([
+    db
+      .select({ projectId: sourceDocuments.projectId, version: sourceDocuments.version, pageCount: sourceDocuments.pageCount })
+      .from(sourceDocuments)
+      .where(inArray(sourceDocuments.projectId, projectIds))
+      .orderBy(desc(sourceDocuments.version)),
+    db
+      .select({ projectId: slides.projectId, imageAssetId: slides.imageAssetId, thumbnailAssetId: slides.thumbnailAssetId })
+      .from(slides)
+      .where(and(inArray(slides.projectId, projectIds), eq(slides.hidden, false)))
+      .orderBy(asc(slides.index)),
+  ]);
+  for (const id of projectIds) out.set(id, {});
+  const seenDoc = new Set<string>();
+  for (const d of docRows) {
+    if (seenDoc.has(d.projectId)) continue;
+    seenDoc.add(d.projectId);
+    out.get(d.projectId)!.pageCount = d.pageCount ?? undefined;
+  }
+  for (const sl of slideRows) {
+    const e = out.get(sl.projectId)!;
+    if (e.thumbnailAssetId) continue;
+    const id = sl.thumbnailAssetId ?? sl.imageAssetId;
+    if (id) e.thumbnailAssetId = id;
+  }
+  return out;
+}
 
 export async function requireProject(db: Db, ownerId: string, projectId: string) {
   const [row] = await db
@@ -126,7 +185,9 @@ export async function getProjectDetail(db: Db, ownerId: string, projectId: strin
     latestOutline(db, projectId),
     activeJobs(db, projectId),
   ]);
-  const project = { ...toProject(projectRow), pageCount: sourceDocument?.pageCount };
+  const firstVisible = slideList.find((s) => !s.hidden);
+  const thumbnailAssetId = firstVisible?.thumbnailAssetId ?? firstVisible?.imageAssetId;
+  const project = { ...toProject(projectRow), pageCount: sourceDocument?.pageCount, ...(thumbnailAssetId ? { thumbnailAssetId } : {}) };
   const scripts = await latestScripts(
     db,
     sceneList.map((s) => s.id),
@@ -191,5 +252,6 @@ export async function getProjectDetail(db: Db, ownerId: string, projectId: strin
     assets: assetMap,
     activeJobs: active,
     totalDurationSec: Math.round(totalDurationSec * 100) / 100,
+    currentRenderHashes: currentRenderHashes(sceneListEffective, slidesById, project.settings),
   };
 }

@@ -32,6 +32,7 @@ import {
   type ApiClient,
   type AvatarOption,
   type AssetUrlResponse as AssetUrl,
+  type EstimateOptions,
   type EstimateType,
   type ProjectEventListener,
   type ScriptExportFormat,
@@ -447,11 +448,13 @@ export class HttpApiClient implements ApiClient {
 
   // ------------------------------------------------------ estimate / export
 
-  getEstimate(projectId: string, type: EstimateType) {
+  getEstimate(projectId: string, type: EstimateType, options: EstimateOptions = {}) {
+    const q = new URLSearchParams({ type, scope: options.scope ?? "pending" });
+    if (options.sceneIds?.length) q.set("sceneIds", options.sceneIds.join(","));
     return this.json(
       CostEstimate,
       "GET",
-      `/projects/${enc(projectId)}/estimate?type=${enc(type)}`,
+      `/projects/${enc(projectId)}/estimate?${q.toString()}`,
     );
   }
 

@@ -1,20 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, FileText, Film, Subtitles } from "lucide-react";
+import { AlertTriangle, Download, FileText, Film, Subtitles } from "lucide-react";
 import { useApi, useAssetUrl } from "../../api/context";
 import { errorMessage } from "../../api/types";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
 import { downloadFile, formatBytes, formatRelativeTime } from "../../lib/format";
 import { latestProjectAsset } from "../../lib/scenes";
+import { pageRanges, visibleScenes } from "../../lib/settingsImpact";
 import { useEditor } from "../../store/editorStore";
 import { toast } from "../../store/toastStore";
 import { Button } from "../ui/Button";
+import { OPEN_EXPORT_EVENT } from "./StepBar";
 
 type Preset = "preview_540p" | "hd_1080p";
 
 export function ExportMenu({ actions, disabled }: { actions: Pick<EditorActions, "enqueue">; disabled: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onOpen = () => setOpen(true);
+    window.addEventListener(OPEN_EXPORT_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_EXPORT_EVENT, onOpen);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -60,6 +68,14 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
   const srtUrl = useAssetUrl(detail?.project.id, srt?.id);
   if (!detail) return null;
 
+  const scenes = visibleScenes(detail).filter((s) => !s.muted);
+  const audioNotReady = scenes.filter((s) => s.audio.status !== "ready").map((s) => s.index + 1);
+  const avatarNotReady = detail.project.settings.avatar.enabled
+    ? scenes.filter((s) => s.avatar.status !== "ready").map((s) => s.index + 1)
+    : [];
+  const videoOutdated =
+    !!video && detail.currentRenderHashes.length > 0 && !detail.currentRenderHashes.includes(video.inputHash ?? "");
+
   const baseName = detail.project.name.replace(/[\\/:*?"<>|]+/g, "_");
 
   const render = async () => {
@@ -95,11 +111,15 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
         <a
           href={videoUrl}
           download={`${baseName}.mp4`}
-          className={`${item} mb-1 bg-emerald-500/10 text-emerald-300`}
+          className={`${item} mb-1 ${videoOutdated ? "bg-amber-500/10 text-amber-200" : "bg-emerald-500/10 text-emerald-300"}`}
           onClick={onDone}
+          data-testid="download-video"
         >
-          <Download className="size-4" aria-hidden />
-          <span className="flex-1">{t.export.download}</span>
+          {videoOutdated ? <AlertTriangle className="size-4" aria-hidden /> : <Download className="size-4" aria-hidden />}
+          <span className="flex-1">
+            {videoOutdated ? t.export.downloadOld : t.export.download}
+            {videoOutdated && <span className="block text-[11px] text-amber-300/90">{t.export.outdated}</span>}
+          </span>
           <span className="text-[11px] text-neutral-400">
             {fmt(t.export.latestVideo, { time: formatRelativeTime(video.createdAt) })} · {formatBytes(video.sizeBytes)}
           </span>
@@ -127,9 +147,52 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
           />
           {t.export.burnSubtitles}
         </label>
-        <Button variant="primary" size="sm" className="w-full" disabled={rendering} onClick={() => void render()}>
-          {t.export.start}
-        </Button>
+        {audioNotReady.length > 0 ? (
+          <div className="flex flex-col gap-2" data-testid="export-preflight">
+            <p className="flex gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              {fmt(t.export.preflightAudio, { pages: pageRanges(audioNotReady) })}
+            </p>
+            <Button
+              variant="primary"
+              size="sm"
+              className="w-full"
+              onClick={() => {
+                onDone();
+                void actions.enqueue({ type: "synthesize_speech", force: false });
+              }}
+            >
+              {t.export.fixAudio}
+            </Button>
+          </div>
+        ) : avatarNotReady.length > 0 ? (
+          <div className="flex flex-col gap-2" data-testid="export-preflight">
+            <p className="flex gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              {fmt(t.export.preflightAvatar, { pages: pageRanges(avatarNotReady) })}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                className="flex-1"
+                onClick={() => {
+                  onDone();
+                  void actions.enqueue({ type: "generate_avatar", force: false });
+                }}
+              >
+                {t.export.fixAvatar}
+              </Button>
+              <Button size="sm" className="flex-1" disabled={rendering} onClick={() => void render()}>
+                {t.export.exportAnyway}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button variant="primary" size="sm" className="w-full" disabled={rendering} onClick={() => void render()}>
+            {t.export.start}
+          </Button>
+        )}
       </div>
       <div className="mt-1 flex flex-col">
         {srt && srtUrl ? (

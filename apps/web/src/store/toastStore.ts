@@ -1,14 +1,22 @@
 import { create } from "zustand";
 
+export type ToastTone = "info" | "success" | "error";
+
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 export interface Toast {
   id: number;
   text: string;
-  tone: "info" | "error";
+  tone: ToastTone;
+  action?: ToastAction;
 }
 
 interface ToastState {
   toasts: Toast[];
-  push(text: string, tone?: Toast["tone"]): void;
+  push(text: string, tone?: ToastTone, action?: ToastAction): void;
   dismiss(id: number): void;
 }
 
@@ -16,16 +24,18 @@ let nextId = 1;
 
 export const useToasts = create<ToastState>()((set, get) => ({
   toasts: [],
-  push(text, tone = "info") {
+  push(text, tone = "info", action) {
     const id = nextId++;
-    set({ toasts: [...get().toasts, { id, text, tone }].slice(-4) });
-    setTimeout(() => get().dismiss(id), tone === "error" ? 7000 : 3500);
+    set({ toasts: [...get().toasts, { id, text, tone, ...(action ? { action } : {}) }].slice(-4) });
+    // Toasts with an action (e.g. 復原) stay long enough to be used.
+    const ms = action ? 10_000 : tone === "error" ? 7000 : 3500;
+    setTimeout(() => get().dismiss(id), ms);
   },
   dismiss(id) {
     set({ toasts: get().toasts.filter((t) => t.id !== id) });
   },
 }));
 
-export function toast(text: string, tone: Toast["tone"] = "info"): void {
-  useToasts.getState().push(text, tone);
+export function toast(text: string, tone: ToastTone = "info", action?: ToastAction): void {
+  useToasts.getState().push(text, tone, action);
 }

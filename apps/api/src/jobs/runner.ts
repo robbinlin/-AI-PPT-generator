@@ -241,7 +241,7 @@ export class JobRunner {
 
     const handler = handlers[row.type as JobType];
     try {
-      if (!handler) throw new NonRetryableJobError(`no handler registered for job type ${row.type}`);
+      if (!handler) throw new NonRetryableJobError(`不支援的工作類型：${row.type}`);
       const result = await handler(ctx);
       if (ctrl.signal.aborted) throw Object.assign(new Error("job cancelled"), { name: "AbortError" });
       await db

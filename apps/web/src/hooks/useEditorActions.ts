@@ -1,10 +1,25 @@
 import { useMemo } from "react";
-import type { EnqueueJobRequest, Job, UpdateProjectRequest, UpdateSceneRequest } from "@lvs/shared";
+import type { CostEstimate, EnqueueJobRequest, Job, UpdateProjectRequest, UpdateSceneRequest } from "@lvs/shared";
 import { useApi } from "../api/context";
-import { errorMessage } from "../api/types";
+import { errorMessage, type EstimateType } from "../api/types";
 import { fmt, t } from "../i18n";
+import { formatCostTwd } from "../lib/format";
+import { requestNotifyPermission } from "../lib/notify";
+import { confirmContent, ESTIMATED_TYPES, estimateWaitSec, isForced, needsConfirm, requestedScenes } from "../lib/paidJobs";
+import { pickLike, visibleScenes } from "../lib/settingsImpact";
+import { confirmAction } from "../store/confirmStore";
 import { editorStore } from "../store/editorStore";
 import { toast } from "../store/toastStore";
+
+export interface EnqueueOptions {
+  /** false skips the estimate + confirmation (the caller already asked). */
+  confirm?: boolean;
+}
+
+/** What a settings change makes stale: `audio` (voice, speed…) also stales avatars and subtitles. */
+export type SettingsImpact = "audio" | "avatar" | "none";
+
+type SettingsPatch = NonNullable<UpdateProjectRequest["settings"]>;
 
 export const ACCEPTED_EXTENSIONS = [".pptx", ".ppt", ".pdf"];
 export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
@@ -28,7 +43,30 @@ export function useEditorActions() {
     };
     const store = () => editorStore.getState();
 
-    const enqueue = async (req: EnqueueJobRequest): Promise<Job | null> => {
+    /**
+     * Starts a job. Paid/slow job types are estimated first (only the pages that would really be
+     * processed); avatars, forced reruns and anything above the threshold need a confirmation.
+     */
+    const enqueue = async (req: EnqueueJobRequest, options: EnqueueOptions = {}): Promise<Job | null> => {
+      if (ESTIMATED_TYPES.has(req.type) && options.confirm !== false) {
+        const type = req.type as EstimateType;
+        let estimate: CostEstimate | null = null;
+        try {
+          estimate = await api.getEstimate(projectId(), type, { scope: isForced(req) ? "all" : "pending", sceneIds: requestedScenes(req) });
+        } catch {
+          estimate = null;
+        }
+        if (estimate?.sceneCount === 0) {
+          toast(fmt(t.paid.nothingToDo, { job: t.jobs.types[type] }), "info");
+          return null;
+        }
+        const avatarProvider = store().detail?.project.settings.avatar.providerId;
+        if (estimate && needsConfirm(req, estimate)) {
+          const ok = await confirmAction(confirmContent(type, req, estimate, avatarProvider));
+          if (!ok) return null;
+        }
+        if (estimate && estimateWaitSec(type, estimate, avatarProvider) > 90) requestNotifyPermission();
+      }
       try {
         const { job } = await api.enqueueJob(projectId(), req);
         store().upsertJob(job);
@@ -39,8 +77,74 @@ export function useEditorActions() {
       }
     };
 
+    const updateProject = async (req: UpdateProjectRequest): Promise<boolean> => {
+      const detail = store().detail;
+      if (!detail) return false;
+      try {
+        store().setProject(await api.updateProject(detail.project.id, req));
+      } catch (err) {
+        toast(errorMessage(err), "error");
+        return false;
+      }
+      // Page statuses (需更新) and render freshness are derived from settings on the server.
+      if (req.settings) {
+        try {
+          const fresh = await api.getProject(detail.project.id);
+          if (store().detail?.project.id === fresh.project.id) store().load(fresh);
+        } catch {
+          // The next event or reload catches up.
+        }
+      }
+      return true;
+    };
+
+    /**
+     * A settings change that may throw away generated audio/avatars. When finished avatars would
+     * become 需更新 it asks first (they cost real money); afterwards it offers 復原. Statuses are
+     * derived from input hashes, so restoring the old values makes those pages current again.
+     */
+    const changeSettings = async (settings: SettingsPatch, impact: SettingsImpact): Promise<boolean> => {
+      const detail = store().detail;
+      if (!detail) return false;
+      const previous = pickLike(settings as Record<string, unknown>, detail.project.settings as unknown as Record<string, unknown>) as SettingsPatch;
+      const scenes = visibleScenes(detail).filter((s) => !s.muted);
+      const avatarReady = impact === "none" || !detail.project.settings.avatar.enabled ? [] : scenes.filter((s) => s.avatar.status === "ready");
+      const audioReady = impact === "audio" ? scenes.filter((s) => s.audio.status === "ready") : [];
+      if (avatarReady.length > 0) {
+        let value = "";
+        try {
+          const est = await api.getEstimate(detail.project.id, "generate_avatar", { scope: "all", sceneIds: avatarReady.map((s) => s.id) });
+          value = formatCostTwd(est.total, est.currency);
+        } catch {
+          value = "";
+        }
+        const ok = await confirmAction({
+          title: t.impact.title,
+          lines: [
+            fmt(t.impact.avatarPages, { n: avatarReady.length }),
+            ...(audioReady.length ? [fmt(t.impact.audioPages, { n: audioReady.length })] : []),
+            ...(value ? [fmt(t.impact.redoCost, { cost: value })] : []),
+          ],
+          note: t.impact.note,
+          confirmLabel: t.impact.confirm,
+          danger: true,
+        });
+        if (!ok) return false;
+      }
+      const changed = await updateProject({ settings });
+      if (changed && (avatarReady.length > 0 || audioReady.length > 0)) {
+        toast(fmt(t.impact.done, { n: Math.max(avatarReady.length, audioReady.length) }), "info", {
+          label: t.impact.undo,
+          run: () => void updateProject({ settings: previous }),
+        });
+      }
+      return changed;
+    };
+
     return {
       enqueue,
+      updateProject,
+      changeSettings,
 
       async saveScript(sceneId: string, text: string): Promise<void> {
         store().markSaving(sceneId);
@@ -55,16 +159,6 @@ export function useEditorActions() {
       async cancelJob(jobId: string): Promise<void> {
         try {
           store().upsertJob(await api.cancelJob(projectId(), jobId));
-        } catch (err) {
-          toast(errorMessage(err), "error");
-        }
-      },
-
-      async updateProject(req: UpdateProjectRequest): Promise<void> {
-        const detail = store().detail;
-        if (!detail) return;
-        try {
-          store().setProject(await api.updateProject(detail.project.id, req));
         } catch (err) {
           toast(errorMessage(err), "error");
         }

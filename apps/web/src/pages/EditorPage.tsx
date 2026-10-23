@@ -3,16 +3,19 @@ import { Link, useParams } from "react-router";
 import type { ProjectEvent } from "@lvs/shared";
 import { useApi } from "../api/context";
 import { errorMessage } from "../api/types";
+import { ConfirmHost } from "../components/ConfirmHost";
 import { CenterPane } from "../components/editor/CenterPane";
 import { EditorHeader } from "../components/editor/EditorHeader";
 import { JobsDrawer } from "../components/editor/JobsDrawer";
 import { PageList } from "../components/editor/PageList";
 import { RightPanel } from "../components/editor/RightPanel";
+import { StepBar } from "../components/editor/StepBar";
 import { Spinner } from "../components/ui/Misc";
 import { useEditorActions } from "../hooks/useEditorActions";
 import { useEditorKeyboard } from "../hooks/useEditorKeyboard";
 import { useScriptAutosave } from "../hooks/useScriptAutosave";
 import { fmt, t } from "../i18n";
+import { notifyIfHidden } from "../lib/notify";
 import { editorStore, useEditor } from "../store/editorStore";
 import { toast } from "../store/toastStore";
 
@@ -36,6 +39,8 @@ export function EditorPage() {
     let ready = false;
     let alive = true;
     const buffer: ProjectEvent[] = [];
+    // Jobs already reported, so repeated events for one job toast once.
+    const announced = new Set<string>();
 
     const refresh = () =>
       api.getProject(projectId).then((detail) => {
@@ -56,8 +61,18 @@ export function EditorPage() {
         void refresh().catch(() => undefined);
       }
       // A failed job otherwise only shows in the jobs drawer, which reads as "nothing happened".
-      if (event.kind === "job" && event.job.status === "failed") {
-        toast(fmt(t.jobs.failedToast, { type: t.jobs.types[event.job.type], message: event.job.error ?? "" }), "error");
+      if (event.kind === "job" && event.job.status === "failed" && !announced.has(event.job.id)) {
+        announced.add(event.job.id);
+        const message = fmt(t.jobs.failedToast, { type: t.jobs.types[event.job.type], message: event.job.error ?? "" });
+        toast(message, "error");
+        notifyIfHidden(message, editorStore.getState().detail?.project.name ?? "");
+      }
+      // Long jobs (HeyGen takes minutes) need a visible "done", also when the tab is in the background.
+      if (event.kind === "job" && event.job.status === "succeeded" && event.job.type !== "parse_document" && event.job.type !== "export_script" && !announced.has(event.job.id)) {
+        announced.add(event.job.id);
+        const type = t.jobs.types[event.job.type];
+        toast(fmt(t.jobs.doneToast, { type }), "success");
+        notifyIfHidden(fmt(t.jobs.doneToast, { type }), fmt(t.jobs.notifyBody, { name: editorStore.getState().detail?.project.name ?? "", type }));
       }
     });
 
@@ -113,12 +128,14 @@ export function EditorPage() {
   return (
     <div className="flex h-full flex-col">
       <EditorHeader actions={actions} onOpenJobs={() => setJobsOpen(true)} />
-      <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)_380px]">
+      <StepBar actions={actions} />
+      <div className="grid min-h-0 flex-1 grid-cols-[200px_minmax(0,1fr)_330px] min-[1360px]:grid-cols-[260px_minmax(0,1fr)_380px]">
         <PageList actions={actions} />
         <CenterPane onUpload={(file) => void actions.upload(file)} actions={actions} />
         <RightPanel actions={actions} />
       </div>
       <JobsDrawer open={jobsOpen} onClose={closeJobs} actions={actions} />
+      <ConfirmHost />
     </div>
   );
 }

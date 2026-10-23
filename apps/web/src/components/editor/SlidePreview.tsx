@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import type { Asset, AvatarLayout, Project, Scene, Slide } from "@lvs/shared";
+import type { Asset, AvatarLayout, DerivedStatus, Project, Scene, Slide } from "@lvs/shared";
 import { EyeOff, ImageOff, Move, UserRound } from "lucide-react";
 import { useAssetUrl } from "../../api/context";
 import { CHROMA_PROVIDERS, KeyedVideo } from "./KeyedVideo";
@@ -77,6 +77,7 @@ export function SlidePreview({
             ratio={ratio}
             asset={scene?.avatar.assetId ? assets[scene.avatar.assetId] : undefined}
             stillUrl={avatarPreviewUrl}
+            status={scene?.avatar.status ?? "missing"}
             onDraft={onLayoutCommit ? setDraft : undefined}
             onCommit={onLayoutCommit}
           />
@@ -98,6 +99,7 @@ function AvatarOverlay({
   ratio,
   asset,
   stillUrl,
+  status,
   onDraft,
   onCommit,
 }: {
@@ -106,6 +108,8 @@ function AvatarOverlay({
   ratio: number;
   asset: Asset | undefined;
   stillUrl?: string;
+  /** The scene's avatar state: anything but ready is left out of the export, so say so. */
+  status: DerivedStatus;
   onDraft?: (l: AvatarLayout) => void;
   onCommit?: (l: AvatarLayout) => void;
 }) {
@@ -183,7 +187,7 @@ function AvatarOverlay({
       <div
         className={`size-full overflow-hidden ${circle ? "rounded-full" : "rounded-md"} ${
           framed ? "border-2 border-white/70 bg-neutral-700/80 shadow-lg" : ""
-        }`}
+        } ${status === "ready" ? "" : "opacity-50"}`}
       >
         {url && asset?.mimeType.startsWith("video/") && keyed ? (
           <KeyedVideo src={url} poster={stillUrl} className="size-full object-cover object-top" />
@@ -197,6 +201,18 @@ function AvatarOverlay({
           </div>
         )}
       </div>
+      {status !== "ready" && (
+        <span
+          data-testid="avatar-status-badge"
+          className="pointer-events-none absolute inset-x-0 bottom-1 mx-auto w-fit max-w-full rounded bg-black/75 px-1.5 py-0.5 text-center text-[10px] leading-tight font-medium text-amber-200"
+        >
+          {status === "missing"
+            ? t.preview.avatarMissing
+            : status === "queued" || status === "generating"
+              ? `${t.status.avatar}${t.status[status]}`
+              : t.preview.avatarStale}
+        </span>
+      )}
       {editable && (
         <>
           <span className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-accent-400/0 transition group-hover:ring-accent-400/80" />

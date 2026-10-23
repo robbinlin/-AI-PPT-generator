@@ -18,22 +18,32 @@ type SettingsPatch = NonNullable<UpdateProjectRequest["settings"]>;
 const GALLERY_COUNT = 10;
 
 /** Step 3 of the VoAI-style flow: who presents (avatar + layout), with which voice, and how captions look. */
-export function StudioPanel({ actions }: { actions: Pick<EditorActions, "updateProject"> }) {
+/** Voice fields that change the audio (and with it every avatar clip lip-synced to it). */
+const VOICE_AUDIO_KEYS: (keyof VoiceSettings)[] = ["providerId", "voiceId", "speed", "sentencePauseSec", "pronunciationDictionaryId"];
+
+export function StudioPanel({ actions }: { actions: Pick<EditorActions, "updateProject" | "changeSettings"> }) {
   const project = useEditor((s) => s.detail?.project);
-  const { providers, voices, setVoices, avatars, setAvatars } = useStudioLists(project, actions);
+  const { providers, voices, setVoices, avatars, setAvatars, avatarsLoading } = useStudioLists(project, actions);
   if (!project) return null;
   const s = project.settings;
   const patch = (settings: SettingsPatch) => void actions.updateProject({ settings });
-  // Nested sections are sent whole (the server's deepPartial stops at defaulted objects).
-  const setVoice = (p: Partial<VoiceSettings>) => patch({ voice: { ...s.voice, ...p } });
-  const setAvatar = (p: Partial<AvatarSettings>) => patch({ avatar: { ...s.avatar, ...p } });
+  // Changes that would throw away finished audio/avatars go through changeSettings: it warns
+  // before paid avatars become 需更新 and offers 復原 afterwards.
+  const setVoice = (p: Partial<VoiceSettings>) => {
+    const audio = VOICE_AUDIO_KEYS.some((k) => k in p && p[k] !== s.voice[k]);
+    void actions.changeSettings({ voice: { ...s.voice, ...p } }, audio ? "audio" : "none");
+  };
+  const setAvatar = (p: Partial<AvatarSettings>) => {
+    const changesClip = ("avatarId" in p && p.avatarId !== s.avatar.avatarId) || ("providerId" in p && p.providerId !== s.avatar.providerId);
+    void actions.changeSettings({ avatar: { ...s.avatar, ...p } }, changesClip ? "avatar" : "none");
+  };
   const setLayout = (p: Partial<AvatarLayout>) => setAvatar({ layout: { ...s.avatar.layout, ...p } });
   const setSubtitles = (p: Partial<SubtitleSettings>) => patch({ subtitles: { ...s.subtitles, ...p } });
   const setStyle = (p: Partial<SubtitleStyle>) => setSubtitles({ style: { ...s.subtitles.style, ...p } });
 
   return (
     <div className="pb-8">
-      <AvatarSection project={project} providers={providers} avatars={avatars} setAvatars={setAvatars} setAvatar={setAvatar} />
+      <AvatarSection project={project} providers={providers} avatars={avatars} loading={avatarsLoading} setAvatars={setAvatars} setAvatar={setAvatar} />
       <LayoutSection project={project} setLayout={setLayout} setAvatar={setAvatar} patch={patch} />
       <VoiceSection project={project} providers={providers} voices={voices} setVoices={setVoices} setVoice={setVoice} />
       <SubtitleSection project={project} setSubtitles={setSubtitles} setStyle={setStyle} />
@@ -85,11 +95,36 @@ function ProviderPills({
           } ${p.configured ? "" : "opacity-60"}`}
         >
           {p.displayName}
+          {priceHint(p.id) && <span className="ml-1 text-[10px] text-neutral-400">· {priceHint(p.id)}</span>}
           {!p.configured && " ⚠"}
         </button>
       ))}
     </div>
   );
+}
+
+function priceHint(providerId: string): string | undefined {
+  // Local providers already say 免費 in their display name.
+  if (providerId === "local" || providerId === "cosyvoice" || providerId === "gpt-sovits" || providerId === "fish-speech") return undefined;
+  return (t.studio.price as Record<string, string>)[providerId];
+}
+
+/** Display names with a running number when several characters share one name. */
+function distinctNames(avatars: AvatarOption[]): Map<string, string> {
+  const total = new Map<string, number>();
+  for (const a of avatars) total.set(a.name, (total.get(a.name) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  const out = new Map<string, string>();
+  for (const a of avatars) {
+    if ((total.get(a.name) ?? 0) < 2) {
+      out.set(a.id, a.name);
+      continue;
+    }
+    const n = (seen.get(a.name) ?? 0) + 1;
+    seen.set(a.name, n);
+    out.set(a.id, `${a.name} #${n}`);
+  }
+  return out;
 }
 
 function Disclosure({ label, children }: { label: string; children: ReactNode }) {
@@ -116,12 +151,14 @@ function AvatarSection({
   project,
   providers,
   avatars,
+  loading,
   setAvatars,
   setAvatar,
 }: {
   project: Project;
   providers: ProviderInfo[];
   avatars: AvatarOption[];
+  loading: boolean;
   setAvatars: (l: AvatarOption[]) => void;
   setAvatar: (p: Partial<AvatarSettings>) => void;
 }) {
@@ -142,6 +179,7 @@ function AvatarSection({
     return sel ? [sel, ...all.filter((a) => a !== sel)] : all;
   }, [avatars, s.avatarId]);
   const selected = avatars.find((a) => a.id === s.avatarId);
+  const names = useMemo(() => distinctNames(avatars), [avatars]);
 
   const pick = (id: string) => setAvatar({ enabled: true, avatarId: id, layout: { ...s.layout, visible: true } });
 
@@ -211,10 +249,28 @@ function AvatarSection({
           <Ban className="size-4" aria-hidden />
           {t.studio.noAvatar}
         </button>
-        {ordered.slice(0, GALLERY_COUNT).map((a) => (
-          <AvatarTile key={a.id} a={a} url={avatarImageUrl(api, s.providerId, a)} selected={s.enabled && a.id === s.avatarId} onPick={() => pick(a.id)} />
-        ))}
+        {loading && avatars.length === 0
+          ? Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="aspect-[3/4] animate-pulse rounded-md bg-neutral-800" aria-hidden />
+            ))
+          : ordered
+              .slice(0, GALLERY_COUNT)
+              .map((a) => (
+                <AvatarTile
+                  key={a.id}
+                  a={a}
+                  label={names.get(a.id) ?? a.name}
+                  url={avatarImageUrl(api, s.providerId, a)}
+                  selected={s.enabled && a.id === s.avatarId}
+                  onPick={() => pick(a.id)}
+                />
+              ))}
       </div>
+      {loading && avatars.length === 0 && (
+        <p className="flex items-center gap-1.5 text-xs text-neutral-400" role="status">
+          <Loader2 className="size-3.5 animate-spin" aria-hidden /> {t.studio.loading}
+        </p>
+      )}
       <input
         ref={fileInput}
         type="file"
@@ -229,7 +285,7 @@ function AvatarSection({
       {s.enabled && selected && (
         <div className="flex items-center justify-between gap-2 text-xs text-neutral-400">
           <span className="truncate">
-            {t.studio.current}：<span className="text-neutral-200">{selected.name}</span>
+            {t.studio.current}：<span className="text-neutral-200">{names.get(selected.id) ?? selected.name}</span>
           </span>
           {selected.kind === "personal" && custom && (
             <Button size="sm" variant="ghost" icon={Trash2} onClick={() => void remove()}>
@@ -243,6 +299,7 @@ function AvatarSection({
         open={showAll}
         onClose={() => setShowAll(false)}
         avatars={ordered}
+        names={names}
         providerId={s.providerId}
         selectedId={s.enabled ? s.avatarId : undefined}
         onPick={(id) => {
@@ -254,24 +311,36 @@ function AvatarSection({
   );
 }
 
-function AvatarTile({ a, url, selected, onPick }: { a: AvatarOption; url: string | undefined; selected: boolean; onPick: () => void }) {
+function AvatarTile({
+  label,
+  url,
+  selected,
+  onPick,
+}: {
+  a: AvatarOption;
+  label: string;
+  url: string | undefined;
+  selected: boolean;
+  onPick: () => void;
+}) {
   const [broken, setBroken] = useState(false);
   return (
     <button
       type="button"
       aria-pressed={selected}
-      title={a.name}
+      aria-label={label}
+      title={label}
       onClick={onPick}
       className={`group relative aspect-[3/4] overflow-hidden rounded-md border bg-neutral-800 ${
         selected ? "border-accent-400 ring-2 ring-accent-400/60" : "border-neutral-700 hover:border-neutral-500"
       }`}
     >
       {url && !broken ? (
-        <img src={url} alt={a.name} loading="lazy" className="size-full object-cover object-top" onError={() => setBroken(true)} />
+        <img src={url} alt="" loading="lazy" className="size-full object-cover object-top" onError={() => setBroken(true)} />
       ) : (
-        <span className="flex size-full items-center justify-center p-1 text-center text-[10px] text-neutral-400">{a.name}</span>
+        <span className="flex size-full items-center justify-center p-1 text-center text-[10px] text-neutral-400" aria-hidden />
       )}
-      <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 py-0.5 text-[10px] text-neutral-100 opacity-0 group-hover:opacity-100">{a.name}</span>
+      <span className="absolute inset-x-0 bottom-0 truncate bg-black/70 px-1 py-0.5 text-[10px] text-neutral-100">{label}</span>
       {selected && (
         <span className="absolute top-1 right-1 rounded-full bg-accent-500 p-0.5 text-white">
           <Check className="size-3" aria-hidden />
@@ -285,6 +354,7 @@ function AllAvatarsModal({
   open,
   onClose,
   avatars,
+  names,
   providerId,
   selectedId,
   onPick,
@@ -292,6 +362,7 @@ function AllAvatarsModal({
   open: boolean;
   onClose: () => void;
   avatars: AvatarOption[];
+  names: Map<string, string>;
   providerId: string | undefined;
   selectedId: string | undefined;
   onPick: (id: string) => void;
@@ -316,7 +387,14 @@ function AllAvatarsModal({
       </div>
       <div className="grid max-h-[60vh] grid-cols-6 gap-2 overflow-y-auto pr-1">
         {list.map((a) => (
-          <AvatarTile key={a.id} a={a} url={avatarImageUrl(api, providerId, a)} selected={a.id === selectedId} onPick={() => onPick(a.id)} />
+          <AvatarTile
+            key={a.id}
+            a={a}
+            label={names.get(a.id) ?? a.name}
+            url={avatarImageUrl(api, providerId, a)}
+            selected={a.id === selectedId}
+            onPick={() => onPick(a.id)}
+          />
         ))}
         {list.length === 0 && <p className="col-span-6 py-6 text-center text-sm text-neutral-500">{t.studio.noMatch}</p>}
       </div>
@@ -511,7 +589,10 @@ function VoiceSection({
               </button>
               <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setVoice({ voiceId: v.id })}>
                 <div className="truncate text-sm text-neutral-100">{v.name}</div>
-                {v.tags && v.tags.length > 0 && <div className="truncate text-[10px] text-neutral-500">{v.tags.slice(0, 3).join(" · ")}</div>}
+                {v.tags && v.tags.length > 0 && <div className="truncate text-[10px] text-neutral-500">{v.tags
+                    .slice(0, 3)
+                    .map((tag) => (t.studio.voiceTags as Record<string, string>)[tag] ?? tag)
+                    .join(" · ")}</div>}
               </button>
               {isSel && <Check className="size-4 shrink-0 text-accent-300" aria-hidden />}
             </li>

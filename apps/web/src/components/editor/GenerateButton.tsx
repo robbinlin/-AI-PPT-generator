@@ -48,8 +48,15 @@ export function GenerateButton({
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [open]);
 
   const run = (force: boolean) => {
@@ -63,8 +70,15 @@ export function GenerateButton({
 
   return (
     <div ref={ref} className="relative flex items-stretch">
-      <Button icon={icon} disabled={disabled} className="rounded-r-none" onClick={() => run(false)} title={fmt(t.generate.pendingTitle, { count: pending, total: visible.length })}>
-        {label}
+      <Button
+        icon={icon}
+        disabled={disabled}
+        className="rounded-r-none"
+        onClick={() => run(false)}
+        aria-label={label}
+        title={`${label}：${fmt(t.generate.pendingTitle, { count: pending, total: visible.length })}`}
+      >
+        <span className="hidden min-[1360px]:inline">{label}</span>
         {pending > 0 && <span className="ml-1 rounded bg-neutral-700 px-1 text-[10px] leading-4 text-neutral-200">{pending}</span>}
       </Button>
       <Button

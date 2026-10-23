@@ -119,6 +119,8 @@ export const Project = z.object({
   settings: ProjectSettings,
   /** Pages in the latest parsed source document; absent until a deck has been uploaded. */
   pageCount: z.number().int().nonnegative().optional(),
+  /** Slide image of the first visible page, for the project list thumbnail. */
+  thumbnailAssetId: Id.optional(),
   createdAt: IsoDate,
   updatedAt: IsoDate,
 });
@@ -397,5 +399,9 @@ export const CostEstimate = z.object({
   ),
   total: z.number(),
   currency: z.string().length(3).default("USD"),
+  /** Pages the job would process (scope "pending": only missing/stale/failed ones). */
+  sceneCount: z.number().int().nonnegative().optional(),
+  /** Narration seconds covered by those pages (avatar and render estimates). */
+  seconds: z.number().nonnegative().optional(),
 });
 export type CostEstimate = z.infer<typeof CostEstimate>;

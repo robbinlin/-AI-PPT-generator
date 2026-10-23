@@ -10,8 +10,9 @@ export interface CombinedEstimate {
 }
 
 /**
- * Remaining spend for speech (+ avatar when enabled), re-fetched (debounced) whenever `revision`
- * changes — callers pass something that changes with scene states / scripts.
+ * What it would cost to bring every page up to date (scope "pending": pages that are missing,
+ * stale or failed). With avatars on, the avatar estimate already includes the speech its pages
+ * need, so speech is not added again. Re-fetched (debounced) whenever `revision` changes.
  */
 export function useCostEstimate(
   projectId: string | undefined,
@@ -25,13 +26,14 @@ export function useCostEstimate(
     if (!projectId) return;
     let alive = true;
     const timer = setTimeout(() => {
-      const types: EstimateType[] = avatarEnabled ? ["synthesize_speech", "generate_avatar"] : ["synthesize_speech"];
-      Promise.all(types.map((type) => api.getEstimate(projectId, type).then((e) => [type, e] as const)))
+      const types: EstimateType[] = ["generate_script", avatarEnabled ? "generate_avatar" : "synthesize_speech"];
+      Promise.all(types.map((type) => api.getEstimate(projectId, type, { scope: "pending" }).then((e) => [type, e] as const)))
         .then((results) => {
           if (!alive) return;
           const parts: CombinedEstimate["parts"] = {};
           let total = 0;
           for (const [type, e] of results) {
+            if (e.sceneCount === 0) continue;
             parts[type] = e;
             total += e.total;
           }

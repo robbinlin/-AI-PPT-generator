@@ -36,7 +36,11 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const settings = detail.project.settings;
   const seconds = estimateSpeechSeconds(text, settings.language, settings.voice.speed);
   const generating = scene.script.status === "generating" || scene.script.status === "queued";
-  const downstreamStale = [scene.audio, scene.subtitle, scene.avatar].some((s) => s.status === "stale");
+  const needs = (st: { status: string }) => st.status === "stale" || st.status === "failed";
+  const audioNeeds = !scene.muted && !!revision && (needs(scene.audio) || scene.audio.status === "missing");
+  const avatarOn = settings.avatar.enabled && !!settings.avatar.avatarId;
+  const avatarNeeds = avatarOn && !scene.muted && !!revision && (needs(scene.avatar) || scene.avatar.status === "missing");
+  const busy = (type: string) => detail.activeJobs.some((j) => j.type === type);
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!(e.ctrlKey || e.metaKey)) return;
@@ -118,11 +122,36 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
         <span>{fmt(t.script.estSeconds, { n: seconds })}</span>
       </div>
 
-      {downstreamStale && (
-        <p className="flex items-start gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-200">
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          {t.script.staleHint}
-        </p>
+      {(audioNeeds || avatarNeeds) && !hasDraft && (
+        <div className="flex flex-col gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-100" data-testid="stale-hint">
+          <div className="flex items-start gap-1.5">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            <div className="flex flex-col gap-0.5">
+              {audioNeeds && <span>{scene.audio.status === "missing" ? `${t.status.audio}${t.status.missing}。` : t.script.staleAudio}</span>}
+              {avatarNeeds && <span>{scene.avatar.status === "missing" ? t.script.missingAvatar : t.script.staleAvatar}</span>}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {audioNeeds && (
+              <Button
+                size="sm"
+                disabled={busy("synthesize_speech")}
+                onClick={() => void actions.enqueue({ type: "synthesize_speech", sceneIds: [scene.id], force: false })}
+              >
+                {t.script.redoAudio}
+              </Button>
+            )}
+            {avatarNeeds && (
+              <Button
+                size="sm"
+                disabled={busy("generate_avatar")}
+                onClick={() => void actions.enqueue({ type: "generate_avatar", sceneIds: [scene.id], force: false })}
+              >
+                {t.script.redoAvatar}
+              </Button>
+            )}
+          </div>
+        </div>
       )}
 
       <DerivedTexts revision={revision} pending={hasDraft} />

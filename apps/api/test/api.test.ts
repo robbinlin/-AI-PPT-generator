@@ -184,7 +184,7 @@ describe("project lifecycle", () => {
     const [row] = await t.ctx.db.select().from(jobs).where(eq(jobs.id, job.id));
     expect(row?.status).toBe("failed");
     expect(row?.attempts).toBe(1); // configuration errors are non-retryable
-    expect(row?.error).toMatch(/API key|not configured/i);
+    expect(row?.error).toMatch(/還沒有設定 API 金鑰/);
     const listed = (await t.app.inject({ method: "GET", url: `/projects/${projectId}/jobs?status=failed` })).json();
     expect(listed.some((j: Job) => j.id === job.id)).toBe(true);
   });
@@ -195,7 +195,7 @@ describe("project lifecycle", () => {
     await t.ctx.runner.drain();
     const [row] = await t.ctx.db.select().from(jobs).where(eq(jobs.id, jobId));
     expect(row?.status).toBe("failed");
-    expect(row?.error).toContain("no up-to-date audio");
+    expect(row?.error).toMatch(/^第 1、2 頁的語音不是最新的，請先按「產生全部語音」$/);
   });
 
   it("estimate endpoint", async () => {

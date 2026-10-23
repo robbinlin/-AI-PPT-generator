@@ -67,10 +67,21 @@ export class KeyCrypto {
   }
 }
 
+const PROVIDER_KIND_LABEL: Record<string, string> = { llm: "AI 講稿", tts: "語音", avatar: "虛擬人像" };
+
+/** Display name for a provider id in user-facing messages ("HeyGen 產生失敗：…"). */
+export function providerLabel(id: string): string {
+  const known: Record<string, string> = { gemini: "Gemini", anthropic: "Claude", elevenlabs: "ElevenLabs", heygen: "HeyGen", local: "本機", mock: "Mock", render: "影片合成" };
+  return known[id] ?? id;
+}
+
 export class ProviderNotConfiguredError extends Error {
-  constructor(kind: ProviderKind, id: string) {
+  constructor(
+    public readonly kind: ProviderKind,
+    public readonly providerId: string,
+  ) {
     super(
-      `${kind} provider "${id}" has no API key configured (set the platform key or add one under settings → providers)`,
+      `${PROVIDER_KIND_LABEL[kind] ?? kind}服務「${providerLabel(providerId)}」還沒有設定 API 金鑰，請到「設定 → 服務提供者」新增金鑰`,
     );
     this.name = "ProviderNotConfiguredError";
   }

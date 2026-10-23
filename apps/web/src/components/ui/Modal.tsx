@@ -12,7 +12,13 @@ export interface ModalProps {
   width?: string;
 }
 
-/** Centered dialog with a backdrop. Escape and backdrop clicks close it. */
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Centered dialog with a backdrop. Escape and backdrop clicks close it. Focus starts on the
+ * element marked `data-autofocus` (else the first field), stays inside the dialog while it is
+ * open, and returns to where it was when it closes.
+ */
 export function Modal({ title, open, onClose, children, footer, width = "w-[440px]" }: ModalProps) {
   const panel = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -20,13 +26,38 @@ export function Modal({ title, open, onClose, children, footer, width = "w-[440p
 
   useEffect(() => {
     if (!open) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeRef.current();
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        closeRef.current();
+        return;
+      }
+      if (e.key !== "Tab" || !panel.current) return;
+      const items = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+      if (items.length === 0) return;
+      const first = items[0]!;
+      const last = items[items.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      } else if (!panel.current.contains(document.activeElement)) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKey);
-    const first = panel.current?.querySelector<HTMLElement>("input, select, textarea, button[data-autofocus]");
-    first?.focus();
-    return () => window.removeEventListener("keydown", onKey);
+    const target =
+      panel.current?.querySelector<HTMLElement>("[data-autofocus]") ??
+      panel.current?.querySelector<HTMLElement>("input, select, textarea");
+    target?.focus();
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      previous?.focus?.();
+    };
   }, [open]);
 
   if (!open) return null;
