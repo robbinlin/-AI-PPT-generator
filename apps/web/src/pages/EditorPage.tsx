@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import type { ProjectEvent } from "@lvs/shared";
-import { useApi } from "../api/context";
+import { useApiEnv } from "../api/context";
 import { errorMessage } from "../api/types";
 import { ConfirmHost } from "../components/ConfirmHost";
 import { CenterPane } from "../components/editor/CenterPane";
 import { EditorHeader } from "../components/editor/EditorHeader";
+import { saveWithToasts, VIDEO_FILE_TYPE, videoFileName } from "../components/editor/ExportMenu";
 import { JobsDrawer } from "../components/editor/JobsDrawer";
 import { PageList } from "../components/editor/PageList";
 import { RightPanel } from "../components/editor/RightPanel";
@@ -21,7 +22,7 @@ import { toast } from "../store/toastStore";
 
 export function EditorPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const api = useApi();
+  const { client: api, assetUrls } = useApiEnv();
   const actions = useEditorActions();
   const loaded = useEditor((s) => s.detail?.project.id === projectId);
   const drafts = useEditor((s) => s.drafts);
@@ -71,7 +72,17 @@ export function EditorPage() {
       if (event.kind === "job" && event.job.status === "succeeded" && event.job.type !== "parse_document" && event.job.type !== "export_script" && !announced.has(event.job.id)) {
         announced.add(event.job.id);
         const type = t.jobs.types[event.job.type];
-        toast(fmt(t.jobs.doneToast, { type }), "success");
+        const videoAssetId = event.job.type === "render_video" ? (event.job.result as { videoAssetId?: string } | undefined)?.videoAssetId : undefined;
+        if (videoAssetId) {
+          // Resolve the URL first so the click on 下載影片 opens the save dialog right away.
+          const name = videoFileName(editorStore.getState().detail?.project.name ?? "video");
+          void assetUrls.get(projectId, videoAssetId).then(
+            (url) => toast(t.export.readyToast, "success", { label: t.export.readyAction, run: () => void saveWithToasts(url, name, VIDEO_FILE_TYPE, true) }, 120_000),
+            () => toast(fmt(t.jobs.doneToast, { type }), "success"),
+          );
+        } else {
+          toast(fmt(t.jobs.doneToast, { type }), "success");
+        }
         notifyIfHidden(fmt(t.jobs.doneToast, { type }), fmt(t.jobs.notifyBody, { name: editorStore.getState().detail?.project.name ?? "", type }));
       }
     });
@@ -87,7 +98,7 @@ export function EditorPage() {
       unsubscribe();
       editorStore.getState().stopPlayback();
     };
-  }, [api, projectId]);
+  }, [api, assetUrls, projectId]);
 
   useScriptAutosave(drafts, actions.saveScript);
 

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Every user-facing string in the web app. An English table with the same shape will be
  * added later; keep keys stable and use `{name}` placeholders with `fmt()` from ./index.
  */
@@ -433,7 +433,7 @@ export const zhTW = {
     download: "下載影片",
     downloadSrt: "下載字幕檔",
     latestVideo: "最新影片 · {time}",
-    queued: "已開始匯出影片",
+    queued: "已開始匯出影片，完成後會出現「下載影片」按鈕",
     preflightAudio: "第 {pages} 頁的語音不是最新的，要先產生語音才能匯出。",
     fixAudio: "產生全部語音",
     preflightAvatar: "第 {pages} 頁沒有最新的人像，匯出的影片這幾頁不會有人像。",
@@ -446,6 +446,12 @@ export const zhTW = {
     saved: "已儲存「{name}」",
     videoFile: "MP4 影片",
     textFile: "文字檔",
+    rendering: "正在匯出影片… {pct}%",
+    renderingShort: "匯出中 {pct}%",
+    renderingHint: "正在合成影片",
+    renderingNext: "完成後會跳出「下載影片」按鈕，可以先關閉這個選單。",
+    readyToast: "影片匯出完成",
+    readyAction: "下載影片",
   },
   jobs: {
     title: "工作",

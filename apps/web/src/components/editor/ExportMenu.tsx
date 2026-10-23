@@ -1,4 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
+import type { Job } from "@lvs/shared";
 import { AlertTriangle, Download, FileText, Film, Subtitles } from "lucide-react";
 import { useApi, useAssetUrl } from "../../api/context";
 import { errorMessage } from "../../api/types";
@@ -10,13 +11,59 @@ import { pageRanges, visibleScenes } from "../../lib/settingsImpact";
 import { useEditor } from "../../store/editorStore";
 import { toast } from "../../store/toastStore";
 import { Button } from "../ui/Button";
+import { ProgressBar, Spinner } from "../ui/Misc";
+import { etaText, useTick } from "./JobsDrawer";
 import { OPEN_EXPORT_EVENT } from "./StepBar";
 
 type Preset = "preview_540p" | "hd_1080p";
 
+/**
+ * Asks where to save (Chrome/Edge; other browsers drop the file in Downloads) and reports the
+ * outcome in a toast. Call it straight from a click: the save dialog needs the user gesture.
+ */
+export async function saveWithToasts(
+  source: Parameters<typeof saveFileAs>[0],
+  filename: string,
+  type: { description: string; mime: string },
+  big = false,
+): Promise<void> {
+  try {
+    const result = await saveFileAs(source, filename, type, big ? () => toast(fmt(t.export.saving, { name: filename })) : undefined);
+    if (result === "saved") toast(fmt(t.export.saved, { name: filename }), "success");
+  } catch (err) {
+    toast(errorMessage(err), "error");
+  }
+}
+
+export const VIDEO_FILE_TYPE = { description: t.export.videoFile, mime: "video/mp4" };
+
+export function videoFileName(projectName: string): string {
+  return `${projectName.replace(/[\\/:*?"<>|]+/g, "_")}.mp4`;
+}
+
+/** Shown in place of 開始匯出 while a render runs, so the click visibly did something. */
+function RenderProgress({ job }: { job: Job }) {
+  const now = useTick(2000, true);
+  const eta = etaText(job, now);
+  const pct = Math.round((job.progress ?? 0) * 100);
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border border-accent-500/40 bg-accent-500/10 px-2 py-2 text-xs text-accent-100" role="status" data-testid="render-progress">
+      <span className="flex items-center gap-1.5 font-medium">
+        <Spinner className="size-3.5" />
+        {fmt(t.export.rendering, { pct })}
+        {eta && <span className="ml-auto font-normal text-neutral-400">{eta}</span>}
+      </span>
+      <ProgressBar value={job.progress ?? 0} indeterminate={job.status === "queued"} />
+      <span className="text-neutral-400">{job.progressMessage ?? t.export.renderingHint}</span>
+      <span className="text-neutral-500">{t.export.renderingNext}</span>
+    </div>
+  );
+}
+
 export function ExportMenu({ actions, disabled }: { actions: Pick<EditorActions, "enqueue">; disabled: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const renderJob = useEditor((s) => s.detail?.activeJobs.find((j) => j.type === "render_video"));
 
   useEffect(() => {
     const onOpen = () => setOpen(true);
@@ -47,8 +94,16 @@ export function ExportMenu({ actions, disabled }: { actions: Pick<EditorActions,
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen((v) => !v)}
+        data-testid="export-button"
       >
-        {t.editor.export}
+        {renderJob ? (
+          <span className="flex items-center gap-1.5">
+            <Spinner className="size-3.5 text-white" />
+            {fmt(t.export.renderingShort, { pct: Math.round((renderJob.progress ?? 0) * 100) })}
+          </span>
+        ) : (
+          t.editor.export
+        )}
       </Button>
       {open && <ExportPanel actions={actions} onDone={() => setOpen(false)} />}
     </div>
@@ -60,7 +115,8 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
   const detail = useEditor((s) => s.detail);
   const [preset, setPreset] = useState<Preset>("hd_1080p");
   const [burn, setBurn] = useState(detail?.project.settings.subtitles.burnIn ?? true);
-  const rendering = detail?.activeJobs.some((j) => j.type === "render_video") ?? false;
+  const renderJob = detail?.activeJobs.find((j) => j.type === "render_video");
+  const rendering = !!renderJob;
 
   const video = useMemo(() => (detail ? latestProjectAsset(detail.assets, detail.scenes, "video") : undefined), [detail]);
   const srt = useMemo(() => (detail ? latestProjectAsset(detail.assets, detail.scenes, "subtitle") : undefined), [detail]);
@@ -86,19 +142,13 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
     });
     if (job) {
       toast(t.export.queued);
-      onDone();
+      // Stay open: the panel now shows the progress bar in place of 開始匯出.
     }
   };
 
-  // Asks where to save (Chrome/Edge); other browsers drop the file in Downloads as before.
-  const save = async (source: Parameters<typeof saveFileAs>[0], filename: string, type: { description: string; mime: string }, big = false) => {
+  const save = (source: Parameters<typeof saveFileAs>[0], filename: string, type: { description: string; mime: string }, big = false) => {
     onDone();
-    try {
-      const result = await saveFileAs(source, filename, type, big ? () => toast(fmt(t.export.saving, { name: filename })) : undefined);
-      if (result === "saved") toast(fmt(t.export.saved, { name: filename }), "success");
-    } catch (err) {
-      toast(errorMessage(err), "error");
-    }
+    return saveWithToasts(source, filename, type, big);
   };
 
   const exportScript = (format: "txt" | "md") =>
@@ -196,8 +246,10 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
               </Button>
             </div>
           </div>
+        ) : renderJob ? (
+          <RenderProgress job={renderJob} />
         ) : (
-          <Button variant="primary" size="sm" className="w-full" disabled={rendering} onClick={() => void render()}>
+          <Button variant="primary" size="sm" className="w-full" onClick={() => void render()}>
             {t.export.start}
           </Button>
         )}

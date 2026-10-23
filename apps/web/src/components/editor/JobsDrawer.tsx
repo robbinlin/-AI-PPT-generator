@@ -11,7 +11,7 @@ import { ProgressBar, Spinner } from "../ui/Misc";
 
 /** Header button: spinner + progress text of the most recent active job; opens the drawer. */
 /** Re-renders every few seconds so remaining-time estimates move between progress events. */
-function useTick(ms: number, enabled: boolean): number {
+export function useTick(ms: number, enabled: boolean): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!enabled) return;
@@ -21,7 +21,7 @@ function useTick(ms: number, enabled: boolean): number {
   return now;
 }
 
-function etaText(job: Job, now: number): string | null {
+export function etaText(job: Job, now: number): string | null {
   if (job.status !== "running") return null;
   const sec = remainingSec(job.startedAt, job.progress, now);
   return sec === null ? null : fmt(t.jobs.eta, { wait: formatWait(sec) });
