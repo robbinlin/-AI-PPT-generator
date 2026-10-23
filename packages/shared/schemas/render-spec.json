@@ -85,6 +85,31 @@
                       "visible": {
                         "type": "boolean",
                         "default": true
+                      },
+                      "x": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "y": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "slideScale": {
+                        "type": "number",
+                        "minimum": 0.4,
+                        "maximum": 1,
+                        "default": 1
+                      },
+                      "slideAlign": {
+                        "type": "string",
+                        "enum": [
+                          "center",
+                          "left",
+                          "right"
+                        ],
+                        "default": "center"
                       }
                     },
                     "additionalProperties": false
@@ -232,6 +257,20 @@
             "highlightWords": {
               "type": "boolean",
               "default": false
+            },
+            "bold": {
+              "type": "boolean",
+              "default": false
+            },
+            "outlineColor": {
+              "type": "string",
+              "default": "#000000"
+            },
+            "outlineWidthPx": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 12,
+              "default": 0
             }
           },
           "additionalProperties": false
