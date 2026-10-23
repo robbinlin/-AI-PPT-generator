@@ -28,7 +28,7 @@ export const useToasts = create<ToastState>()((set, get) => ({
     const id = nextId++;
     set({ toasts: [...get().toasts, { id, text, tone, ...(action ? { action } : {}) }].slice(-4) });
     // Toasts with an action (e.g. 復原) stay long enough to be used.
-    const ms = durationMs ?? action ? 10_000 : tone === "error" ? 7000 : 3500;
+    const ms = durationMs ?? (action ? 10_000 : tone === "error" ? 7000 : 3500);
     setTimeout(() => get().dismiss(id), ms);
   },
   dismiss(id) {
