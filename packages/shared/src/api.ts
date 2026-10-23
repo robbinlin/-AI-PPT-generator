@@ -18,6 +18,28 @@ import { Transition } from "./enums.js";
 
 /** HTTP DTOs shared by apps/api and apps/web. Routes are documented in docs/API.md. */
 
+/**
+ * A patch schema: every object field optional at any depth, with all `.default()`s removed.
+ * zod's own `deepPartial()` does not look inside `.default()` wrappers, so a patch such as
+ * `{ avatar: { avatarId } }` would come back with `avatar.layout` filled with defaults and
+ * the deep merge would overwrite the saved layout with them.
+ */
+export function patchSchema(schema: z.ZodTypeAny): z.ZodTypeAny {
+  if (schema instanceof z.ZodDefault) return patchSchema(schema._def.innerType);
+  if (schema instanceof z.ZodOptional) return patchSchema(schema.unwrap()).optional();
+  if (schema instanceof z.ZodNullable) return patchSchema(schema.unwrap()).nullable();
+  if (schema instanceof z.ZodObject) {
+    const shape: Record<string, z.ZodTypeAny> = {};
+    for (const [k, v] of Object.entries(schema.shape as Record<string, z.ZodTypeAny>)) shape[k] = patchSchema(v).optional();
+    return z.object(shape);
+  }
+  return schema;
+}
+
+/** Deep-partial project settings without injected defaults. */
+export const ProjectSettingsPatch = patchSchema(ProjectSettings) as z.ZodType<DeepPartial<ProjectSettings>>;
+type DeepPartial<T> = T extends readonly unknown[] ? T : T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;
+
 export const CreateProjectRequest = z.object({
   name: z.string().min(1).max(200),
   settings: ProjectSettings.partial().optional(),
@@ -26,7 +48,7 @@ export type CreateProjectRequest = z.infer<typeof CreateProjectRequest>;
 
 export const UpdateProjectRequest = z.object({
   name: z.string().min(1).max(200).optional(),
-  settings: ProjectSettings.deepPartial().optional(),
+  settings: ProjectSettingsPatch.optional(),
 });
 export type UpdateProjectRequest = z.infer<typeof UpdateProjectRequest>;
 
