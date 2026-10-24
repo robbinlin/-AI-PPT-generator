@@ -94,7 +94,7 @@ export function CenterPane({
             onLayoutCommit={commitLayout}
           />
         ) : (
-          <div className="flex size-full items-center justify-center text-sm text-neutral-500">{t.editor.selectPage}</div>
+          <div className="flex size-full items-center justify-center text-sm text-neutral-400">{t.editor.selectPage}</div>
         )}
       </div>
       <ScenePlayer projectId={detail.project.id} scene={scene} hidden={slide?.hidden ?? false} />

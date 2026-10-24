@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Layers, Upload } from "lucide-react";
-import type { Scene } from "@lvs/shared";
+import type { CostEstimate, Scene } from "@lvs/shared";
 import type { EditorActions } from "../../hooks/useEditorActions";
+import { usePendingEstimate } from "../../hooks/usePendingEstimate";
 import { fmt, t } from "../../i18n";
+import { twdShort } from "../../lib/paidJobs";
 import { visibleScenes } from "../../lib/settingsImpact";
 import { useEditor } from "../../store/editorStore";
 import { Button } from "../ui/Button";
@@ -29,6 +31,13 @@ export function BatchMenu({ actions, onReplace }: { actions: Pick<EditorActions,
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const detail = useEditor((s) => s.detail);
+  // Prices of the 補齊 items, fetched while the menu is open (like the 下一步 button's).
+  const pid = open ? detail?.project.id : undefined;
+  const cost: Partial<Record<Kind, CostEstimate | undefined>> = {
+    generate_script: usePendingEstimate(pid, "generate_script"),
+    synthesize_speech: usePendingEstimate(pid, "synthesize_speech"),
+    generate_avatar: usePendingEstimate(pid, "generate_avatar"),
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -71,7 +80,7 @@ export function BatchMenu({ actions, onReplace }: { actions: Pick<EditorActions,
       </Button>
       {open && (
         <div role="menu" aria-label={t.batch.title} className="absolute top-10 right-0 z-30 w-72 rounded-lg border border-neutral-700 bg-neutral-900 p-2 shadow-2xl">
-          <p className="px-2 pb-1 text-xs text-neutral-500">{t.batch.title}</p>
+          <p className="px-2 pb-1 text-xs text-neutral-400">{t.batch.title}</p>
           {rows.map((r) => {
             const pending = pendingOf(r.list, r.kind);
             const disabled = !hasSlides || busy(r.kind) || !!r.off;
@@ -79,11 +88,12 @@ export function BatchMenu({ actions, onReplace }: { actions: Pick<EditorActions,
               <div key={r.kind} className="border-t border-neutral-800 py-1">
                 <div className="px-2 pt-1 text-xs font-medium text-neutral-300">{r.label}</div>
                 {r.off ? (
-                  <p className="px-2 py-1 text-xs text-neutral-500">{r.off}</p>
+                  <p className="px-2 py-1 text-xs text-neutral-400">{r.off}</p>
                 ) : (
                   <>
                     <button type="button" role="menuitem" className={item} disabled={disabled || pending === 0} onClick={() => run(r.kind, false)}>
                       {pending > 0 ? fmt(t.batch.fill, { n: pending }) : t.batch.fillNone}
+                      {pending > 0 && cost[r.kind] && <span className="ml-1 text-xs text-neutral-400">（{twdShort(cost[r.kind]!.total, cost[r.kind]!.currency)}）</span>}
                     </button>
                     {r.redo && (
                       <button type="button" role="menuitem" className={`${item} text-neutral-400`} disabled={disabled || r.list.length === 0} onClick={() => run(r.kind, true)}>

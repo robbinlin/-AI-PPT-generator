@@ -64,7 +64,7 @@ export function SlidePreview({
           {imageUrl ? (
             <img src={imageUrl} alt={slide.content.title ?? ""} className="size-full object-contain" draggable={false} />
           ) : (
-            <div className="flex size-full flex-col items-center justify-center gap-2 text-neutral-500">
+            <div className="flex size-full flex-col items-center justify-center gap-2 text-neutral-400">
               <ImageOff className="size-8" aria-hidden />
               <span className="text-xs">{t.preview.noImage}</span>
             </div>
@@ -88,10 +88,10 @@ export function SlidePreview({
           <SubtitleOverlay
             text={cue}
             style={subtitles.style}
-            // Like the export: beside the presenter when it reaches into the subtitle line (only a
-            // finished clip is exported, so only then).
+            // Like the export: beside the presenter when it reaches into the subtitle line. Also
+            // while the clip is still to be made, so the layout does not jump once it exists.
             sideMargins={
-              showAvatar && scene?.avatar.status === "ready"
+              showAvatar && !scene?.muted
                 ? subtitleSideMargins(layout, ratio, {
                     position: subtitles.style.position,
                     fontFrac: subtitles.style.fontSizePx / 1080,
@@ -102,7 +102,7 @@ export function SlidePreview({
           />
         )}
         {slide.hidden && (
-          <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 text-sm text-neutral-200">
+          <div className="absolute inset-0 flex items-center justify-center gap-2 on-dark bg-black/60 text-sm text-neutral-200">
             <EyeOff className="size-4" aria-hidden /> {t.preview.hiddenOverlay}
           </div>
         )}
@@ -223,7 +223,7 @@ function AvatarOverlay({
         <span
           data-testid="avatar-status-badge"
           // Top edge of the avatar: the bottom is where subtitles usually sit.
-          className="pointer-events-none absolute inset-x-0 top-1 z-10 mx-auto w-fit max-w-full rounded bg-black/80 px-1.5 py-0.5 text-center text-xs leading-tight font-medium text-amber-200"
+          className="pointer-events-none absolute inset-x-0 top-1 z-10 mx-auto w-fit max-w-full rounded on-dark bg-black/80 px-1.5 py-0.5 text-center text-xs leading-tight font-medium text-amber-200"
         >
           {status === "missing"
             ? t.preview.avatarMissing
@@ -235,7 +235,7 @@ function AvatarOverlay({
       {editable && (
         <>
           <span className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-accent-400/0 transition group-hover:ring-accent-400/80" />
-          <span className="pointer-events-none absolute top-1 left-1 hidden rounded bg-black/60 p-0.5 text-white group-hover:block">
+          <span className="pointer-events-none absolute top-1 left-1 hidden rounded on-dark bg-black/60 p-0.5 text-white group-hover:block">
             <Move className="size-3" aria-hidden />
           </span>
           <span

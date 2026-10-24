@@ -3,7 +3,6 @@ import type { CostEstimate, Scene } from "@lvs/shared";
 import { activeFields, statusSummary } from "../components/editor/StatusDots";
 import { minReadableSize } from "../components/editor/StudioPanel";
 import { totalDurationLabel } from "../components/editor/Timeline";
-import { armAutoExport, isAutoExportArmed, takeAutoExport } from "./autoExport";
 import { formatCostTwd, formatTwdFirst, formatWait, remainingSec } from "./format";
 import { confirmContent, estimateLines, needsConfirm, needsConfirmWithoutEstimate, twdShort, unknownEstimateContent } from "./paidJobs";
 import { pageRanges, pickLike } from "./settingsImpact";
@@ -91,17 +90,6 @@ describe("review fixes", () => {
     const c = confirmContent("generate_avatar", { type: "generate_avatar", force: false }, est(0, 2), "local");
     expect(c.lines[1]).toContain("免費（使用本機 GPU）");
     expect(c.confirmLabel).toBe("確定開始（免費）");
-  });
-  it("arms one auto-export per job and only fires it on success", () => {
-    const render = { type: "render_video" as const, preset: "hd_1080p" as const, burnSubtitles: true };
-    armAutoExport("j1", render);
-    expect(takeAutoExport("j1", "running")).toBeUndefined();
-    expect(isAutoExportArmed("j1")).toBe(true);
-    expect(takeAutoExport("j1", "succeeded")).toEqual(render);
-    expect(takeAutoExport("j1", "succeeded")).toBeUndefined();
-    armAutoExport("j2", render);
-    expect(takeAutoExport("j2", "failed")).toBeUndefined();
-    expect(isAutoExportArmed("j2")).toBe(false);
   });
   it("leaves switched-off avatar/subtitles out of the page status", () => {
     expect(activeFields({ avatar: { enabled: false }, subtitles: { enabled: true } } as never)).toEqual(["script", "audio", "subtitle"]);

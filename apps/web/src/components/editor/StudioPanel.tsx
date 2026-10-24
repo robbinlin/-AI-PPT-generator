@@ -8,6 +8,7 @@ import { avatarImageUrl, invalidateAvatars, useStudioLists } from "../../hooks/u
 import { fmt, t } from "../../i18n";
 import { LAYOUT_PRESETS, matchLayoutPreset, matchSubtitlePreset, SUBTITLE_PRESETS, subtitleCss } from "../../lib/studioPresets";
 import { useEditor } from "../../store/editorStore";
+import { confirmAction } from "../../store/confirmStore";
 import { toast } from "../../store/toastStore";
 import { Button } from "../ui/Button";
 import { Field, Select, Toggle } from "../ui/Field";
@@ -109,13 +110,25 @@ function priceHint(providerId: string): string | undefined {
   return (t.studio.price as Record<string, string>)[providerId];
 }
 
-/** Display names with a running number when several characters share one name. */
+/**
+ * Display names: the user's own presenters get Chinese names by type (「我的照片型人像 1」; HeyGen
+ * names them in English, e.g. "Man in black ribbed sweater"); stock ones keep their name, with a
+ * running number when several share it.
+ */
 function distinctNames(avatars: AvatarOption[]): Map<string, string> {
   const total = new Map<string, number>();
   for (const a of avatars) total.set(a.name, (total.get(a.name) ?? 0) + 1);
   const seen = new Map<string, number>();
   const out = new Map<string, string>();
+  const mine = new Map<string, number>();
   for (const a of avatars) {
+    if (a.kind === "personal") {
+      const type = a.source ? t.studio.source[a.source] : t.studio.personalGeneric;
+      const n = (mine.get(type) ?? 0) + 1;
+      mine.set(type, n);
+      out.set(a.id, fmt(t.studio.personalName, { type, n }));
+      continue;
+    }
     if ((total.get(a.name) ?? 0) < 2) {
       out.set(a.id, a.name);
       continue;
@@ -203,7 +216,8 @@ function AvatarSection({
   };
 
   const remove = async () => {
-    if (!s.providerId || !selected || !window.confirm(fmt(t.settings.deleteCharacterConfirm, { name: selected.name }))) return;
+    if (!s.providerId || !selected) return;
+    if (!(await confirmAction({ title: fmt(t.settings.deleteCharacterConfirm, { name: selected.name }), lines: [], confirmLabel: t.common.remove, danger: true }))) return;
     try {
       await api.deleteAvatarCharacter(s.providerId, selected.id);
       invalidateAvatars(s.providerId);
@@ -303,7 +317,7 @@ function AvatarSection({
           )}
         </div>
       )}
-      {custom && <p className="text-xs text-neutral-500">{t.settings.uploadCharacterHint}</p>}
+      {custom && <p className="text-xs text-neutral-400">{t.settings.uploadCharacterHint}</p>}
       <AllAvatarsModal
         open={showAll}
         onClose={() => setShowAll(false)}
@@ -399,16 +413,17 @@ function AvatarTile({
         <img src={url} alt="" loading="lazy" className="size-full object-cover object-top" onError={() => setBroken(true)} />
       ) : (
         // No picture (or it failed to load): a figure, so the tile never looks like an empty slot.
-        <span className="flex size-full items-center justify-center pb-6 text-neutral-500" aria-hidden>
+        <span className="flex size-full items-center justify-center pb-6 text-neutral-400" aria-hidden>
           <UserRound className="size-7" />
         </span>
       )}
-      {(a.source || number) && (
-        <span className="absolute top-1 left-1 rounded bg-black/70 px-1 py-px text-[10px] leading-tight text-neutral-100">
+      {/* The user's own presenters already carry their type in the name (我的照片型人像 1). */}
+      {a.kind !== "personal" && (a.source || number) && (
+        <span className="absolute top-1 left-1 rounded on-dark bg-black/70 px-1 py-px text-xs leading-tight text-neutral-100">
           {[a.source ? t.studio.source[a.source] : "", number].filter(Boolean).join(" ")}
         </span>
       )}
-      <span className="absolute inset-x-0 bottom-0 line-clamp-2 bg-black/75 px-1 py-0.5 text-xs leading-tight break-all text-neutral-100">{name}</span>
+      <span className="absolute inset-x-0 bottom-0 line-clamp-2 on-dark bg-black/75 px-1 py-0.5 text-xs leading-tight break-all text-neutral-100">{name}</span>
       {selected && (
         <span className="absolute top-1 right-1 rounded-full bg-accent-500 p-0.5 text-white">
           <Check className="size-3" aria-hidden />
@@ -444,7 +459,7 @@ function AllAvatarsModal({
     <Modal title={t.studio.allAvatars} open={open} onClose={onClose} width="w-[760px]">
       <div className="mb-3 flex items-center gap-2">
         <div className="relative flex-1">
-          <Search className="absolute top-2 left-2 size-4 text-neutral-500" aria-hidden />
+          <Search className="absolute top-2 left-2 size-4 text-neutral-400" aria-hidden />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -465,7 +480,7 @@ function AllAvatarsModal({
             onPick={() => onPick(a.id)}
           />
         ))}
-        {list.length === 0 && <p className="col-span-6 py-6 text-center text-sm text-neutral-500">{t.studio.noMatch}</p>}
+        {list.length === 0 && <p className="col-span-6 py-6 text-center text-sm text-neutral-400">{t.studio.noMatch}</p>}
       </div>
     </Modal>
   );
@@ -510,7 +525,7 @@ function LayoutSection({
           </button>
         ))}
       </div>
-      <p className="text-xs text-neutral-500">{t.studio.dragHint}</p>
+      <p className="text-xs text-neutral-400">{t.studio.dragHint}</p>
       <div className="grid grid-cols-2 gap-3">
         <Field label={t.studio.background}>
           <ColorInput label={t.studio.background} value={s.backgroundColor ?? "#000000"} onCommit={(backgroundColor) => patch({ backgroundColor })} />
@@ -635,7 +650,8 @@ function VoiceSection({
     }
   };
   const remove = async () => {
-    if (!selected || !window.confirm(fmt(t.settings.deleteVoiceConfirm, { name: selected.name }))) return;
+    if (!selected) return;
+    if (!(await confirmAction({ title: fmt(t.settings.deleteVoiceConfirm, { name: selected.name }), lines: [], confirmLabel: t.common.remove, danger: true }))) return;
     try {
       await api.deleteVoice(s.providerId, selected.id);
       const list = await api.listVoices(s.providerId);
@@ -671,7 +687,7 @@ function VoiceSection({
               </button>
               <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setVoice({ voiceId: v.id })}>
                 <div className="truncate text-sm text-neutral-100">{v.name}</div>
-                {v.tags && v.tags.length > 0 && <div className="truncate text-xs text-neutral-500">{v.tags
+                {v.tags && v.tags.length > 0 && <div className="truncate text-xs text-neutral-400">{v.tags
                     .slice(0, 3)
                     .map((tag) => (t.studio.voiceTags as Record<string, string>)[tag] ?? tag)
                     .join(" · ")}</div>}
@@ -680,7 +696,7 @@ function VoiceSection({
             </li>
           );
         })}
-        {voices.length === 0 && <li className="px-3 py-4 text-center text-xs text-neutral-500">{provider?.customVoices ? t.settings.noCustomVoices : t.app.loading}</li>}
+        {voices.length === 0 && <li className="px-3 py-4 text-center text-xs text-neutral-400">{provider?.customVoices ? t.settings.noCustomVoices : t.app.loading}</li>}
       </ul>
       {provider?.customVoices && (
         <div className="flex items-center gap-2">

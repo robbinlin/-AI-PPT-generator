@@ -349,6 +349,16 @@ export type TimelineRevision = z.infer<typeof TimelineRevision>;
 // Jobs & usage
 // ---------------------------------------------------------------------------
 
+/**
+ * 「全部做完再匯出」: the server queues this render as soon as the speech/avatar job succeeds, so
+ * it happens even when the browser tab is closed while HeyGen works.
+ */
+export const ThenRender = z.object({
+  preset: z.enum(["preview_540p", "hd_1080p"]).default("hd_1080p"),
+  burnSubtitles: z.boolean().optional(),
+});
+export type ThenRender = z.infer<typeof ThenRender>;
+
 export const JobPayload = z.discriminatedUnion("type", [
   z.object({ type: z.literal("parse_document"), sourceDocumentId: Id }),
   z.object({ type: z.literal("generate_outline"), force: z.boolean().default(false) }),
@@ -360,8 +370,8 @@ export const JobPayload = z.discriminatedUnion("type", [
     /** 「AI 重寫本頁」 with a direction (更口語、縮短到 30 秒…): the current script is revised accordingly. */
     instruction: z.string().trim().max(500).optional(),
   }),
-  z.object({ type: z.literal("synthesize_speech"), sceneIds: z.array(Id).optional(), force: z.boolean().default(false) }),
-  z.object({ type: z.literal("generate_avatar"), sceneIds: z.array(Id).optional(), force: z.boolean().default(false) }),
+  z.object({ type: z.literal("synthesize_speech"), sceneIds: z.array(Id).optional(), force: z.boolean().default(false), thenRender: ThenRender.optional() }),
+  z.object({ type: z.literal("generate_avatar"), sceneIds: z.array(Id).optional(), force: z.boolean().default(false), thenRender: ThenRender.optional() }),
   z.object({
     type: z.literal("render_video"),
     preset: z.enum(["preview_540p", "hd_1080p"]).default("hd_1080p"),

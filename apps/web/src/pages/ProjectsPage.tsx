@@ -222,8 +222,10 @@ function ProjectCard({
                   ? fmt(t.projects.activePages, { n: project.pageCount, active: project.activePageCount })
                   : fmt(t.projects.pages, { n: project.pageCount })}
             </span>
-            <span aria-hidden>·</span>
-            <span>{fmt(t.projects.updated, { time: formatRelativeTime(project.updatedAt) })}</span>
+            <span>
+              <span aria-hidden>· </span>
+              {fmt(t.projects.updated, { time: formatRelativeTime(project.updatedAt) })}
+            </span>
           </p>
         </div>
       </Link>

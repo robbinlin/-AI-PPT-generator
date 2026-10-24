@@ -68,7 +68,7 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
         <div className="h-6 w-px bg-neutral-800" />
         <div className="flex min-w-0 flex-col">
           <ProjectName name={project.name} onRename={(name) => void actions.updateProject({ name })} />
-          <span className="flex items-center gap-1 truncate text-xs text-neutral-500">
+          <span className="flex items-center gap-1 truncate text-xs text-neutral-400">
             <FileText className="size-3" aria-hidden />
             {sourceDocument?.filename ?? t.editor.noSource}
           </span>

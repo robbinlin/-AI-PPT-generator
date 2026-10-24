@@ -18,7 +18,7 @@ export function Field({
     <label className={inline ? "flex items-center justify-between gap-3 text-sm" : "flex flex-col gap-1 text-sm"}>
       <span className="text-xs font-medium text-neutral-400">{label}</span>
       {children}
-      {hint && <span className="text-xs text-neutral-500">{hint}</span>}
+      {hint && <span className="text-xs text-neutral-400">{hint}</span>}
     </label>
   );
 }

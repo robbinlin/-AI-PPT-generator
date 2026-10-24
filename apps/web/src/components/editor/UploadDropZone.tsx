@@ -37,7 +37,7 @@ export function UploadDropZone({ onFile }: UploadDropZoneProps) {
         over ? "border-accent-400 bg-accent-500/10" : "border-neutral-700 bg-neutral-900/60"
       }`}
     >
-      <FileUp className="size-10 text-neutral-500" aria-hidden />
+      <FileUp className="size-10 text-neutral-400" aria-hidden />
       <div>
         <h2 className="text-base font-semibold text-neutral-100">{t.upload.title}</h2>
         <p className="mt-1 text-sm text-neutral-400">{t.upload.body}</p>

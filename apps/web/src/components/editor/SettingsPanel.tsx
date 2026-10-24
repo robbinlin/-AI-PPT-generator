@@ -73,7 +73,7 @@ export function SettingsPanel({
 
   return (
     <div className="pb-6">
-      <p className="px-4 pt-3 text-xs text-neutral-500">
+      <p className="px-4 pt-3 text-xs text-neutral-400">
         {t.settings.savedHint}
       </p>
 
@@ -175,7 +175,7 @@ export function SettingsPanel({
             />
           </Field>
         </div>
-        <p className="text-xs text-neutral-500">{t.settings.studioMoved}</p>
+        <p className="text-xs text-neutral-400">{t.settings.studioMoved}</p>
       </SettingsSection>
     </div>
   );

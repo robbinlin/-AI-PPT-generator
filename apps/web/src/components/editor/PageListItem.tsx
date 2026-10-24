@@ -59,23 +59,23 @@ export function PageListItem(props: PageListItemProps) {
               <ImageOff className="size-5 text-neutral-600" aria-hidden />
             </div>
           )}
-          <span className="absolute top-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-xs font-semibold text-white">
+          <span className="absolute top-1 left-1 rounded on-dark bg-black/70 px-1.5 py-0.5 text-xs font-semibold text-white">
             P{position}
           </span>
           <span className="absolute top-1 right-1 flex gap-1">
             {slide.hidden && (
-              <span title={t.pageList.hidden} className="rounded bg-black/70 p-0.5">
+              <span title={t.pageList.hidden} className="rounded on-dark bg-black/70 p-0.5">
                 <EyeOff className="size-3 text-neutral-200" aria-label={t.pageList.hidden} />
               </span>
             )}
             {muted && (
-              <span title={t.pageList.muted} className="rounded bg-black/70 p-0.5">
+              <span title={t.pageList.muted} className="rounded on-dark bg-black/70 p-0.5">
                 <VolumeX className="size-3 text-neutral-200" aria-label={t.pageList.muted} />
               </span>
             )}
           </span>
         </div>
-        <p className={`mt-1.5 line-clamp-2 text-xs leading-snug [@media(max-height:800px)]:line-clamp-1 ${line ? "text-neutral-300" : "text-neutral-500 italic"}`}>
+        <p className={`mt-1.5 line-clamp-2 text-xs leading-snug [@media(max-height:800px)]:line-clamp-1 ${line ? "text-neutral-300" : "text-neutral-400 italic"}`}>
           {line || t.pageList.noScript}
         </p>
         {scene && <StatusSummary scene={scene} />}
@@ -96,7 +96,7 @@ export function PageListItem(props: PageListItemProps) {
             type="button"
             aria-label={t.pageList.dragHandle}
             title={t.pageList.dragHandle}
-            className="cursor-grab touch-none rounded p-0.5 text-neutral-500 hover:bg-neutral-700 hover:text-neutral-100 active:cursor-grabbing"
+            className="cursor-grab touch-none rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 active:cursor-grabbing"
             {...props.dragAttributes}
             {...props.dragListeners}
           >

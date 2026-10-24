@@ -6,7 +6,8 @@ import { errorMessage } from "../../api/types";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
 import { formatRelativeTime } from "../../lib/format";
-import { pageRanges } from "../../lib/settingsImpact";
+import { formatTwdFirst } from "../../lib/format";
+import { pageRanges, visibleScenes } from "../../lib/settingsImpact";
 import { confirmAction } from "../../store/confirmStore";
 import { editorStore, useEditor } from "../../store/editorStore";
 import { toast } from "../../store/toastStore";
@@ -51,7 +52,7 @@ export function OutlinePanel({ actions }: { actions: Pick<EditorActions, "enqueu
   return (
     <div className="flex flex-col gap-5 p-4">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-neutral-500">
+        <span className="text-xs text-neutral-400">
           {fmt(t.outline.version, { v: outline.version, time: formatRelativeTime(outline.createdAt) })}
         </span>
         <Button size="sm" variant="ghost" icon={RefreshCw} disabled={generating} onClick={() => void generate()}>
@@ -83,7 +84,7 @@ export function OutlinePanel({ actions }: { actions: Pick<EditorActions, "enqueu
           {outline.sections.map((sec, i) => (
             <li key={`${i}-${sec.title}`} className="rounded-md border border-neutral-800 p-3">
               <div className="text-sm font-medium text-neutral-100">{sec.title}</div>
-              <div className="mt-0.5 text-xs text-neutral-500">
+              <div className="mt-0.5 text-xs text-neutral-400">
                 {fmt(t.outline.slides, {
                   list: sec.slideIds.map((id) => (positionOf.has(id) ? `P${positionOf.get(id)}` : "?")).join("、"),
                 })}
@@ -110,9 +111,47 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
   const [saving, setSaving] = useState(false);
 
   const set = (i: number, patch: Partial<GlossaryEntry>) => setRows((list) => list.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  // Removing is one click next to the inputs, so it can be taken back.
+  const remove = (i: number) => {
+    const entry = rows[i];
+    if (!entry) return;
+    setRows((list) => list.filter((_, j) => j !== i));
+    toast(fmt(t.outline.removed, { term: entry.term || "—" }), "info", {
+      label: t.impact.undo,
+      run: () => setRows((list) => [...list.slice(0, i), entry, ...list.slice(i)]),
+    });
+  };
   const save = async () => {
     const detail = editorStore.getState().detail;
     if (!detail) return;
+    // Like a settings change: pages that say a changed term need new narration, and their
+    // finished (paid) avatars with it — say so, with the cost, before saving.
+    const before = new Map(glossary.map((g) => [g.term, g.reading ?? ""]));
+    const after = new Map(rows.filter((r) => r.term.trim()).map((r) => [r.term.trim(), r.reading?.trim() ?? ""]));
+    const changed = [...new Set([...before.keys(), ...after.keys()])].filter((term) => (before.get(term) ?? "") !== (after.get(term) ?? ""));
+    const settings = detail.project.settings;
+    const affected = visibleScenes(detail).filter((s) => !s.muted && changed.some((term) => detail.scripts[s.id]?.script.includes(term)));
+    const paid = settings.avatar.enabled ? affected.filter((s) => s.avatar.status === "ready") : [];
+    if (paid.length > 0) {
+      let cost = "";
+      try {
+        const est = await api.getEstimate(detail.project.id, "generate_avatar", { scope: "all", sceneIds: paid.map((s) => s.id) });
+        cost = formatTwdFirst(est.total, est.currency);
+      } catch {
+        cost = "";
+      }
+      const ok = await confirmAction({
+        title: t.outline.saveConfirmTitle,
+        lines: [
+          fmt(t.outline.saveConfirmPages, { pages: pageRanges(paid.map((s) => s.index + 1)) }),
+          ...(cost ? [fmt(t.impact.redoCost, { cost })] : []),
+        ],
+        note: t.outline.saveConfirmNote,
+        confirmLabel: t.outline.save,
+        danger: true,
+      });
+      if (!ok) return;
+    }
     setSaving(true);
     try {
       const res = await api.updateGlossary(detail.project.id, { glossary: rows.filter((r) => r.term.trim()) });
@@ -141,49 +180,63 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
         )}
       </div>
       <p className="mb-2 text-xs leading-relaxed text-neutral-400">{t.outline.glossaryHint}</p>
-      {!editing && glossary.length === 0 ? (
-        <p className="text-xs text-neutral-500">{t.outline.noGlossary}</p>
+      {editing ? (
+        // One term per block: the reading gets the full panel width so it can be read back.
+        <ol className="flex flex-col gap-2" data-testid="glossary-editor">
+          {rows.map((g, i) => (
+            <li key={i} className="rounded-md border border-neutral-800 p-2">
+              <div className="flex items-center gap-1.5">
+                <input
+                  className={`${input} w-28 shrink-0 font-medium`}
+                  value={g.term}
+                  placeholder={t.outline.term}
+                  aria-label={t.outline.term}
+                  onChange={(e) => set(i, { term: e.target.value })}
+                />
+                <span className="text-neutral-400" aria-hidden>
+                  →
+                </span>
+                <input
+                  className={input}
+                  value={g.reading ?? ""}
+                  placeholder={t.outline.readingPlaceholder}
+                  aria-label={`${g.term} ${t.outline.reading}`}
+                  onChange={(e) => set(i, { reading: e.target.value })}
+                />
+              </div>
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <input
+                  className={`${input} text-neutral-400`}
+                  value={g.definition ?? ""}
+                  placeholder={t.outline.definition}
+                  aria-label={`${g.term} ${t.outline.definition}`}
+                  onChange={(e) => set(i, { definition: e.target.value })}
+                />
+                <IconButton icon={Trash2} label={fmt(t.outline.removeTerm, { term: g.term })} onClick={() => remove(i)} />
+              </div>
+              {/^[A-Za-z]{1,3}$/.test(g.term.trim()) && g.reading?.trim() && <p className="mt-1 text-xs text-amber-300">{t.outline.shortTermWarn}</p>}
+            </li>
+          ))}
+        </ol>
+      ) : glossary.length === 0 ? (
+        <p className="text-xs text-neutral-400">{t.outline.noGlossary}</p>
       ) : (
         <table className="w-full table-fixed text-left text-xs">
-          <thead className="text-neutral-500">
+          <thead className="text-neutral-400">
             <tr>
               <th className="w-[30%] border-b border-neutral-800 py-1.5 pr-2 font-medium">{t.outline.term}</th>
               <th className="w-[35%] border-b border-neutral-800 py-1.5 pr-2 font-medium">{t.outline.reading}</th>
               <th className="border-b border-neutral-800 py-1.5 font-medium">{t.outline.definition}</th>
-              {editing && <th className="w-7 border-b border-neutral-800" />}
             </tr>
           </thead>
           <tbody className="text-neutral-300">
-            {(editing ? rows : glossary).map((g, i) =>
-              editing ? (
-                <tr key={i} className="align-top">
-                  <td className="py-1 pr-1.5">
-                    <input className={input} value={g.term} aria-label={t.outline.term} onChange={(e) => set(i, { term: e.target.value })} />
-                  </td>
-                  <td className="py-1 pr-1.5">
-                    <input
-                      className={input}
-                      value={g.reading ?? ""}
-                      placeholder={t.outline.readingPlaceholder}
-                      aria-label={`${g.term} ${t.outline.reading}`}
-                      onChange={(e) => set(i, { reading: e.target.value })}
-                    />
-                  </td>
-                  <td className="py-1 pr-1">
-                    <input className={input} value={g.definition ?? ""} aria-label={t.outline.definition} onChange={(e) => set(i, { definition: e.target.value })} />
-                  </td>
-                  <td className="py-1">
-                    <IconButton icon={Trash2} label={fmt(t.outline.removeTerm, { term: g.term })} onClick={() => setRows((list) => list.filter((_, j) => j !== i))} />
-                  </td>
-                </tr>
-              ) : (
-                <tr key={g.term} className="align-top">
-                  <td className="border-b border-neutral-800/60 py-1.5 pr-2 font-medium break-words text-neutral-100">{g.term}</td>
-                  <td className="border-b border-neutral-800/60 py-1.5 pr-2 break-words">{g.reading || t.outline.readingPlaceholder}</td>
-                  <td className="border-b border-neutral-800/60 py-1.5 break-words">{g.definition ?? t.common.none}</td>
-                </tr>
-              ),
-            )}
+            {glossary.map((g) => (
+              <tr key={g.term} className="align-top">
+                <td className="border-b border-neutral-800/60 py-1.5 pr-2 font-medium break-words text-neutral-100">{g.term}</td>
+                <td className="border-b border-neutral-800/60 py-1.5 pr-2 break-words">{g.reading || t.outline.readingPlaceholder}</td>
+                <td className="border-b border-neutral-800/60 py-1.5 break-words">{g.definition ?? t.common.none}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}

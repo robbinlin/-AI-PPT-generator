@@ -7,7 +7,6 @@ import { ConfirmHost } from "../components/ConfirmHost";
 import { CenterPane } from "../components/editor/CenterPane";
 import { EditorHeader } from "../components/editor/EditorHeader";
 import { saveVideo } from "../lib/saveFiles";
-import { takeAutoExport } from "../lib/autoExport";
 import { JobsDrawer } from "../components/editor/JobsDrawer";
 import { PageList } from "../components/editor/PageList";
 import { RightPanel } from "../components/editor/RightPanel";
@@ -63,11 +62,6 @@ export function EditorPage() {
         return;
       }
       editorStore.getState().applyEvent(event);
-      // "Make what's missing, then export": start the armed render once its prerequisite is done.
-      if (event.kind === "job") {
-        const render = takeAutoExport(event.job.id, event.job.status);
-        if (render) void actionsRef.current.enqueue(render).then((job) => job && toast(t.export.queued));
-      }
       // There is no SourceDocument event: after a parse finishes, take a fresh snapshot.
       if (event.kind === "job" && event.job.type === "parse_document" && event.job.status === "succeeded") {
         void refresh().catch(() => undefined);

@@ -46,13 +46,26 @@ export function effectiveAvatarLayout(project: Project, scene: Scene | undefined
 /** First subtitle "cue" for the preview strip: the first sentence, wrapped to maxCharsPerLine. */
 export function firstSubtitleCue(text: string | undefined, maxCharsPerLine: number): string {
   if (!text) return "";
-  const sentence = text.trim().split(/(?<=[。！？!?；;])\s*|\n+/)[0] ?? "";
-  const chars = Array.from(sentence.replace(/[，。！？、；：,.!?;:]+$/u, ""));
-  const lines: string[] = [];
-  for (let i = 0; i < chars.length && lines.length < 2; i += maxCharsPerLine) {
-    lines.push(chars.slice(i, i + maxCharsPerLine).join(""));
+  const sentence = text.trim().split(/(?<=[。！？!?；;])\s*|(?<=\.)\s+|\n+/)[0] ?? "";
+  const body = sentence.replace(/[，。！？、；：,.!?;:]+$/u, "");
+  // Wrap by width (a CJK character is one unit, a Latin letter about half) and never inside an
+  // English word, as the export does.
+  const tokens = body.match(/[A-Za-z0-9₀-₉⁰-⁹'’.\-]+\s*|\s+|./gu) ?? [];
+  const width = (s: string) => Array.from(s).reduce((w, ch) => w + (/[⺀-￯]/u.test(ch) ? 1 : 0.55), 0);
+  const lines: string[] = [""];
+  for (const tok of tokens) {
+    const line = lines[lines.length - 1]!;
+    if (line && width(line + tok.trimEnd()) > maxCharsPerLine) {
+      if (lines.length === 2) {
+        lines[1] = `${line.trimEnd()}…`;
+        break;
+      }
+      lines.push(tok.trimStart());
+    } else {
+      lines[lines.length - 1] = line + tok;
+    }
   }
-  return lines.join("\n");
+  return lines.map((l) => l.trimEnd()).join("\n");
 }
 
 /** Latest project-level asset of a kind that no scene references (e.g. the rendered SRT). */

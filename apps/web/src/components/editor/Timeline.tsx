@@ -347,7 +347,7 @@ function SlideBlock({
       <button
         type="button"
         aria-label={fmt(t.timeline.pageMenu, { n: block.index + 1 })}
-        className="mr-5 ml-auto shrink-0 rounded bg-black/50 p-0.5 text-neutral-200 opacity-70 hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-400"
+        className="mr-5 ml-auto shrink-0 rounded on-dark bg-black/50 p-0.5 text-neutral-200 opacity-70 hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-400"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
@@ -604,7 +604,7 @@ function PageLengthInput({ block, onCommit }: { block: TimelineBlock; onCommit: 
         className="w-16 rounded border border-neutral-700 bg-neutral-950 px-1 py-0.5 text-right tabular-nums"
         data-testid="timeline-page-length"
       />
-      <span className="text-neutral-500">{t.timeline.seconds}</span>
+      <span className="text-neutral-400">{t.timeline.seconds}</span>
     </label>
   );
 }
@@ -654,7 +654,7 @@ function PageMenu({
           <option value="fade">{t.options.transition.fade}</option>
         </select>
       </label>
-      <button type="button" className="ml-auto text-neutral-500 hover:text-neutral-200" onClick={onClose}>
+      <button type="button" className="ml-auto text-neutral-400 hover:text-neutral-200" onClick={onClose}>
         {t.common.close}
       </button>
     </div>

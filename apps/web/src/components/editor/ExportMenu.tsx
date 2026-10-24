@@ -5,7 +5,7 @@ import { useApi, useAssetUrl } from "../../api/context";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { usePendingEstimate } from "../../hooks/usePendingEstimate";
 import { fmt, t } from "../../i18n";
-import { armAutoExport, DOWNLOADED_EVENT, markDownloaded, wasDownloaded } from "../../lib/autoExport";
+import { DOWNLOADED_EVENT, markDownloaded, wasDownloaded } from "../../lib/autoExport";
 import { canChooseSaveLocation, formatBytes, formatRelativeTime, type saveFileAs } from "../../lib/format";
 import { twdShort } from "../../lib/paidJobs";
 import { saveWithToasts, VIDEO_FILE_TYPE } from "../../lib/saveFiles";
@@ -34,7 +34,7 @@ function RenderProgress({ job }: { job: Job }) {
       </span>
       <ProgressBar value={job.progress ?? 0} indeterminate={job.status === "queued"} />
       <span className="text-neutral-400">{job.progressMessage ?? t.export.renderingHint}</span>
-      <span className="text-neutral-500">{t.export.renderingNext}</span>
+      <span className="text-neutral-400">{t.export.renderingNext}</span>
     </div>
   );
 }
@@ -150,11 +150,12 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
     if (job) toast(t.export.queued);
   };
 
-  // Make what's missing, then export by itself once that job succeeds.
+  // Make what's missing, then export: the server queues the render when that job succeeds, so
+  // it happens even if this tab is closed in the meantime.
   const makeThenExport = async (type: "synthesize_speech" | "generate_avatar") => {
-    const job = await actions.enqueue({ type, force: false });
+    const { type: _render, ...thenRender } = renderRequest;
+    const job = await actions.enqueue({ type, force: false, thenRender });
     if (!job) return;
-    armAutoExport(job.id, renderRequest);
     toast(t.export.autoExportArmed);
     onDone();
   };
@@ -208,7 +209,7 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
           <Film className="size-4" aria-hidden /> {t.export.video}
         </div>
         <fieldset className="mb-2 flex flex-col gap-1 text-xs text-neutral-300" disabled={!!renderJob}>
-          <legend className="mb-1 text-neutral-500">{t.export.preset}</legend>
+          <legend className="mb-1 text-neutral-400">{t.export.preset}</legend>
           {(["hd_1080p", "preview_540p"] as const).map((p) => (
             <label key={p} className="flex items-center gap-2">
               <input type="radio" name="preset" checked={preset === p} onChange={() => setPreset(p)} />
@@ -279,7 +280,7 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
         ) : (
           <button type="button" className={item} disabled title={t.export.srtUnavailable}>
             <Subtitles className="size-4" aria-hidden /> {t.export.srt}
-            <span className="ml-auto text-xs text-neutral-500">{t.export.srtUnavailable}</span>
+            <span className="ml-auto text-xs text-neutral-400">{t.export.srtUnavailable}</span>
           </button>
         )}
         <button type="button" className={item} onClick={() => void exportScript("txt")}>

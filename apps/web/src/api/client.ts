@@ -109,7 +109,7 @@ export class HttpApiClient implements ApiClient {
           continue;
         }
         throw new Error(
-          `無法連線到 API（${this.baseUrl}）。請確認後端伺服器正在執行。`,
+          `連不上伺服器，請稍後再試；一直發生請聯絡管理者。（${this.baseUrl}）`,
         );
       }
       if (!res.ok) throw await toApiError(res);

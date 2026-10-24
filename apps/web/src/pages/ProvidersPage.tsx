@@ -6,7 +6,9 @@ import { errorMessage } from "../api/types";
 import { Button } from "../components/ui/Button";
 import { inputClass } from "../components/ui/Field";
 import { Badge, Spinner } from "../components/ui/Misc";
+import { ConfirmHost } from "../components/ConfirmHost";
 import { fmt, t } from "../i18n";
+import { confirmAction } from "../store/confirmStore";
 
 export function ProvidersPage() {
   const api = useApi();
@@ -35,6 +37,7 @@ export function ProvidersPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
+      <ConfirmHost />
       <h1 className="text-lg font-semibold text-neutral-100">
         {t.providers.title}
       </h1>
@@ -127,13 +130,14 @@ function ProviderRow({
     );
   };
 
-  const remove = () => {
-    if (
-      !window.confirm(
-        fmt(t.providers.removeConfirm, { name: provider.displayName }),
-      )
-    )
-      return;
+  const remove = async () => {
+    const ok = await confirmAction({
+      title: fmt(t.providers.removeConfirm, { name: provider.displayName }),
+      lines: [],
+      confirmLabel: t.common.remove,
+      danger: true,
+    });
+    if (!ok) return;
     void run(() => api.deleteProviderKey(provider.id), t.providers.removed);
   };
 
@@ -143,7 +147,6 @@ function ProviderRow({
         <div className="font-medium text-neutral-100">
           {provider.displayName}
         </div>
-        <div className="font-mono text-xs text-neutral-500">{provider.id}</div>
       </td>
       <td className="border-b border-neutral-800/70 px-4 py-3 text-neutral-300">
         {t.providers.kinds[provider.kind]}
@@ -159,7 +162,7 @@ function ProviderRow({
           <Badge tone="warning">{t.providers.notConfigured}</Badge>
         )}
         {provider.hint && (
-          <p className="mt-1 max-w-xs text-xs text-neutral-500">
+          <p className="mt-1 max-w-xs text-xs text-neutral-400">
             {provider.hint}
           </p>
         )}
@@ -197,7 +200,7 @@ function ProviderRow({
                   variant="ghost"
                   icon={Trash2}
                   disabled={busy}
-                  onClick={remove}
+                  onClick={() => void remove()}
                 >
                   {t.common.remove}
                 </Button>
@@ -211,13 +214,13 @@ function ProviderRow({
               )}
             </div>
             {provider.keySource === "platform" && (
-              <p className="text-xs text-neutral-500">
+              <p className="text-xs text-neutral-400">
                 {t.providers.platformHint}
               </p>
             )}
           </form>
         ) : (
-          <span className="text-xs text-neutral-500">
+          <span className="text-xs text-neutral-400">
             {t.providers.noKeyNeeded}
           </span>
         )}

@@ -9,6 +9,7 @@ import { editorStore, useEditor } from "../../store/editorStore";
 import { Button, IconButton } from "../ui/Button";
 import { ProgressBar, Spinner } from "../ui/Misc";
 import { friendlyJobError } from "../../lib/jobErrors";
+import { pageRanges } from "../../lib/settingsImpact";
 import { saveVideo } from "../../lib/saveFiles";
 
 function JobError({ message }: { message: string }) {
@@ -17,12 +18,30 @@ function JobError({ message }: { message: string }) {
   return (
     <div className="mt-0.5 text-rose-300">
       <div className="break-words">{friendly}</div>
-      <details className="mt-0.5 text-xs text-neutral-500">
+      <details className="mt-0.5 text-xs text-neutral-400">
         <summary className="cursor-pointer select-none">{t.jobErrors.details}</summary>
         <div className="break-words">{message}</div>
       </details>
     </div>
   );
+}
+
+/** 「・第 2–6 頁・完成後自動匯出」: which pages a job covers, so recent jobs are told apart. */
+function JobDetail({ job }: { job: Job }) {
+  const scenes = useEditor((s) => s.detail?.scenes);
+  const parts: string[] = [];
+  const ids = "sceneIds" in job.payload ? job.payload.sceneIds : undefined;
+  const result = job.result as { processed?: number; reused?: number } | undefined;
+  if (ids?.length && scenes) {
+    const pages = ids.map((id) => scenes.find((s) => s.id === id)?.index).filter((i): i is number => i !== undefined).map((i) => i + 1).sort((a, b) => a - b);
+    if (pages.length) parts.push(fmt(t.jobs.detailPages, { pages: pageRanges(pages) }));
+  } else if (typeof result?.processed === "number") {
+    parts.push(fmt(t.jobs.detailCount, { n: result.processed }));
+  }
+  if (result?.reused) parts.push(fmt(t.jobs.detailReused, { n: result.reused }));
+  if ("thenRender" in job.payload && job.payload.thenRender) parts.push(t.jobs.detailThenRender);
+  if (parts.length === 0) return null;
+  return <span className="ml-1 text-xs font-normal text-neutral-400">・{parts.join("・")}</span>;
 }
 
 /** Re-renders every few seconds so remaining-time estimates move between progress events. */
@@ -59,13 +78,18 @@ export function JobsIndicator({ onOpen }: { onOpen: () => void }) {
       {lead ? (
         <Spinner className="size-3.5 shrink-0" />
       ) : (
-        <ListChecks className="size-3.5 shrink-0 text-neutral-500" aria-hidden />
+        <ListChecks className="size-3.5 shrink-0 text-neutral-400" aria-hidden />
       )}
-      <span className={`truncate ${lead ? "" : "hidden min-[1360px]:inline"}`}>
-        {lead
-          ? `${t.jobs.types[lead.type]} ${Math.round(lead.progress * 100)}%${eta ? ` · ${eta}` : ""}${active.length > 1 ? ` · ${fmt(t.jobs.count, { n: active.length })}` : ""}`
-          : t.jobs.idle}
-      </span>
+      {lead ? (
+        <span className="truncate">
+          {`${t.jobs.types[lead.type]} ${Math.round(lead.progress * 100)}%${eta ? ` · ${eta}` : ""}${active.length > 1 ? ` · ${fmt(t.jobs.count, { n: active.length })}` : ""}`}
+        </span>
+      ) : (
+        <>
+          <span className="truncate min-[1360px]:hidden">{t.jobs.title}</span>
+          <span className="hidden truncate min-[1360px]:inline">{t.jobs.idle}</span>
+        </>
+      )}
     </button>
   );
 }
@@ -116,7 +140,10 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
             {activeJobs.map((job) => (
               <li key={job.id} className="rounded-md border border-neutral-800 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="text-sm text-neutral-100">{t.jobs.types[job.type]}</span>
+                  <span className="text-sm text-neutral-100">
+                    {t.jobs.types[job.type]}
+                    <JobDetail job={job} />
+                  </span>
                   <Button size="sm" variant="ghost" onClick={() => void actions.cancelJob(job.id)}>
                     {t.jobs.cancel}
                   </Button>
@@ -133,7 +160,7 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
             ))}
           </ul>
           <h3 className="mb-2 text-xs font-semibold text-neutral-400">{t.jobs.recent}</h3>
-          {recent.length === 0 && <p className="text-xs text-neutral-500">{t.jobs.none}</p>}
+          {recent.length === 0 && <p className="text-xs text-neutral-400">{t.jobs.none}</p>}
           <ul className="flex flex-col gap-1">
             {recent.map((job) => (
               <RecentJob key={job.id} job={job} />
@@ -147,14 +174,17 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
 
 function RecentJob({ job }: { job: Job }) {
   const Icon = job.status === "succeeded" ? CircleCheck : job.status === "failed" ? CircleX : CircleSlash;
-  const color = job.status === "succeeded" ? "text-emerald-400" : job.status === "failed" ? "text-rose-400" : "text-neutral-500";
+  const color = job.status === "succeeded" ? "text-emerald-400" : job.status === "failed" ? "text-rose-400" : "text-neutral-400";
   return (
     <li className="flex items-start gap-2 rounded px-1 py-1.5 text-xs">
       <Icon className={`mt-0.5 size-3.5 shrink-0 ${color}`} aria-hidden />
       <div className="min-w-0 flex-1">
         <div className="flex justify-between gap-2">
-          <span className="text-neutral-200">{t.jobs.types[job.type]}</span>
-          <span className="text-neutral-500">{formatRelativeTime(job.finishedAt ?? job.createdAt)}</span>
+          <span className="text-neutral-200">
+            {t.jobs.types[job.type]}
+            <JobDetail job={job} />
+          </span>
+          <span className="text-neutral-400">{formatRelativeTime(job.finishedAt ?? job.createdAt)}</span>
         </div>
         <div className="flex items-center justify-between gap-2">
           <span className={color}>{t.jobs.statuses[job.status]}</span>

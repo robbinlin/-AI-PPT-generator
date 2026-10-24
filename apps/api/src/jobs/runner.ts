@@ -248,6 +248,14 @@ export class JobRunner {
         .update(jobs)
         .set({ status: "succeeded", result, progress: 1, finishedAt: new Date(), error: null })
         .where(eq(jobs.id, row.id));
+      // 「全部做完再匯出」: chain the export server-side (the user may have closed the tab).
+      const then = "thenRender" in row.payload ? row.payload.thenRender : undefined;
+      if (then) {
+        // The finished job stays finished even if queueing the export fails.
+        await this.enqueue(row.projectId, { type: "render_video", preset: then.preset, ...(then.burnSubtitles !== undefined ? { burnSubtitles: then.burnSubtitles } : {}) }).catch(
+          (err: unknown) => logger?.error({ jobId: row.id, err: (err as Error).message }, "chained export could not be queued"),
+        );
+      }
     } catch (err) {
       const e = err as Error;
       const cancelled = ctrl.signal.aborted || e.name === "AbortError";

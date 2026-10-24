@@ -100,11 +100,11 @@ export function ScenePlayer({ projectId, scene, hidden }: ScenePlayerProps) {
         <div className="h-1 flex-1 overflow-hidden rounded-full bg-neutral-800">
           <div className="h-full bg-accent-500" style={{ width: `${progress * 100}%` }} />
         </div>
-        <span className="w-10 font-mono text-xs text-neutral-500 tabular-nums">
+        <span className="w-10 font-mono text-xs text-neutral-400 tabular-nums">
           {formatDuration(time.duration || scene?.durationSec || 0)}
         </span>
       </div>
-      {note && <span className="text-xs text-neutral-500">{note}</span>}
+      {note && <span className="text-xs text-neutral-400">{note}</span>}
       {playback.playAll ? (
         <Button size="sm" icon={Square} onClick={() => editorStore.getState().stopPlayback()}>
           {t.player.stopAll}

@@ -19,7 +19,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { Scene, Slide } from "@lvs/shared";
 import { useAssetUrl } from "../../api/context";
 import type { EditorActions } from "../../hooks/useEditorActions";
-import { t } from "../../i18n";
+import { fmt, t } from "../../i18n";
 import { sortByIndex } from "../../lib/scenes";
 import { currentScript, useEditor } from "../../store/editorStore";
 import { PageListItem } from "./PageListItem";
@@ -63,11 +63,14 @@ export function PageList({ actions }: PageListProps) {
     <aside className="flex min-h-0 flex-col border-r border-neutral-800 bg-neutral-900">
       <div className="flex items-center justify-between px-3 py-2.5">
         <h2 className="text-xs font-semibold text-neutral-300">{t.pageList.title}</h2>
-        <span className="text-xs text-neutral-500">{slides.length}</span>
+        <span className="text-xs text-neutral-400">
+          {/* Hidden pages are not exported: say how many are in use. */}
+          {slides.some((sl) => sl.hidden) ? fmt(t.pageList.activeCount, { active: slides.filter((sl) => !sl.hidden).length, n: slides.length }) : slides.length}
+        </span>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {slides.length === 0 ? (
-          <p className="px-2 py-6 text-center text-xs text-neutral-500">{t.editor.noScenes}</p>
+          <p className="px-2 py-6 text-center text-xs text-neutral-400">{t.editor.noScenes}</p>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={slides.map((s) => s.id)} strategy={verticalListSortingStrategy}>
@@ -96,7 +99,7 @@ export function PageList({ actions }: PageListProps) {
       </div>
       {/* Folded on short laptop screens so more pages fit; one click shows it. */}
       <details className="group border-t border-neutral-800 px-3 py-1.5" open={typeof window === "undefined" || window.innerHeight >= 800} data-testid="status-legend">
-        <summary className="cursor-pointer text-xs text-neutral-500 select-none hover:text-neutral-300">{t.pageList.legend}</summary>
+        <summary className="cursor-pointer text-xs text-neutral-400 select-none hover:text-neutral-300">{t.pageList.legend}</summary>
         <div className="mt-1">
           <StatusLegend />
         </div>

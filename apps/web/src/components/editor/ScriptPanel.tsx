@@ -10,6 +10,7 @@ import { toast } from "../../store/toastStore";
 import { Button, IconButton } from "../ui/Button";
 import { Spinner } from "../ui/Misc";
 import { RewriteDialog } from "./RewriteDialog";
+import { ScriptHistory } from "./ScriptHistory";
 import { openEditorTab } from "./RightPanel";
 
 export const SCRIPT_MAX_CHARS = 5000;
@@ -34,7 +35,7 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
 
   const scene = useMemo(() => detail?.scenes.find((s) => s.id === sceneId), [detail, sceneId]);
   if (!detail || !scene) {
-    return <p className="p-4 text-sm text-neutral-500">{t.editor.selectPage}</p>;
+    return <p className="p-4 text-sm text-neutral-400">{t.editor.selectPage}</p>;
   }
 
   const text = currentScript({ detail, drafts }, scene.id);
@@ -79,7 +80,7 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-neutral-100">{fmt(t.script.heading, { n: scene.index + 1 })}</h2>
           {revision && (
-            <p className="text-xs text-neutral-500">
+            <p className="text-xs text-neutral-400">
               {fmt(t.script.revisionInfo, {
                 v: revision.version,
                 source: sourceLabel(revision.source),
@@ -87,7 +88,16 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
             </p>
           )}
         </div>
-        <SaveIndicator state={saveState} hasDraft={hasDraft} onRetry={() => void actions.saveScript(scene.id, text)} />
+        <div className="flex items-center gap-1">
+          <ScriptHistory
+            projectId={detail.project.id}
+            sceneId={scene.id}
+            currentVersion={revision?.version}
+            // Through the editor (undoable, autosaved) like any edit.
+            onRestore={(old) => editScript(scene.id, old)}
+          />
+          <SaveIndicator state={saveState} hasDraft={hasDraft} onRetry={() => void actions.saveScript(scene.id, text)} />
+        </div>
       </div>
 
       <div className="flex items-center gap-1.5">
@@ -146,7 +156,7 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
         )}
       </div>
 
-      <div className="flex items-center justify-between text-xs text-neutral-500">
+      <div className="flex items-center justify-between text-xs text-neutral-400">
         <span className={countChars(text) > SCRIPT_MAX_CHARS * 0.95 ? "text-amber-300" : ""}>
           {fmt(t.script.chars, { n: countChars(text), max: SCRIPT_MAX_CHARS })}
         </span>
@@ -211,7 +221,7 @@ function SaveIndicator({ state, hasDraft, onRetry }: { state: SaveState | undefi
     );
   }
   if (hasDraft) return <span className="text-xs text-amber-300">{t.script.unsaved}</span>;
-  return <span className="text-xs text-neutral-500">{t.script.saved}</span>;
+  return <span className="text-xs text-neutral-400">{t.script.saved}</span>;
 }
 
 function DerivedTexts({ revision, pending }: { revision: ScriptRevision | undefined; pending: boolean }) {
@@ -226,7 +236,7 @@ function DerivedTexts({ revision, pending }: { revision: ScriptRevision | undefi
       >
         <ChevronRight className={`size-3.5 transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
         {t.script.derived}
-        {pending && <span className="ml-auto font-normal text-neutral-500">{t.script.derivedPending}</span>}
+        {pending && <span className="ml-auto font-normal text-neutral-400">{t.script.derivedPending}</span>}
       </button>
       {open && (
         <div className="flex max-h-56 flex-col gap-3 overflow-y-auto border-t border-neutral-800 px-2.5 py-2">
@@ -244,7 +254,7 @@ function DerivedTexts({ revision, pending }: { revision: ScriptRevision | undefi
 function ReadOnlyText({ label, text }: { label: string; text: string | undefined }) {
   return (
     <div>
-      <div className="mb-1 text-xs font-medium text-neutral-500">{label}</div>
+      <div className="mb-1 text-xs font-medium text-neutral-400">{label}</div>
       <p className="text-xs leading-relaxed whitespace-pre-wrap text-neutral-300">{text || t.script.derivedEmpty}</p>
     </div>
   );

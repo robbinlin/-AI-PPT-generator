@@ -152,7 +152,7 @@ export function StepBar({ actions }: { actions: EditorActions }) {
                 }`}
               >
                 <span
-                  className={`flex size-4 items-center justify-center rounded-full text-[10px] font-semibold ${
+                  className={`flex size-5 items-center justify-center rounded-full text-xs font-semibold ${
                     step.done ? "bg-emerald-500 text-neutral-950" : current ? "bg-accent-500 text-white" : "bg-neutral-700 text-neutral-200"
                   }`}
                   aria-hidden
@@ -163,7 +163,7 @@ export function StepBar({ actions }: { actions: EditorActions }) {
                 {step.busy ? (
                   <Spinner className="size-3" />
                 ) : step.skipped ? (
-                  <span className="text-neutral-500">（{t.steps.skipped}）</span>
+                  <span className="text-neutral-400">（{t.steps.skipped}）</span>
                 ) : step.count && !step.done && step.count.total > 0 ? (
                   <span className="text-neutral-400">{fmt(t.steps.progress, step.count)}</span>
                 ) : null}

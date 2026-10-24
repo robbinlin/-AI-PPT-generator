@@ -375,6 +375,17 @@ describe("generation handlers", () => {
     expect((await estimate("type=synthesize_speech")).sceneCount).toBe(1);
   });
 
+  it("「全部做完再匯出」 queues the export on the server once the avatar job succeeds", async () => {
+    const before = (await t.ctx.db.select().from(jobs).where(eq(jobs.projectId, projectId))).filter((j) => j.type === "render_video").length;
+    const { row } = await run({ type: "generate_avatar", thenRender: { preset: "preview_540p", burnSubtitles: false } });
+    expect(row.status).toBe("succeeded");
+    const renders = (await t.ctx.db.select().from(jobs).where(eq(jobs.projectId, projectId))).filter((j) => j.type === "render_video");
+    expect(renders.length).toBe(before + 1);
+    const latest = renders.sort((a, b) => +b.createdAt - +a.createdAt)[0]!;
+    expect(latest.payload).toMatchObject({ type: "render_video", preset: "preview_540p", burnSubtitles: false });
+    expect(latest.status).toBe("succeeded");
+  });
+
   it("「AI 重寫本頁」 with a direction passes it and the current script to the writer", async () => {
     const d = await detail();
     const sc = d.scenes[1]!;

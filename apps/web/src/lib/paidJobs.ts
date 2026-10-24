@@ -1,7 +1,7 @@
 import type { CostEstimate, EnqueueJobRequest } from "@lvs/shared";
 import type { EstimateType } from "../api/types";
 import { fmt, t } from "../i18n";
-import { formatCostTwd, formatTwdFirst, formatWait, TWD_PER_USD } from "./format";
+import { formatTwdFirst, formatWait, TWD_PER_USD } from "./format";
 
 /** Job types that cost money or real time and therefore get an estimate before they start. */
 export const ESTIMATED_TYPES: ReadonlySet<string> = new Set<EstimateType>(["generate_script", "synthesize_speech", "generate_avatar"]);
@@ -59,7 +59,7 @@ export function estimateLines(estimate: CostEstimate): string[] {
           : line.unit === "tokens_in" || line.unit === "tokens_out"
             ? t.paid.lineScript
             : null;
-    if (what) out.push(`${what}：${formatCostTwd(line.estimatedCost)}`);
+    if (what) out.push(`${what}：${formatTwdFirst(line.estimatedCost)}`);
   }
   return out;
 }

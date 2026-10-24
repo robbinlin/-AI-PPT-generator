@@ -101,7 +101,7 @@ export function NewProjectDialog({ open, initialFile, onClose, onCreate }: NewPr
           {file ? (
             <>
               <span className="min-w-0 flex-1 truncate text-neutral-100" title={file.name}>
-                {file.name} <span className="text-xs text-neutral-500">· {formatBytes(file.size)}</span>
+                {file.name} <span className="text-xs text-neutral-400">· {formatBytes(file.size)}</span>
               </span>
               <IconButton icon={X} label={t.projects.removeFile} onClick={() => setFile(null)} />
             </>
@@ -140,7 +140,7 @@ export function NewProjectDialog({ open, initialFile, onClose, onCreate }: NewPr
             <Select value={aspectRatio} onChange={setAspectRatio} options={RATIOS.map((v) => ({ value: v, label: t.aspectRatios[v] }))} />
           </Field>
         </div>
-        {!file && <p className="text-xs text-neutral-500">{t.projects.uploadHint}</p>}
+        {!file && <p className="text-xs text-neutral-400">{t.projects.uploadHint}</p>}
         {error && <p className="text-xs text-rose-300">{fmt(t.app.error, { message: error })}</p>}
       </form>
     </Modal>
