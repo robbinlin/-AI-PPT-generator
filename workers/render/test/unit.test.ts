@@ -150,6 +150,17 @@ describe("command building", () => {
     );
   });
 
+  it("a page without its clip keeps the presenter pages' slide frame", () => {
+    const base = { width: 1920, height: 1080, fps: 30, backgroundColor: "#102030", outPath: "/out/s.mp4" };
+    const framed = buildSceneArgs({ ...base, scene: scene({ durationSec: 2, slideFrame: { slideScale: 0.74, slideAlign: "left" } }) });
+    const graph = framed[framed.indexOf("-filter_complex") + 1];
+    expect(graph).toContain("scale=1420:800:force_original_aspect_ratio=decrease");
+    expect(graph).toContain("pad=1920:1080:43:(oh-ih)/2");
+    expect(framed.join(" ")).not.toContain("overlay=");
+    const plain = buildSceneArgs({ ...base, scene: scene({ durationSec: 2 }) });
+    expect(plain[plain.indexOf("-filter_complex") + 1]).toContain("scale=1920:1080:");
+  });
+
   it("keeps provider alpha for circle avatars", () => {
     const args = buildSceneArgs({
       scene: scene({

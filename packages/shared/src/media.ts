@@ -24,6 +24,12 @@ export const RenderScene = z.object({
       chromaKey: z.string().optional(),
     })
     .optional(),
+  /**
+   * Where the slide sits when the project shows a presenter but this scene has no clip (not
+   * made yet, or a muted page): same size and side as on the pages with the presenter, so the
+   * deck does not jump between full-frame and scaled slides.
+   */
+  slideFrame: AvatarLayout.pick({ slideScale: true, slideAlign: true }).optional(),
   subtitles: z.array(SubtitleCue).default([]),
   transitionIn: Transition.default("none"),
   transitionDurationSec: z.number().min(0).max(2).default(0.4),

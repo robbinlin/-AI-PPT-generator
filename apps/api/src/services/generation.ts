@@ -445,6 +445,11 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
             ? { avatar: { videoPath: await localFile(ctx.storage, avatarAsset, workDir), layout, hasAlpha: false, ...(chroma ? { chromaKey: chroma } : {}) } }
             : {}),
           subtitles: cues,
+          // No clip on this page (not made yet, or muted) while the project shows a presenter:
+          // keep the presenter pages' slide size and side so pages don't jump.
+          ...(!avatarAsset && settings.avatar.enabled && settings.avatar.avatarId && layout.visible
+            ? { slideFrame: { slideScale: layout.slideScale, slideAlign: layout.slideAlign } }
+            : {}),
           transitionIn: i === 0 ? "none" : (s.transitionIn ?? settings.transition),
           transitionDurationSec: 0.4,
         });

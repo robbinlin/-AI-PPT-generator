@@ -128,6 +128,27 @@
                 ],
                 "additionalProperties": false
               },
+              "slideFrame": {
+                "type": "object",
+                "properties": {
+                  "slideScale": {
+                    "type": "number",
+                    "minimum": 0.4,
+                    "maximum": 1,
+                    "default": 1
+                  },
+                  "slideAlign": {
+                    "type": "string",
+                    "enum": [
+                      "center",
+                      "left",
+                      "right"
+                    ],
+                    "default": "center"
+                  }
+                },
+                "additionalProperties": false
+              },
               "subtitles": {
                 "type": "array",
                 "items": {

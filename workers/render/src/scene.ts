@@ -152,7 +152,8 @@ export function buildSceneArgs(input: SceneCommandInput): string[] {
 
   // 0: slide image, looped. With an avatar beside it the slide may be scaled down and aligned.
   args.push("-loop", "1", "-framerate", String(fps), "-i", scene.imagePath);
-  const frameLayout = scene.avatar && avatarVisible(scene) ? scene.avatar.layout : undefined;
+  // A page without its clip keeps the presenter pages' slide frame (scene.slideFrame).
+  const frameLayout = scene.avatar && avatarVisible(scene) ? scene.avatar.layout : scene.slideFrame;
   const scale = frameLayout?.slideScale ?? 1;
   const sw = even(W * scale);
   const sh = even(H * scale);
