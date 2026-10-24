@@ -108,8 +108,9 @@ export function renderInputHash(input: {
     // Bump together with the render worker's SCENE_RENDER_VERSION whenever its output changes, so a
     // video made the old way reads as outdated and the new one gets its own file
     // (v2: lip-synced avatars play once and hold their last frame instead of looping;
-    // v3: pages without a clip keep the presenter pages' slide frame).
-    recipe: 3,
+    // v3: pages without a clip keep the presenter pages' slide frame;
+    // v4: subtitles move beside the presenter instead of running across it).
+    recipe: 4,
     scenes: input.scenes.map((s) => ({
       id: s.sceneId,
       image: s.imageAssetId ?? null,

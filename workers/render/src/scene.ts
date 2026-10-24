@@ -1,13 +1,13 @@
 ﻿import { constants as fsc } from "node:fs";
 import { copyFile, link, mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { contentHash, sha256Hex, type AvatarLayout, type RenderScene, type SubtitleStyle } from "@lvs/shared";
+import { contentHash, sha256Hex, subtitleSideMargins, type AvatarLayout, type RenderScene, type SubtitleStyle } from "@lvs/shared";
 import { ffmpegColor } from "./color.js";
 import { DEFAULT_FFMPEG, DEFAULT_FFPROBE, ffprobe, num, runFfmpeg, throwIfAborted } from "./ffmpeg.js";
 import { buildAss } from "./subtitles.js";
 
 /** Bump when the scene command line changes in a way that alters output. */
-export const SCENE_RENDER_VERSION = 3;
+export const SCENE_RENDER_VERSION = 4;
 
 export const VIDEO_ENCODE_ARGS = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"];
 export const AUDIO_ENCODE_ARGS = ["-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2"];
@@ -58,11 +58,20 @@ function avatarVisible(scene: RenderScene): boolean {
 }
 
 function sceneAss(scene: RenderScene, ctx: SceneContext): string {
+  const style = ctx.subtitleStyle;
   return buildAss(scene.subtitles, {
     width: ctx.width,
     height: ctx.height,
-    style: ctx.subtitleStyle,
+    style,
     clipEndSec: scene.durationSec,
+    // Subtitles move beside the presenter instead of running across it (same rule as the preview).
+    sideMargins: avatarVisible(scene)
+      ? subtitleSideMargins(scene.avatar!.layout, ctx.width / ctx.height, {
+          position: style.position,
+          fontFrac: style.fontSizePx / ctx.height,
+          marginFrac: style.marginPx / ctx.height,
+        })
+      : null,
   });
 }
 

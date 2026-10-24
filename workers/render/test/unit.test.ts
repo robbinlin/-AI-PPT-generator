@@ -258,3 +258,18 @@ describe("outlined subtitles", () => {
     expect(boxed.split("\n").find((l) => l.startsWith("Style: Default"))!.split(",")[15]).toBe("3");
   });
 });
+
+describe("subtitles beside the presenter", () => {
+  it("narrows the subtitle area with side margins and wraps to the narrower width", () => {
+    const text = "一二三四五六七八九十一二三四五六七八九十一二三四五六七八"; // 28 em: fits 1920 px, not the ~24 em left of the presenter
+    const style = SubtitleStyle.parse({ maxCharsPerLine: 28 });
+    const wide = buildAss([{ index: 1, startSec: 0, endSec: 1, text }], { width: 1920, height: 1080, style });
+    const narrow = buildAss([{ index: 1, startSec: 0, endSec: 1, text }], { width: 1920, height: 1080, style, sideMargins: { left: 0.04, right: 0.45 } });
+    const fields = (ass: string) => ass.split("\n").find((l) => l.startsWith("Style: Default"))!.split(",");
+    expect(fields(wide).slice(19, 21)).toEqual(["77", "77"]);
+    expect(fields(narrow).slice(19, 21)).toEqual(["77", "864"]);
+    const lines = (ass: string) => ass.split("\n").find((l) => l.startsWith("Dialogue"))!.split(",").slice(9).join(",").split("\\N");
+    expect(lines(wide)).toHaveLength(1);
+    expect(lines(narrow).length).toBeGreaterThan(1);
+  });
+});

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import type { Asset, AvatarLayout, DerivedStatus, Project, Scene, Slide } from "@lvs/shared";
+import { SUBTITLE_SIDE_MARGIN, subtitleSideMargins, type Asset, type AvatarLayout, type DerivedStatus, type Project, type Scene, type Slide } from "@lvs/shared";
 import { EyeOff, ImageOff, Move, UserRound } from "lucide-react";
 import { useAssetUrl } from "../../api/context";
 import { CHROMA_PROVIDERS, KeyedVideo, SyncedVideo } from "./KeyedVideo";
@@ -84,7 +84,23 @@ export function SlidePreview({
             onCommit={onLayoutCommit}
           />
         )}
-        {subtitles.enabled && cue && <SubtitleOverlay text={cue} style={subtitles.style} />}
+        {subtitles.enabled && cue && (
+          <SubtitleOverlay
+            text={cue}
+            style={subtitles.style}
+            // Like the export: beside the presenter when it reaches into the subtitle line (only a
+            // finished clip is exported, so only then).
+            sideMargins={
+              showAvatar && scene?.avatar.status === "ready"
+                ? subtitleSideMargins(layout, ratio, {
+                    position: subtitles.style.position,
+                    fontFrac: subtitles.style.fontSizePx / 1080,
+                    marginFrac: subtitles.style.marginPx / 1080,
+                  })
+                : null
+            }
+          />
+        )}
         {slide.hidden && (
           <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 text-sm text-neutral-200">
             <EyeOff className="size-4" aria-hidden /> {t.preview.hiddenOverlay}
@@ -252,13 +268,27 @@ function AvatarOverlay({
   );
 }
 
-function SubtitleOverlay({ text, style }: { text: string; style: Project["settings"]["subtitles"]["style"] }) {
+function SubtitleOverlay({
+  text,
+  style,
+  sideMargins,
+}: {
+  text: string;
+  style: Project["settings"]["subtitles"]["style"];
+  sideMargins?: { left: number; right: number } | null;
+}) {
   // Style sizes are specified for a 1080-px-tall frame; scale with the preview's height.
   const scale = (px: number) => `${(px / 1080) * 100}cqh`;
+  const sides = sideMargins ?? { left: SUBTITLE_SIDE_MARGIN, right: SUBTITLE_SIDE_MARGIN };
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 flex justify-center px-[4%]"
-      style={style.position === "top" ? { top: scale(style.marginPx) } : { bottom: scale(style.marginPx) }}
+      className="pointer-events-none absolute flex justify-center"
+      data-testid="subtitle-band"
+      style={{
+        left: pct(sides.left),
+        right: pct(sides.right),
+        ...(style.position === "top" ? { top: scale(style.marginPx) } : { bottom: scale(style.marginPx) }),
+      }}
     >
       <p
         data-testid="subtitle-preview"

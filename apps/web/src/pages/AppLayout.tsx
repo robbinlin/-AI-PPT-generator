@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router";
-import { Clapperboard } from "lucide-react";
+import { Clapperboard, Settings } from "lucide-react";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { t } from "../i18n";
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -13,13 +14,17 @@ export function AppLayout() {
           <Clapperboard className="size-4 text-accent-400" aria-hidden />
           {t.app.name}
         </div>
-        <nav className="flex items-center gap-1">
+        <nav className="flex flex-1 items-center gap-1">
           <NavLink to="/" end className={linkClass}>
             {t.app.navProjects}
           </NavLink>
-          <NavLink to="/settings/providers" className={linkClass}>
+          {/* API keys are an administrator's concern: kept out of the main path, at the far end. */}
+          <span className="flex-1" />
+          <NavLink to="/settings/providers" className={(s) => `${linkClass(s)} flex items-center gap-1.5 text-xs`}>
+            <Settings className="size-3.5" aria-hidden />
             {t.app.navProviders}
           </NavLink>
+          <ThemeToggle />
         </nav>
       </header>
       <main className="min-h-0 flex-1 overflow-y-auto">

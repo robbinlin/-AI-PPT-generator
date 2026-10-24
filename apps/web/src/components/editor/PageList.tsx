@@ -94,9 +94,13 @@ export function PageList({ actions }: PageListProps) {
           </DndContext>
         )}
       </div>
-      <div className="border-t border-neutral-800 px-3 py-2">
-        <StatusLegend />
-      </div>
+      {/* Folded on short laptop screens so more pages fit; one click shows it. */}
+      <details className="group border-t border-neutral-800 px-3 py-1.5" open={typeof window === "undefined" || window.innerHeight >= 800} data-testid="status-legend">
+        <summary className="cursor-pointer text-xs text-neutral-500 select-none hover:text-neutral-300">{t.pageList.legend}</summary>
+        <div className="mt-1">
+          <StatusLegend />
+        </div>
+      </details>
     </aside>
   );
 }

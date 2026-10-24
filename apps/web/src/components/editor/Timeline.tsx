@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, SlidersHorizontal, Volume2, VolumeX, X, ZoomIn } from "lucide-react";
+import { ChevronDown, ChevronRight, GripVertical, SlidersHorizontal, Volume2, VolumeX, X, ZoomIn } from "lucide-react";
 import { MAX_TAIL_PAUSE_SEC, type Scene, type Transition } from "@lvs/shared";
 import { useAssetUrl } from "../../api/context";
 import type { EditorActions } from "../../hooks/useEditorActions";
@@ -28,6 +28,16 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
   const [zoom, setZoom] = useState(1);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [tipSeen, setTipSeen] = useState(() => readFlag(TIP_KEY));
+  // Short laptop screens start folded (the preview needs the height); the choice is remembered.
+  const [collapsed, setCollapsed] = useState(() => {
+    const saved = readValue(COLLAPSE_KEY);
+    return saved ? saved === "1" : typeof window !== "undefined" && window.innerHeight < 760;
+  });
+  const toggleCollapsed = () =>
+    setCollapsed((v) => {
+      writeValue(COLLAPSE_KEY, v ? "0" : "1");
+      return !v;
+    });
   // Page length being dragged, or committed and still being saved.
   const [resize, setResize] = useState<ResizeState | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -39,7 +49,7 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
     ro.observe(el);
     setWidth(el.clientWidth);
     return () => ro.disconnect();
-  }, []);
+  }, [collapsed]);
 
   const model = useMemo(
     () => (detail ? buildTimeline(detail.scenes, detail.slides, detail.scripts, resize ?? undefined) : { blocks: [], totalSec: 0 }),
@@ -97,18 +107,36 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
   return (
     <div className="rounded-lg border border-neutral-800 bg-neutral-900" data-testid="timeline">
       <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-3 py-1.5 text-xs text-neutral-400">
-        <span className="font-semibold text-neutral-300">{t.timeline.title}</span>
+        <button
+          type="button"
+          className="flex items-center gap-1 rounded px-1 font-semibold text-neutral-300 hover:bg-neutral-800"
+          aria-expanded={!collapsed}
+          title={collapsed ? t.timeline.expand : t.timeline.collapse}
+          onClick={toggleCollapsed}
+          data-testid="timeline-toggle"
+        >
+          {collapsed ? <ChevronRight className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
+          {t.timeline.title}
+        </button>
         {resize?.dragging ? (
           <ResizeReadout block={model.blocks.find((b) => b.scene.id === resize.sceneId)} state={resize} />
         ) : (
           <span className="tabular-nums">{totalDurationLabel(model)}</span>
         )}
-        <label className="flex items-center gap-1.5">
-          <ZoomIn className="size-3.5" aria-hidden />
-          <span className="sr-only">{t.timeline.zoom}</span>
-          <input type="range" min={1} max={6} step={0.25} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="w-24 accent-accent-500" aria-label={t.timeline.zoom} />
-        </label>
+        {collapsed ? (
+          <button type="button" className="rounded px-1.5 text-accent-300 hover:bg-neutral-800" onClick={toggleCollapsed}>
+            {t.timeline.expand}
+          </button>
+        ) : (
+          <label className="flex items-center gap-1.5">
+            <ZoomIn className="size-3.5" aria-hidden />
+            <span className="sr-only">{t.timeline.zoom}</span>
+            <input type="range" min={1} max={6} step={0.25} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="w-24 accent-accent-500" aria-label={t.timeline.zoom} />
+          </label>
+        )}
       </div>
+      {collapsed ? null : (
+        <>
       {!tipSeen && (
         <div className="flex items-center gap-2 border-b border-neutral-800 bg-accent-500/10 px-3 py-1.5 text-xs text-accent-100" role="note" data-testid="timeline-tip">
           <GripVertical className="size-3.5 shrink-0" aria-hidden />
@@ -190,8 +218,28 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
           onChange={(req) => void actions.updateScene(menuFor, req)}
         />
       )}
+        </>
+      )}
     </div>
   );
+}
+
+const COLLAPSE_KEY = "lvs:timeline-collapsed";
+
+function readValue(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeValue(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Storage blocked: the choice lasts until reload.
+  }
 }
 
 const TIP_KEY = "lvs:timeline-tip-seen";

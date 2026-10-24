@@ -1,7 +1,7 @@
-import type { AvatarLayout } from "@lvs/shared";
+import { AVATAR_RECT_ASPECT, avatarFrameBox, type AvatarLayout } from "@lvs/shared";
 
 /** Fraction of frame width a rect avatar takes relative to its height (portrait 3:4). */
-export const RECT_ASPECT = 0.75;
+export const RECT_ASPECT = AVATAR_RECT_ASPECT;
 
 export interface Box {
   /** All values are fractions of the frame (0..1). */
@@ -16,22 +16,7 @@ export interface Box {
  * centre (x, y) wins and is clamped inside the frame; otherwise the anchor + margin apply.
  */
 export function avatarBox(layout: AvatarLayout, ratio: number): Box {
-  const height = Math.min(1, layout.size);
-  const width = Math.min(1, ((layout.shape === "circle" ? 1 : RECT_ASPECT) * layout.size) / ratio);
-  if (layout.x !== undefined && layout.y !== undefined) {
-    return {
-      left: clamp(layout.x - width / 2, 0, 1 - width),
-      top: clamp(layout.y - height / 2, 0, 1 - height),
-      width,
-      height,
-    };
-  }
-  const my = layout.margin;
-  const mx = layout.margin / ratio;
-  const [vertical, horizontal] = layout.anchor.includes("-") ? (layout.anchor.split("-") as [string, string]) : ["center", layout.anchor];
-  const left = horizontal === "right" ? 1 - width - mx : mx;
-  const top = vertical === "top" ? my : vertical === "bottom" ? 1 - height - my : (1 - height) / 2;
-  return { left, top, width, height };
+  return avatarFrameBox(layout, ratio);
 }
 
 /** Slide image box inside the frame (scaled down and aligned when an avatar sits beside it). */

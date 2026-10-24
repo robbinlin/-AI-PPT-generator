@@ -99,7 +99,7 @@ export function CenterPane({
       </div>
       <ScenePlayer projectId={detail.project.id} scene={scene} hidden={slide?.hidden ?? false} />
       {actions && <Timeline actions={actions} />}
-      <p className="text-center text-xs text-neutral-400">{t.player.shortcuts}</p>
+      <p className="text-center text-xs text-neutral-400 [@media(max-height:760px)]:hidden">{t.player.shortcuts}</p>
     </section>
   );
 }

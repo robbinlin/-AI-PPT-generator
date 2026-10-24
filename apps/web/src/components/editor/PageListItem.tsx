@@ -75,7 +75,7 @@ export function PageListItem(props: PageListItemProps) {
             )}
           </span>
         </div>
-        <p className={`mt-1.5 line-clamp-2 text-xs leading-snug ${line ? "text-neutral-300" : "text-neutral-500 italic"}`}>
+        <p className={`mt-1.5 line-clamp-2 text-xs leading-snug [@media(max-height:800px)]:line-clamp-1 ${line ? "text-neutral-300" : "text-neutral-500 italic"}`}>
           {line || t.pageList.noScript}
         </p>
         {scene && <StatusSummary scene={scene} />}

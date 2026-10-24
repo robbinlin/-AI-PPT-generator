@@ -125,6 +125,8 @@ export interface AssOptions {
   style: SubtitleStyle;
   /** Cues outside [0, clipEndSec] are clipped. */
   clipEndSec?: number;
+  /** Side margins as fractions of the width (keeps the line off the presenter); default 4% each. */
+  sideMargins?: { left: number; right: number } | null;
 }
 
 /**
@@ -143,9 +145,11 @@ export function buildAss(cues: readonly SubtitleCue[], opts: AssOptions): string
   const alignment = style.position === "top" ? 8 : 2;
   const boxPad = Math.max(2, Math.round(style.fontSizePx * 0.2));
   const sideMargin = Math.max(16, Math.round(width * 0.04));
+  const marginL = opts.sideMargins ? Math.max(sideMargin, Math.round(width * opts.sideMargins.left)) : sideMargin;
+  const marginR = opts.sideMargins ? Math.max(sideMargin, Math.round(width * opts.sideMargins.right)) : sideMargin;
   const font = escapeAssField(style.fontFamily);
   // Width actually available for text, in em of the subtitle font.
-  const maxEm = Math.max(1, (width - 2 * sideMargin - 2 * boxPad) / style.fontSizePx);
+  const maxEm = Math.max(1, (width - marginL - marginR - 2 * boxPad) / style.fontSizePx);
 
   const header = [
     "[Script Info]",
@@ -160,8 +164,8 @@ export function buildAss(cues: readonly SubtitleCue[], opts: AssOptions): string
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     outlined
-      ? `Style: Default,${font},${style.fontSizePx},${primary},${primary},${outline},${box},${bold},0,0,0,100,100,0,0,1,${style.outlineWidthPx},0,${alignment},${sideMargin},${sideMargin},${style.marginPx},1`
-      : `Style: Default,${font},${style.fontSizePx},${primary},${primary},${box},${box},${bold},0,0,0,100,100,0,0,3,${boxPad},0,${alignment},${sideMargin},${sideMargin},${style.marginPx},1`,
+      ? `Style: Default,${font},${style.fontSizePx},${primary},${primary},${outline},${box},${bold},0,0,0,100,100,0,0,1,${style.outlineWidthPx},0,${alignment},${marginL},${marginR},${style.marginPx},1`
+      : `Style: Default,${font},${style.fontSizePx},${primary},${primary},${box},${box},${bold},0,0,0,100,100,0,0,3,${boxPad},0,${alignment},${marginL},${marginR},${style.marginPx},1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
