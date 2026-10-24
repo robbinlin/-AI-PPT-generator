@@ -8,9 +8,23 @@ import { formatRelativeTime, formatWait, remainingSec } from "../../lib/format";
 import { editorStore, useEditor } from "../../store/editorStore";
 import { Button, IconButton } from "../ui/Button";
 import { ProgressBar, Spinner } from "../ui/Misc";
+import { friendlyJobError } from "../../lib/jobErrors";
 import { saveVideo } from "../../lib/saveFiles";
 
-/** Header button: spinner + progress text of the most recent active job; opens the drawer. */
+function JobError({ message }: { message: string }) {
+  const friendly = friendlyJobError(message);
+  if (!friendly) return <div className="mt-0.5 break-words text-rose-300">{message}</div>;
+  return (
+    <div className="mt-0.5 text-rose-300">
+      <div className="break-words">{friendly}</div>
+      <details className="mt-0.5 text-xs text-neutral-500">
+        <summary className="cursor-pointer select-none">{t.jobErrors.details}</summary>
+        <div className="break-words">{message}</div>
+      </details>
+    </div>
+  );
+}
+
 /** Re-renders every few seconds so remaining-time estimates move between progress events. */
 export function useTick(ms: number, enabled: boolean): number {
   const [now, setNow] = useState(() => Date.now());
@@ -108,11 +122,11 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
                   </Button>
                 </div>
                 <ProgressBar value={job.progress} indeterminate={job.status === "queued"} />
-                <div className="mt-1.5 flex justify-between gap-2 text-[11px] text-neutral-400">
+                <div className="mt-1.5 flex justify-between gap-2 text-xs text-neutral-400">
                   <span className="truncate">{job.progressMessage ?? t.jobs.statuses[job.status]}</span>
                   <span className="shrink-0">{Math.round(job.progress * 100)}%</span>
                 </div>
-                <div className="mt-1 text-[11px] text-neutral-400">
+                <div className="mt-1 text-xs text-neutral-400">
                   {job.status === "running" ? (etaText(job, now) ?? t.jobs.etaPending) : t.jobs.statuses[job.status]}
                 </div>
               </li>
@@ -146,7 +160,7 @@ function RecentJob({ job }: { job: Job }) {
           <span className={color}>{t.jobs.statuses[job.status]}</span>
           {job.type === "render_video" && job.status === "succeeded" && <RenderDownload job={job} />}
         </div>
-        {job.error && <div className="mt-0.5 break-words text-rose-300">{job.error}</div>}
+        {job.error && <JobError message={job.error} />}
       </div>
     </li>
   );

@@ -6,7 +6,10 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { CostEstimate, Job, Project, ProjectDetail } from "@lvs/shared";
-import { assets, jobs, scenes } from "../src/db/schema.js";
+import { runBackfills } from "../src/db/backfill.js";
+import { assets, jobs, outlineRevisions, scenes, scriptRevisions } from "../src/db/schema.js";
+import { outlineInputHash } from "../src/jobs/hashes.js";
+import { createScriptRevision } from "../src/services/scripts.js";
 import type { GenerationSeams } from "../src/jobs/handlers/generation.js";
 import { unimplementedSeams } from "../src/jobs/handlers/generation.js";
 import { createTestServer, FakeParserRunner, multipart, TINY_PDF, type TestServer } from "./helpers.js";
@@ -46,6 +49,12 @@ const seams: GenerationSeams = {
     const videoAssetId = await fakeAsset(ctx.db, ctx.job.projectId, "video", inputHash, ctx.job.id);
     return { videoAssetId };
   },
+  async generateScript({ ctx, scene, settings, instruction, currentScript }) {
+    scriptCalls.push({ sceneId: scene.id, instruction, currentScript });
+    const [row] = await ctx.db.select().from(scenes).where(eq(scenes.id, scene.id));
+    const { revision } = await createScriptRevision(ctx.db, { scene: row!, script: "改寫後的講稿。", source: "ai", language: settings.language });
+    return revision;
+  },
   async translateScript({ script, previousScript, pageNumber, to }) {
     translateCalls.push({ script, previousScript, pageNumber, to });
     const text = `Page ${pageNumber} in English.`;
@@ -53,6 +62,7 @@ const seams: GenerationSeams = {
   },
 };
 const translateCalls: Array<{ script: string; previousScript?: string; pageNumber: number; to: string }> = [];
+const scriptCalls: Array<{ sceneId: string; instruction?: string; currentScript?: string }> = [];
 
 let t: TestServer;
 let projectId: string;
@@ -271,6 +281,20 @@ describe("generation handlers", () => {
       expect(sc.audio.status).toBe("missing"); // English speech is made in the copy
       expect(sc.avatar.status).toBe("missing");
     }
+    // Hiding a page in the copy must not mark the translation 需更新 (下一步 would then offer to
+    // overwrite it with freshly generated scripts).
+    expect(en.scripts[en.scenes[0]!.id]?.source).toBe("translation");
+    // Translations saved before the "translation" source existed are fixed at startup.
+    await t.ctx.db.update(scriptRevisions).set({ source: "ai" }).where(eq(scriptRevisions.id, en.scripts[en.scenes[0]!.id]!.id));
+    await runBackfills(t.ctx.db);
+    const [fixed] = await t.ctx.db.select().from(scriptRevisions).where(eq(scriptRevisions.id, en.scripts[en.scenes[0]!.id]!.id));
+    expect(fixed!.source).toBe("translation");
+    await t.app.inject({ method: "PATCH", url: `/projects/${project.id}/slides/${en.slides[2]!.id}`, payload: { hidden: true } });
+    const hid = (await t.app.inject({ method: "GET", url: `/projects/${project.id}` })).json() as ProjectDetail;
+    expect(hid.scenes.every((sc) => sc.script.status === "ready")).toBe(true);
+    const listed = ((await t.app.inject({ method: "GET", url: "/projects" })).json() as Array<Project & { pageCount?: number; activePageCount?: number }>).find((p) => p.id === project.id)!;
+    expect(listed.pageCount).toBe(3);
+    expect(listed.activePageCount).toBe(2);
     // The original is untouched.
     const after = await detail();
     expect(after.scenes.map((s) => after.scripts[s.id]?.script)).toEqual(src.scenes.map((s) => src.scripts[s.id]?.script));
@@ -281,7 +305,7 @@ describe("generation handlers", () => {
     await t.app.inject({ method: "PATCH", url: `/projects/${projectId}`, payload: { settings: { avatar: { enabled: false } } } });
     const off = await run({ type: "generate_avatar" });
     expect(off.row.status).toBe("failed");
-    expect(off.row.error).toBe("這個專案沒有啟用虛擬人像，請到「虛擬人與聲音」分頁開啟");
+    expect(off.row.error).toBe("這個專案沒有啟用人像，請到「人像與聲音」分頁開啟");
     await t.app.inject({ method: "PATCH", url: `/projects/${projectId}`, payload: { settings: { avatar: { enabled: true } } } });
 
     const empty = (await t.app.inject({ method: "POST", url: "/projects", payload: { name: "empty" } })).json() as Project;
@@ -302,5 +326,61 @@ describe("generation handlers", () => {
     await t.app.inject({ method: "PATCH", url: `/projects/${projectId}/slides/${d.slides[0]!.id}`, payload: { hidden: true } });
     expect((await listed()).thumbnailAssetId).toBe(d.slides[1]!.thumbnailAssetId);
     expect((await detail()).project.thumbnailAssetId).toBe(d.slides[1]!.thumbnailAssetId);
+  });
+
+  it("correcting a glossary reading re-voices only the pages that use the term", async () => {
+    const d0 = await detail();
+    const [s1, s2, s3] = d0.scenes;
+    const ordered = d0.scenes.map((sc) => d0.slides.find((sl) => sl.id === sc.slideId)!);
+    await t.ctx.db.insert(outlineRevisions).values({
+      id: randomUUID(),
+      projectId,
+      version: 1,
+      objectives: ["目標"],
+      summary: "摘要",
+      sections: [],
+      glossary: [{ term: "ANOVA", reading: "A NO VA" }],
+      timeAllocation: {},
+      // Current for these slides, so a script job does not plan a new outline first.
+      inputHash: outlineInputHash(ordered, d0.project.settings),
+    });
+    await t.app.inject({ method: "PUT", url: `/projects/${projectId}/scenes/${s3!.id}/script`, payload: { script: "最後用 ANOVA 比較三組。" } });
+    expect((await run({ type: "synthesize_speech" })).row.status).toBe("succeeded");
+    const before = await detail();
+    // Page 1 is hidden (previous test), so the speech job left it alone.
+    expect(before.scenes.filter((s) => s.id !== s1!.id).every((s) => s.audio.status === "ready")).toBe(true);
+    expect(before.scripts[s3!.id]!.pronunciationText).toContain("A NO VA");
+
+    const res = await t.app.inject({
+      method: "PUT",
+      url: `/projects/${projectId}/outline/glossary`,
+      payload: { glossary: [{ term: "ANOVA", reading: "變異數分析" }, { term: "講稿", definition: "旁白" }] },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().affectedSceneIds).toEqual([s3!.id]);
+    const after = await detail();
+    expect(after.outline?.version).toBe(2);
+    expect(after.outline?.glossary.find((g) => g.term === "ANOVA")?.reading).toBe("變異數分析");
+    expect(after.scripts[s3!.id]!.pronunciationText).toContain("變異數分析");
+    expect(after.scripts[s3!.id]!.script).toBe("最後用 ANOVA 比較三組。"); // the display text keeps the term
+    expect(after.scenes.find((s) => s.id === s3!.id)!.audio.status).toBe("stale");
+    // Pages that never say ANOVA keep their narration (and the avatars lip-synced to it).
+    for (const id of [s2!.id]) {
+      const sc = after.scenes.find((s) => s.id === id)!;
+      const was = before.scenes.find((s) => s.id === id)!;
+      expect(sc.audio.status).toBe("ready");
+      expect(sc.subtitle.status).toBe(was.subtitle.status);
+      expect(sc.avatar.status).toBe(was.avatar.status);
+    }
+    expect((await estimate("type=synthesize_speech")).sceneCount).toBe(1);
+  });
+
+  it("「AI 重寫本頁」 with a direction passes it and the current script to the writer", async () => {
+    const d = await detail();
+    const sc = d.scenes[1]!;
+    scriptCalls.length = 0;
+    expect((await run({ type: "generate_script", sceneIds: [sc.id], force: true, instruction: "更口語；縮短到 30 秒" })).row.status).toBe("succeeded");
+    expect(scriptCalls).toEqual([{ sceneId: sc.id, instruction: "更口語；縮短到 30 秒", currentScript: d.scripts[sc.id]!.script }]);
+    expect((await detail()).scripts[sc.id]!.script).toBe("改寫後的講稿。");
   });
 });

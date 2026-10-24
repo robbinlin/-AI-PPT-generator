@@ -180,8 +180,8 @@ export function createEditorStore(): StoreApi<EditorState> {
           const previousText = savedScript(state, sceneId);
           if (draft !== undefined && draft === script) {
             patch.drafts = withoutKey(state.drafts, sceneId);
-          } else if (source === "ai" && (draft ?? previousText) !== script) {
-            // An AI rewrite replaces whatever was there; keep it undoable.
+          } else if (source !== "user" && (draft ?? previousText) !== script) {
+            // An AI rewrite or translation replaces whatever was there; keep it undoable.
             const h = state.history[sceneId] ?? { past: [], future: [] };
             patch.history = { ...state.history, [sceneId]: { past: pushBounded(h.past, draft ?? previousText), future: [] } };
             patch.drafts = withoutKey(state.drafts, sceneId);

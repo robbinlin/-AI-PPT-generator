@@ -21,6 +21,8 @@ import {
   type UpdateProjectRequest,
   type UpdateSceneRequest,
   type UpdateScriptRequest,
+  type UpdateGlossaryRequest,
+  type UpdateGlossaryResponse,
 } from "@lvs/shared";
 
 /*
@@ -68,7 +70,11 @@ export type AvatarOption = z.infer<typeof AvatarCharacterSchema>;
  * `GET /projects` returns `Project[]`, which has no page count. The list view reads an
  * optional `pageCount` if the API adds it (the mock does) and shows "not uploaded" otherwise.
  */
-export const ProjectSummary = Project.extend({ pageCount: z.number().int().nonnegative().optional() });
+export const ProjectSummary = Project.extend({
+  pageCount: z.number().int().nonnegative().optional(),
+  /** Pages not hidden; less than `pageCount` when some are switched off. */
+  activePageCount: z.number().int().nonnegative().optional(),
+});
 export type ProjectSummary = z.infer<typeof ProjectSummary>;
 
 export type EstimateType = "generate_script" | "synthesize_speech" | "generate_avatar" | "render_video" | "translate_script";
@@ -122,6 +128,8 @@ export interface ApiClient {
   updateScene(projectId: string, sceneId: string, req: UpdateSceneRequest): Promise<Scene>;
   updateScript(projectId: string, sceneId: string, req: UpdateScriptRequest): Promise<ScriptRevision>;
   listScriptRevisions(projectId: string, sceneId: string): Promise<ScriptRevision[]>;
+  /** Saves corrected glossary readings; pages that use a changed term get new narration text. */
+  updateGlossary(projectId: string, req: UpdateGlossaryRequest): Promise<UpdateGlossaryResponse>;
 
   enqueueJob(projectId: string, req: EnqueueJobRequest): Promise<EnqueueJobResponse>;
   listJobs(projectId: string, status?: JobStatus): Promise<Job[]>;

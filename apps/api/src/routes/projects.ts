@@ -14,6 +14,7 @@ import {
   JobType,
   ProjectSettings,
   ReorderSlidesRequest,
+  UpdateGlossaryRequest,
   UpdateProjectRequest,
   UpdateSceneRequest,
   UpdateScriptRequest,
@@ -26,6 +27,7 @@ import { badRequest, notFound } from "../errors.js";
 import { renderScriptDocument } from "../jobs/handlers/export-script.js";
 import { estimateJob } from "../services/estimate.js";
 import { getProjectDetail, latestOutline, latestSourceDocument, projectListExtras, requireProject } from "../services/projects.js";
+import { updateGlossary } from "../services/glossary.js";
 import { createScriptRevision } from "../services/scripts.js";
 import { createTranslatedProject } from "../services/translation.js";
 import { SOURCE_MIME, sniffSourceKind } from "../util/magic.js";
@@ -57,7 +59,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     );
     return rows.map((r) => {
       const e = extras.get(r.id) ?? {};
-      return { ...toProject(r), pageCount: e.pageCount, ...(e.thumbnailAssetId ? { thumbnailAssetId: e.thumbnailAssetId } : {}) };
+      return { ...toProject(r), pageCount: e.pageCount, activePageCount: e.activePageCount,...(e.thumbnailAssetId ? { thumbnailAssetId: e.thumbnailAssetId } : {}) };
     });
   });
 
@@ -267,6 +269,15 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
       await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, project.id));
     }
     return revision;
+  });
+
+  app.put<{ Params: { id: string } }>("/projects/:id/outline/glossary", async (req) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const project = await requireProject(db, ownerId, req.params.id);
+    const body = parse(UpdateGlossaryRequest, req.body);
+    const result = await updateGlossary(ctx, ownerId, project.id, body.glossary);
+    await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, project.id));
+    return result;
   });
 
   app.get<{ Params: { id: string; sceneId: string } }>("/projects/:id/scenes/:sceneId/scripts", async (req) => {

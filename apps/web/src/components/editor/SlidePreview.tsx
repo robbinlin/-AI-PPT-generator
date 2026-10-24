@@ -75,7 +75,9 @@ export function SlidePreview({
             projectId={project.id}
             layout={layout}
             ratio={ratio}
-            asset={scene?.avatar.assetId ? assets[scene.avatar.assetId] : undefined}
+            // An outdated clip may show a different presenter (an earlier choice): only a current
+            // clip plays; otherwise the selected presenter's still stands in, dimmed and labelled.
+            asset={scene?.avatar.assetId && scene.avatar.status === "ready" ? assets[scene.avatar.assetId] : undefined}
             stillUrl={avatarPreviewUrl}
             status={scene?.avatar.status ?? "missing"}
             onDraft={onLayoutCommit ? setDraft : undefined}
@@ -205,7 +207,7 @@ function AvatarOverlay({
         <span
           data-testid="avatar-status-badge"
           // Top edge of the avatar: the bottom is where subtitles usually sit.
-          className="pointer-events-none absolute inset-x-0 top-1 z-10 mx-auto w-fit max-w-full rounded bg-black/80 px-1.5 py-0.5 text-center text-[11px] leading-tight font-medium text-amber-200"
+          className="pointer-events-none absolute inset-x-0 top-1 z-10 mx-auto w-fit max-w-full rounded bg-black/80 px-1.5 py-0.5 text-center text-xs leading-tight font-medium text-amber-200"
         >
           {status === "missing"
             ? t.preview.avatarMissing

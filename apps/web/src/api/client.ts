@@ -20,6 +20,8 @@ import {
   type UpdateProjectRequest,
   type UpdateSceneRequest,
   type UpdateScriptRequest,
+  type UpdateGlossaryRequest,
+  UpdateGlossaryResponse,
 } from "@lvs/shared";
 import {
   ApiRequestError,
@@ -414,6 +416,10 @@ export class HttpApiClient implements ApiClient {
       `/projects/${enc(projectId)}/scenes/${enc(sceneId)}/script`,
       req,
     );
+  }
+
+  updateGlossary(projectId: string, req: UpdateGlossaryRequest) {
+    return this.json(UpdateGlossaryResponse, "PUT", `/projects/${enc(projectId)}/outline/glossary`, req);
   }
 
   listScriptRevisions(projectId: string, sceneId: string) {

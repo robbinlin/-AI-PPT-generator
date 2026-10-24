@@ -34,8 +34,8 @@ export function currentRenderHashes(scenesInOrder: Scene[], slidesById: Map<stri
  * List-page extras for many projects at once (two queries, no N+1): page count of the latest
  * source document and the image of the first visible page.
  */
-export async function projectListExtras(db: Db, projectIds: string[]): Promise<Map<string, { pageCount?: number; thumbnailAssetId?: string }>> {
-  const out = new Map<string, { pageCount?: number; thumbnailAssetId?: string }>();
+export async function projectListExtras(db: Db, projectIds: string[]): Promise<Map<string, { pageCount?: number; activePageCount?: number; thumbnailAssetId?: string }>> {
+  const out = new Map<string, { pageCount?: number; activePageCount?: number; thumbnailAssetId?: string }>();
   if (projectIds.length === 0) return out;
   const [docRows, slideRows] = await Promise.all([
     db
@@ -58,6 +58,7 @@ export async function projectListExtras(db: Db, projectIds: string[]): Promise<M
   }
   for (const sl of slideRows) {
     const e = out.get(sl.projectId)!;
+    e.activePageCount = (e.activePageCount ?? 0) + 1;
     if (e.thumbnailAssetId) continue;
     const id = sl.thumbnailAssetId ?? sl.imageAssetId;
     if (id) e.thumbnailAssetId = id;
@@ -152,7 +153,7 @@ export function withEffectiveStatuses(
       settings,
     });
     const out: Scene = { ...scene };
-    // A user-authored script is never stale because of upstream changes; AI scripts are.
+    // A user-authored or translated script is never stale because of upstream changes; AI scripts are.
     if (script?.source === "ai") out.script = { ...scene.script, status: effectiveStatus(scene.script, scriptHash) };
     if (script) {
       const aHash = audioInputHash({

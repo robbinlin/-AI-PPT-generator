@@ -95,7 +95,7 @@ function ProviderPills({
           } ${p.configured ? "" : "opacity-60"}`}
         >
           {p.displayName}
-          {priceHint(p.id) && <span className="ml-1 text-[10px] text-neutral-400">· {priceHint(p.id)}</span>}
+          {priceHint(p.id) && <span className="ml-1 text-xs text-neutral-400">· {priceHint(p.id)}</span>}
           {!p.configured && " ⚠"}
         </button>
       ))}
@@ -220,14 +220,14 @@ function AvatarSection({
       title={t.studio.avatar}
       aside={
         avatars.length > GALLERY_COUNT ? (
-          <button type="button" className="text-[11px] text-accent-300 hover:underline" onClick={() => setShowAll(true)}>
+          <button type="button" className="text-xs text-accent-300 hover:underline" onClick={() => setShowAll(true)}>
             {fmt(t.studio.showAll, { n: avatars.length })}
           </button>
         ) : undefined
       }
     >
       <ProviderPills providers={providers} kind="avatar" value={s.providerId} onChange={(providerId) => setAvatar({ providerId, enabled: true })} />
-      {provider?.hint && <p className="text-[11px] text-amber-300/90">{provider.hint}</p>}
+      {provider?.hint && <p className="text-xs text-amber-300/90">{provider.hint}</p>}
       <AvatarProviderCompare providers={providers} selected={s.enabled ? s.providerId : undefined} />
       <div className="grid grid-cols-4 gap-2" data-testid="avatar-gallery">
         {custom && (
@@ -235,7 +235,7 @@ function AvatarSection({
             type="button"
             onClick={() => fileInput.current?.click()}
             disabled={progress !== null}
-            className="flex aspect-[3/4] flex-col items-center justify-center gap-1 rounded-md border border-dashed border-neutral-600 text-[11px] text-neutral-300 hover:border-neutral-400"
+            className="flex aspect-[3/4] flex-col items-center justify-center gap-1 rounded-md border border-dashed border-neutral-600 text-xs text-neutral-300 hover:border-neutral-400"
           >
             {progress !== null ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Plus className="size-4" aria-hidden />}
             {progress !== null ? `${Math.round(progress * 100)}%` : t.studio.create}
@@ -246,7 +246,7 @@ function AvatarSection({
           aria-pressed={!s.enabled}
           onClick={() => setAvatar({ enabled: false })}
           title={t.studio.noAvatar}
-          className={`flex aspect-[3/4] flex-col items-center justify-center gap-1 rounded-md border text-[11px] ${
+          className={`flex aspect-[3/4] flex-col items-center justify-center gap-1 rounded-md border text-xs ${
             !s.enabled ? "border-accent-400 bg-accent-500/15 text-accent-100" : "border-neutral-700 text-neutral-400 hover:border-neutral-500"
           }`}
         >
@@ -291,7 +291,7 @@ function AvatarSection({
           <span className="truncate">
             {t.studio.current}：<span className="text-neutral-200">{names.get(selected.id) ?? selected.name}</span>
             {s.providerId === "heygen" && (
-              <span className="block text-[11px] text-neutral-400" data-testid="avatar-engine">
+              <span className="block text-xs text-neutral-400" data-testid="avatar-engine">
                 {s.avatarSource === "video" ? t.studio.engineVideo : t.studio.enginePhoto}
               </span>
             )}
@@ -303,7 +303,7 @@ function AvatarSection({
           )}
         </div>
       )}
-      {custom && <p className="text-[11px] text-neutral-500">{t.settings.uploadCharacterHint}</p>}
+      {custom && <p className="text-xs text-neutral-500">{t.settings.uploadCharacterHint}</p>}
       <AllAvatarsModal
         open={showAll}
         onClose={() => setShowAll(false)}
@@ -333,7 +333,7 @@ function AvatarProviderCompare({ providers, selected }: { providers: ProviderInf
   ] as const;
   const name = (id: (typeof ids)[number]) => c[id].name;
   return (
-    <div className="rounded-md border border-neutral-800 text-[11px]" data-testid="avatar-compare">
+    <div className="rounded-md border border-neutral-800 text-xs" data-testid="avatar-compare">
       <table className="w-full table-fixed border-collapse">
         <caption className="px-2 pt-1.5 pb-1 text-left text-xs font-medium text-neutral-300">{c.title}</caption>
         <thead>
@@ -408,7 +408,7 @@ function AvatarTile({
           {[a.source ? t.studio.source[a.source] : "", number].filter(Boolean).join(" ")}
         </span>
       )}
-      <span className="absolute inset-x-0 bottom-0 line-clamp-2 bg-black/75 px-1 py-0.5 text-[11px] leading-tight break-all text-neutral-100">{name}</span>
+      <span className="absolute inset-x-0 bottom-0 line-clamp-2 bg-black/75 px-1 py-0.5 text-xs leading-tight break-all text-neutral-100">{name}</span>
       {selected && (
         <span className="absolute top-1 right-1 rounded-full bg-accent-500 p-0.5 text-white">
           <Check className="size-3" aria-hidden />
@@ -437,7 +437,8 @@ function AllAvatarsModal({
 }) {
   const api = useApi();
   const [q, setQ] = useState("");
-  const [onlyMine, setOnlyMine] = useState(false);
+  // Hundreds of stock presenters bury the user's own: start with theirs when they have any.
+  const [onlyMine, setOnlyMine] = useState(() => avatars.some((a) => a.kind === "personal"));
   const list = avatars.filter((a) => (!onlyMine || a.kind === "personal") && a.name.toLowerCase().includes(q.trim().toLowerCase()));
   return (
     <Modal title={t.studio.allAvatars} open={open} onClose={onClose} width="w-[760px]">
@@ -500,7 +501,7 @@ function LayoutSection({
                 ? setAvatar({ layout: { ...layout, ...p.layout } })
                 : setAvatar({ enabled: true, layout: { ...layout, ...p.layout } })
             }
-            className={`flex flex-col items-center gap-1 rounded-md border p-1.5 text-[11px] ${
+            className={`flex flex-col items-center gap-1 rounded-md border p-1.5 text-xs ${
               active === p.id ? "border-accent-400 bg-accent-500/10 text-accent-100" : "border-neutral-700 text-neutral-300 hover:border-neutral-500"
             }`}
           >
@@ -509,7 +510,7 @@ function LayoutSection({
           </button>
         ))}
       </div>
-      <p className="text-[11px] text-neutral-500">{t.studio.dragHint}</p>
+      <p className="text-xs text-neutral-500">{t.studio.dragHint}</p>
       <div className="grid grid-cols-2 gap-3">
         <Field label={t.studio.background}>
           <ColorInput label={t.studio.background} value={s.backgroundColor ?? "#000000"} onCommit={(backgroundColor) => patch({ backgroundColor })} />
@@ -522,7 +523,7 @@ function LayoutSection({
         <CommitRange label={t.settings.size} value={layout.size} min={0.1} max={1} step={0.01} format={pct} onCommit={(size) => setLayout({ size })} />
       </Field>
       {s.avatar.enabled && layout.visible !== false && layout.size < minReadableSize(layout) && (
-        <p className="text-[11px] text-amber-300" role="note" data-testid="avatar-size-hint">
+        <p className="text-xs text-amber-300" role="note" data-testid="avatar-size-hint">
           {fmt(t.studio.sizeSmall, { min: pct(minReadableSize(layout)) })}
         </p>
       )}
@@ -648,7 +649,7 @@ function VoiceSection({
   return (
     <Section title={t.studio.voice}>
       <ProviderPills providers={providers} kind="tts" value={s.providerId} onChange={(providerId) => setVoice({ providerId })} />
-      {provider?.hint && <p className="text-[11px] text-amber-300/90">{provider.hint}</p>}
+      {provider?.hint && <p className="text-xs text-amber-300/90">{provider.hint}</p>}
       <ul className="max-h-64 overflow-y-auto rounded-md border border-neutral-800" role="listbox" aria-label={t.settings.voiceId} data-testid="voice-list">
         {voices.map((v) => {
           const isSel = v.id === s.voiceId;
@@ -670,7 +671,7 @@ function VoiceSection({
               </button>
               <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setVoice({ voiceId: v.id })}>
                 <div className="truncate text-sm text-neutral-100">{v.name}</div>
-                {v.tags && v.tags.length > 0 && <div className="truncate text-[10px] text-neutral-500">{v.tags
+                {v.tags && v.tags.length > 0 && <div className="truncate text-xs text-neutral-500">{v.tags
                     .slice(0, 3)
                     .map((tag) => (t.studio.voiceTags as Record<string, string>)[tag] ?? tag)
                     .join(" · ")}</div>}
@@ -803,12 +804,12 @@ function SubtitleSection({
               aria-pressed={active === p.id}
               disabled={!sub.enabled}
               onClick={() => setStyle(p.style)}
-              className={`flex flex-col items-center gap-1 rounded-md border p-1.5 text-[11px] disabled:opacity-40 ${
+              className={`flex flex-col items-center gap-1 rounded-md border p-1.5 text-xs disabled:opacity-40 ${
                 active === p.id ? "border-accent-400 bg-accent-500/10 text-accent-100" : "border-neutral-700 text-neutral-300 hover:border-neutral-500"
               }`}
             >
               <span className="flex h-9 w-full items-center justify-center rounded-sm bg-gradient-to-br from-slate-400 to-slate-600">
-                <span className="rounded px-1 text-[11px] leading-tight" style={subtitleCss({ ...preview, fontSizePx: 11 }, (px) => `${px}px`)}>
+                <span className="rounded px-1 text-xs leading-tight" style={subtitleCss({ ...preview, fontSizePx: 11 }, (px) => `${px}px`)}>
                   字幕 Text
                 </span>
               </span>

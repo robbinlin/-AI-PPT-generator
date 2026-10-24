@@ -24,6 +24,8 @@ import {
   type UpdateProjectRequest,
   type UpdateSceneRequest,
   type UpdateScriptRequest,
+  type UpdateGlossaryRequest,
+  type UpdateGlossaryResponse,
 } from "@lvs/shared";
 import {
   computeTotalDuration,
@@ -1307,6 +1309,28 @@ export class MockApiClient implements ApiClient {
     this.emit(ps, { kind: "script", script: rev });
     this.emit(ps, { kind: "scene", scene });
     return clone(rev);
+  }
+
+  async updateGlossary(projectId: string, req: UpdateGlossaryRequest): Promise<UpdateGlossaryResponse> {
+    await this.wait();
+    const ps = this.state(projectId);
+    const prev = ps.detail.outline;
+    if (!prev) throw new ApiRequestError("還沒有大綱，請先產生大綱", 409, "conflict");
+    const before = new Map(prev.glossary.map((g) => [g.term, g.reading ?? ""]));
+    const changed = req.glossary.filter((g) => (before.get(g.term) ?? "") !== (g.reading ?? "")).map((g) => g.term);
+    for (const term of before.keys()) if (!req.glossary.some((g) => g.term === term)) changed.push(term);
+    ps.detail.outline = { ...prev, id: uuid(), version: prev.version + 1, glossary: clone(req.glossary), createdAt: nowIso() };
+    this.emit(ps, { kind: "outline", outline: ps.detail.outline });
+    const affectedSceneIds: string[] = [];
+    for (const scene of ps.detail.scenes) {
+      const rev = ps.detail.scripts[scene.id];
+      if (!rev || !changed.some((term) => rev.script.includes(term))) continue;
+      affectedSceneIds.push(scene.id);
+      this.markDownstreamStale(scene, ["audio", "subtitle", "avatar"]);
+      this.emit(ps, { kind: "scene", scene });
+    }
+    this.touch(ps);
+    return { outline: clone(ps.detail.outline), affectedSceneIds };
   }
 
   async listScriptRevisions(

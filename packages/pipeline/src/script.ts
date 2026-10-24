@@ -23,6 +23,9 @@ export interface GenerateSceneScriptInput {
   /** Scripts already written for earlier slides (last 1–2), to keep tone and avoid repetition. */
   previousScripts?: string[];
   attachImage?: boolean;
+  /** A rewrite with a direction: revise `currentScript` as asked instead of writing from scratch. */
+  instruction?: string;
+  currentScript?: string;
 }
 
 export interface GenerateSceneScriptResult {
@@ -107,9 +110,33 @@ Language: ${describeLanguage(settings)}.`;
     "",
     zh ? "## 撰寫規則" : "## Rules",
     ...rules.filter(Boolean).map((r) => `- ${r}`),
+    ...revisionRequest(input, zh),
   ].join("\n");
 
   return { system, prompt };
+}
+
+/**
+ * The user's direction for 「AI 重寫本頁」. It comes last so it wins over the default length and
+ * style rules (e.g. 「縮短到 30 秒」), while the content boundary above still applies.
+ */
+function revisionRequest(input: GenerateSceneScriptInput, zh: boolean): string[] {
+  const instruction = input.instruction?.trim();
+  if (!instruction) return [];
+  const current = input.currentScript?.trim();
+  return zh
+    ? [
+        "",
+        "## 使用者的修改要求（優先於上面的長度與風格規則）",
+        instruction,
+        ...(current ? ["", "## 目前的講稿（依要求改寫，沒被要求改的內容盡量保留）", current] : []),
+      ]
+    : [
+        "",
+        "## The user's revision request (overrides the length and style rules above)",
+        instruction,
+        ...(current ? ["", "## Current script (revise it as asked; keep what the request does not touch)", current] : []),
+      ];
 }
 
 export async function generateSceneScript(input: GenerateSceneScriptInput): Promise<GenerateSceneScriptResult> {

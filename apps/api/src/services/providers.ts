@@ -68,7 +68,7 @@ export class KeyCrypto {
   }
 }
 
-const PROVIDER_KIND_LABEL: Record<string, string> = { llm: "AI 講稿", tts: "語音", avatar: "虛擬人像" };
+const PROVIDER_KIND_LABEL: Record<string, string> = { llm: "AI 講稿", tts: "語音", avatar: "人像" };
 
 /** Display name for a provider id in user-facing messages ("HeyGen 產生失敗：…"). */
 export function providerLabel(id: string): string {

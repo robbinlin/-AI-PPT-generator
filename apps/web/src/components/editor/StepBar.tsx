@@ -1,8 +1,13 @@
 import { useRef } from "react";
 import { Check, ChevronRight } from "lucide-react";
+import type { ProjectDetail } from "@lvs/shared";
+import type { EstimateType } from "../../api/types";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { ACCEPTED_EXTENSIONS } from "../../hooks/useEditorActions";
+import { usePendingEstimate } from "../../hooks/usePendingEstimate";
 import { fmt, t } from "../../i18n";
+import { twdShort } from "../../lib/paidJobs";
+import { confirmReplaceSource } from "../../lib/replaceSource";
 import { latestProjectAsset } from "../../lib/scenes";
 import { visibleScenes } from "../../lib/settingsImpact";
 import { useEditor } from "../../store/editorStore";
@@ -23,15 +28,14 @@ interface Step {
   tab?: Tab;
 }
 
-/**
- * The guided path VoAI offers, on top of the free-form editor: 上傳 → 講稿 → 語音 → 人像 → 匯出,
- * each with its progress, and one button for the next thing to do.
- */
-export function StepBar({ actions }: { actions: EditorActions }) {
-  const detail = useEditor((s) => s.detail);
-  const fileInput = useRef<HTMLInputElement>(null);
-  if (!detail) return null;
+/** Job behind each step's 下一步 button, for the price shown on it. */
+const COST_TYPE: Partial<Record<StepId, EstimateType>> = {
+  script: "generate_script",
+  voice: "synthesize_speech",
+  avatar: "generate_avatar",
+};
 
+export function buildSteps(detail: ProjectDetail): { steps: Step[]; next: Step | undefined } {
   const busy = (type: string) => detail.activeJobs.some((j) => j.type === type);
   const scenes = visibleScenes(detail);
   const spoken = scenes.filter((s) => !s.muted);
@@ -49,7 +53,7 @@ export function StepBar({ actions }: { actions: EditorActions }) {
 
   const steps: Step[] = [
     { id: "upload", done: hasSlides, busy: busy("parse_document") || detail.sourceDocument?.parseStatus === "running" },
-    { id: "script", done: hasSlides && scriptCount.done === scriptCount.total, busy: busy("generate_script"), count: scriptCount, tab: "script" },
+    { id: "script", done: hasSlides && scriptCount.done === scriptCount.total, busy: busy("generate_script") || busy("translate_script"), count: scriptCount, tab: "script" },
     { id: "voice", done: hasSlides && audioCount.done === audioCount.total, busy: busy("synthesize_speech"), count: audioCount, tab: "studio" },
     {
       id: "avatar",
@@ -61,13 +65,37 @@ export function StepBar({ actions }: { actions: EditorActions }) {
     },
     { id: "export", done: videoCurrent, busy: busy("render_video") },
   ];
-  const next = steps.find((s) => !s.done && !s.skipped);
+  return { steps, next: steps.find((s) => !s.done && !s.skipped) };
+}
+
+/**
+ * The guided path VoAI offers, on top of the free-form editor: 上傳 → 講稿 → 語音 → 人像 → 匯出,
+ * each with its progress, and one button (with its price) for the next thing to do.
+ */
+export function StepBar({ actions }: { actions: EditorActions }) {
+  const detail = useEditor((s) => s.detail);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const plan = detail ? buildSteps(detail) : undefined;
+  const costType = plan?.next ? COST_TYPE[plan.next.id] : undefined;
+  // The price follows every status or settings change.
+  const revision = detail
+    ? detail.scenes.map((s) => `${s.script.status}${s.audio.status}${s.avatar.status}${s.muted}`).join("") + JSON.stringify(detail.project.settings)
+    : "";
+  const nextCost = usePendingEstimate(detail?.project.id, costType, revision);
+  if (!detail || !plan) return null;
+  const { steps, next } = plan;
+
+  // A finished upload step looks like "look back", so replacing the deck always asks first.
+  const pickFile = async () => {
+    if (!(await confirmReplaceSource(detail))) return;
+    fileInput.current?.click();
+  };
 
   const runNext = () => {
     if (!next) return;
     switch (next.id) {
       case "upload":
-        fileInput.current?.click();
+        void pickFile();
         return;
       case "script":
         openEditorTab("script");
@@ -86,7 +114,7 @@ export function StepBar({ actions }: { actions: EditorActions }) {
   };
 
   const stepTitle: Record<StepId, string> = {
-    upload: t.steps.titleUpload,
+    upload: detail.sourceDocument ? t.steps.titleReplace : t.steps.titleUpload,
     script: t.steps.titleScript,
     voice: t.steps.titleStudio,
     avatar: t.steps.titleStudio,
@@ -114,7 +142,7 @@ export function StepBar({ actions }: { actions: EditorActions }) {
                 onClick={() => {
                   // Every step does something: open its tab, the upload dialog, or the export menu.
                   if (step.id === "export") window.dispatchEvent(new Event(OPEN_EXPORT_EVENT));
-                  else if (step.id === "upload") fileInput.current?.click();
+                  else if (step.id === "upload") void pickFile();
                   else if (step.tab) openEditorTab(step.tab);
                 }}
                 title={stepTitle[step.id]}
@@ -150,6 +178,7 @@ export function StepBar({ actions }: { actions: EditorActions }) {
             <span className="hidden text-neutral-400 min-[1200px]:inline">{t.steps.next}</span>
             <Button size="sm" variant="primary" disabled={next.busy} onClick={runNext} data-testid="step-next">
               {nextLabel[next.id]}
+              {nextCost && nextCost.sceneCount !== 0 && <span className="ml-1 font-normal opacity-80">（{twdShort(nextCost.total, nextCost.currency)}）</span>}
             </Button>
           </>
         ) : (

@@ -17,7 +17,9 @@ import { useEditorActions } from "../hooks/useEditorActions";
 import { useEditorKeyboard } from "../hooks/useEditorKeyboard";
 import { useScriptAutosave } from "../hooks/useScriptAutosave";
 import { fmt, t } from "../i18n";
+import { friendlyJobError } from "../lib/jobErrors";
 import { notifyIfHidden } from "../lib/notify";
+import { takePendingUpload } from "../lib/pendingUpload";
 import { editorStore, useEditor } from "../store/editorStore";
 import { toast } from "../store/toastStore";
 
@@ -73,7 +75,7 @@ export function EditorPage() {
       // A failed job otherwise only shows in the jobs drawer, which reads as "nothing happened".
       if (event.kind === "job" && event.job.status === "failed" && !announced.has(event.job.id)) {
         announced.add(event.job.id);
-        const message = fmt(t.jobs.failedToast, { type: t.jobs.types[event.job.type], message: event.job.error ?? "" });
+        const message = fmt(t.jobs.failedToast, { type: t.jobs.types[event.job.type], message: friendlyJobError(event.job.error) ?? event.job.error ?? "" });
         toast(message, "error");
         notifyIfHidden(message, editorStore.getState().detail?.project.name ?? "");
       }
@@ -96,7 +98,13 @@ export function EditorPage() {
       }
     });
 
-    refresh().catch((err: unknown) => alive && setError(errorMessage(err)));
+    refresh()
+      .then(() => {
+        // A deck picked in the new-project dialog: upload it now that the editor shows progress.
+        const file = alive ? takePendingUpload(projectId) : undefined;
+        if (file) void actionsRef.current.upload(file);
+      })
+      .catch((err: unknown) => alive && setError(errorMessage(err)));
     api.listJobs(projectId).then(
       (jobs) => alive && editorStore.getState().setRecentJobs(jobs),
       () => undefined,

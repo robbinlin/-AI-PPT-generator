@@ -11,9 +11,9 @@ import type {
 import { Languages } from "lucide-react";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { useStudioLists } from "../../hooks/useStudioLists";
-import { useTranslateProject } from "../../hooks/useTranslateProject";
+import { targetLanguageName, useTranslateProject } from "../../hooks/useTranslateProject";
 import { Button } from "../ui/Button";
-import { t } from "../../i18n";
+import { fmt, t } from "../../i18n";
 import { useEditor } from "../../store/editorStore";
 import { Field, Select, type Option } from "../ui/Field";
 import { CommitNumber, CommitText, SettingsSection } from "./settingsFields";
@@ -73,7 +73,7 @@ export function SettingsPanel({
 
   return (
     <div className="pb-6">
-      <p className="px-4 pt-3 text-[11px] text-neutral-500">
+      <p className="px-4 pt-3 text-xs text-neutral-500">
         {t.settings.savedHint}
       </p>
 
@@ -113,12 +113,12 @@ export function SettingsPanel({
             />
           </Field>
         </div>
-        {s.language !== "en" && hasSlides && (
+        {s.language !== "mixed" && hasSlides && (
           <div className="flex items-center gap-2 rounded-md border border-neutral-800 px-3 py-2">
             <Languages className="size-4 shrink-0 text-neutral-400" aria-hidden />
-            <p className="flex-1 text-xs text-neutral-400">{t.projects.translateHint}</p>
-            <Button size="sm" onClick={() => void translate({ id: project.id, name: project.name })} data-testid="translate-project">
-              {t.translate.settingsButton}
+            <p className="flex-1 text-xs text-neutral-400">{fmt(t.projects.translateHint, { lang: targetLanguageName(s.language) })}</p>
+            <Button size="sm" onClick={() => void translate(project)} data-testid="translate-project">
+              {fmt(t.translate.settingsButton, { lang: targetLanguageName(s.language) })}
             </Button>
           </div>
         )}
@@ -175,7 +175,7 @@ export function SettingsPanel({
             />
           </Field>
         </div>
-        <p className="text-[11px] text-neutral-500">{t.settings.studioMoved}</p>
+        <p className="text-xs text-neutral-500">{t.settings.studioMoved}</p>
       </SettingsSection>
     </div>
   );

@@ -231,7 +231,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       return toOutline(row!);
     },
 
-    async generateScript({ ctx, scene, slide, prev, next, outline, settings, previousScript }) {
+    async generateScript({ ctx, scene, slide, prev, next, outline, settings, previousScript, instruction, currentScript }) {
       if (!outline) throw new NonRetryableJobError("還沒有全篇大綱，請先產生大綱");
       const ownerId = await ownerOf(ctx);
       const llm = await withProvider(() => providers.llm(ownerId, settings.llmProviderId));
@@ -254,6 +254,8 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         allocatedSec: allocated,
         previousScripts: previousScript ? [previousScript] : [],
         attachImage: config.SCRIPT_ATTACH_IMAGE,
+        instruction,
+        currentScript,
       }));
       await usage(ctx, llm.id, result.usage);
       throwIfAborted(ctx.signal);

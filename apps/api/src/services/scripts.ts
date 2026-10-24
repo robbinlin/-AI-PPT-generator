@@ -52,7 +52,7 @@ export interface CreateRevisionInput {
   script: string;
   pronunciationText?: string;
   subtitleText?: string;
-  source: "ai" | "user";
+  source: ScriptRevision["source"];
   language: Language;
   outlineRevisionId?: string;
   /** Hash of the inputs that produced an AI script; for user scripts the hash of the text. */

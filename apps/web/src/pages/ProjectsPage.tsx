@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import { Copy, FileStack, Languages, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { Copy, FileStack, FileUp, Languages, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { useApi, useAssetUrl } from "../api/context";
 import { errorMessage, type ProjectSummary } from "../api/types";
 import { ConfirmHost } from "../components/ConfirmHost";
@@ -10,8 +10,9 @@ import { Field, TextInput } from "../components/ui/Field";
 import { Spinner } from "../components/ui/Misc";
 import { Modal } from "../components/ui/Modal";
 import { fmt, t } from "../i18n";
-import { useTranslateProject } from "../hooks/useTranslateProject";
+import { targetLanguageName, useTranslateProject } from "../hooks/useTranslateProject";
 import { formatRelativeTime } from "../lib/format";
+import { setPendingUpload } from "../lib/pendingUpload";
 import { toast } from "../store/toastStore";
 
 type PendingAction = { kind: "rename" | "delete"; project: ProjectSummary };
@@ -23,6 +24,8 @@ export function ProjectsPage() {
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const [droppedFile, setDroppedFile] = useState<File | null>(null);
+  const [pageDragging, setPageDragging] = useState(false);
   const translate = useTranslateProject();
 
   const load = useCallback(() => {
@@ -76,6 +79,30 @@ export function ProjectsPage() {
           <Spinner /> {t.app.loading}
         </div>
       )}
+      <button
+        type="button"
+        className={`mb-6 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-6 text-sm transition-colors ${
+          pageDragging ? "border-accent-400 bg-accent-500/10 text-accent-100" : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:text-neutral-200"
+        }`}
+        onClick={() => setDialogOpen(true)}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setPageDragging(true);
+        }}
+        onDragLeave={() => setPageDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setPageDragging(false);
+          const file = e.dataTransfer.files[0];
+          if (!file) return;
+          setDroppedFile(file);
+          setDialogOpen(true);
+        }}
+        data-testid="projects-drop"
+      >
+        <FileUp className="size-5" aria-hidden />
+        {pageDragging ? t.projects.pageDropActive : t.projects.pageDrop}
+      </button>
       {projects?.length === 0 && <p className="text-sm text-neutral-400">{t.projects.empty}</p>}
 
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
@@ -94,10 +121,17 @@ export function ProjectsPage() {
 
       <NewProjectDialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onCreate={async (req) => {
-          const project = await api.createProject(req);
+        initialFile={droppedFile}
+        onClose={() => {
           setDialogOpen(false);
+          setDroppedFile(null);
+        }}
+        onCreate={async (req, file) => {
+          const project = await api.createProject(req);
+          // The editor uploads it on open, with the usual progress and parse status.
+          if (file) setPendingUpload(project.id, file);
+          setDialogOpen(false);
+          setDroppedFile(null);
           navigate(`/projects/${project.id}`);
         }}
       />
@@ -178,8 +212,15 @@ function ProjectCard({
         <div className="min-w-0 pr-8">
           <h2 className="truncate text-sm font-semibold text-neutral-100">{project.name}</h2>
           <p className="mt-1 flex items-center gap-2 text-xs text-neutral-400">
+            <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs font-medium text-neutral-300" data-testid="language-badge">
+              {t.projects.languageBadge[project.settings.language]}
+            </span>
             <span>
-              {project.pageCount !== undefined ? fmt(t.projects.pages, { n: project.pageCount }) : t.projects.pagesUnknown}
+              {project.pageCount === undefined
+                ? t.projects.pagesUnknown
+                : project.activePageCount !== undefined && project.activePageCount < project.pageCount
+                  ? fmt(t.projects.activePages, { n: project.pageCount, active: project.activePageCount })
+                  : fmt(t.projects.pages, { n: project.pageCount })}
             </span>
             <span aria-hidden>·</span>
             <span>{fmt(t.projects.updated, { time: formatRelativeTime(project.updatedAt) })}</span>
@@ -203,7 +244,9 @@ function ProjectCard({
           >
             <MenuItem icon={Pencil} label={t.projects.rename} onClick={pick(onRename)} />
             <MenuItem icon={Copy} label={t.projects.duplicate} onClick={pick(onDuplicate)} />
-            {onTranslate && <MenuItem icon={Languages} label={t.projects.translate} onClick={pick(onTranslate)} />}
+            {onTranslate && project.settings.language !== "mixed" && (
+              <MenuItem icon={Languages} label={fmt(t.projects.translate, { lang: targetLanguageName(project.settings.language) })} onClick={pick(onTranslate)} />
+            )}
             <MenuItem icon={Trash2} label={t.projects.delete} onClick={pick(onDelete)} danger />
           </div>
         )}

@@ -5,6 +5,7 @@ import { ZodError } from "zod";
 import { createAuth } from "./auth.js";
 import { loadConfig, type Config } from "./config.js";
 import type { AppContext } from "./context.js";
+import { runBackfills } from "./db/backfill.js";
 import { createDb, type DbHandle } from "./db/client.js";
 import { ApiHttpError } from "./errors.js";
 import { EventBus } from "./events/bus.js";
@@ -55,6 +56,7 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<BuiltS
   for (const w of config.warnings) app.log.warn(w);
 
   const dbHandle = opts.dbHandle ?? (await createDb({ databaseUrl: config.DATABASE_URL, pgliteDir: config.PGLITE_DIR }));
+  await runBackfills(dbHandle.db);
   const signer = new AssetUrlSigner(config.assetUrlSecret, config.PUBLIC_BASE_URL);
   const storage = opts.storage ?? new LocalStorageService(config.STORAGE_ROOT, signer);
   const bus = new EventBus();

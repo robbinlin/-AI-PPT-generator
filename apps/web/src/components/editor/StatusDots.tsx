@@ -57,7 +57,7 @@ export function StatusDots({ scene }: { scene: Scene }) {
               title={label}
               data-field={field}
               data-status="unused"
-              className="flex h-4 min-w-4 items-center justify-center rounded border border-neutral-700 px-0.5 text-[10px] leading-none font-medium text-neutral-500 line-through"
+              className="flex h-5 min-w-5 items-center justify-center rounded border border-neutral-700 px-0.5 text-xs leading-none font-medium text-neutral-500 line-through"
             >
               {t.status[field].slice(0, 1)}
             </li>
@@ -72,7 +72,7 @@ export function StatusDots({ scene }: { scene: Scene }) {
             title={label}
             data-field={field}
             data-status={state.status}
-            className={`flex h-4 min-w-4 items-center justify-center rounded border px-0.5 text-[10px] leading-none font-medium ${chipClass[state.status]}`}
+            className={`flex h-5 min-w-5 items-center justify-center rounded border px-0.5 text-xs leading-none font-medium ${chipClass[state.status]}`}
           >
             {t.status[field].slice(0, 1)}
           </li>
@@ -101,7 +101,7 @@ export function StatusSummary({ scene }: { scene: Scene }) {
   const summary = statusSummary(scene, useActiveFields());
   if (!summary) return null;
   const color = summary.tone === "error" ? "text-rose-300" : summary.tone === "warn" ? "text-amber-200" : "text-neutral-400";
-  return <p className={`mt-1 text-[11px] leading-snug ${color}`}>{summary.text}</p>;
+  return <p className={`mt-1 text-xs leading-snug ${color}`}>{summary.text}</p>;
 }
 
 /** Legend shown under the page list. */

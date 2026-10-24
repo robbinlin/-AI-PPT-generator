@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
-import { AudioLines, ChevronLeft, Clock, FileText, NotebookPen, Upload, UserRound } from "lucide-react";
+import { ChevronLeft, Clock, FileText, Upload } from "lucide-react";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { useCostEstimate } from "../../hooks/useCostEstimate";
 import { ACCEPTED_EXTENSIONS } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
-import { toast } from "../../store/toastStore";
+import { confirmReplaceSource } from "../../lib/replaceSource";
 import { formatDuration, formatTwdFirst } from "../../lib/format";
 import { estimateLines, twdShort } from "../../lib/paidJobs";
 import { buildTimeline } from "../../lib/timelineModel";
@@ -13,7 +13,7 @@ import { useEditor } from "../../store/editorStore";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Misc";
 import { ExportMenu } from "./ExportMenu";
-import { GenerateButton } from "./GenerateButton";
+import { BatchMenu } from "./BatchMenu";
 import { JobsIndicator } from "./JobsDrawer";
 
 export interface EditorHeaderProps {
@@ -42,15 +42,14 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
   if (!detail) return null;
   const { project, sourceDocument } = detail;
   const hasSlides = detail.slides.length > 0;
-  const busy = (type: string) => detail.activeJobs.some((j) => j.type === type);
   // Same numbers as the timeline: estimated narration counts until the audio exists (then "約").
   const timeline = buildTimeline(detail.scenes, detail.slides, detail.scripts);
   const durationLabel = fmt(timeline.blocks.some((b) => b.estimated) ? t.editor.totalDurationEstimated : t.editor.totalDuration, {
     time: formatDuration(timeline.totalSec),
   });
 
-  const pickFile = () => {
-    if (sourceDocument && !window.confirm(t.upload.replaceConfirm)) return;
+  const pickFile = async () => {
+    if (!(await confirmReplaceSource(detail))) return;
     fileInput.current?.click();
   };
 
@@ -69,7 +68,7 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
         <div className="h-6 w-px bg-neutral-800" />
         <div className="flex min-w-0 flex-col">
           <ProjectName name={project.name} onRename={(name) => void actions.updateProject({ name })} />
-          <span className="flex items-center gap-1 truncate text-[11px] text-neutral-500">
+          <span className="flex items-center gap-1 truncate text-xs text-neutral-500">
             <FileText className="size-3" aria-hidden />
             {sourceDocument?.filename ?? t.editor.noSource}
           </span>
@@ -98,24 +97,13 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
 
       <div className="flex shrink-0 items-center gap-1.5">
         <JobsIndicator onOpen={onOpenJobs} />
-        <Button icon={Upload} onClick={pickFile} title={t.editor.upload} aria-label={t.editor.upload}>
-          <span className="min-[1360px]:hidden">{t.editor.uploadShort}</span>
-          <span className="hidden min-[1360px]:inline">{t.editor.upload}</span>
-        </Button>
-        <GenerateButton kind="generate_script" icon={NotebookPen} label={t.editor.generateScripts} shortLabel={t.editor.scriptsShort} actions={actions} disabled={!hasSlides || busy("generate_script")} />
-        <GenerateButton kind="synthesize_speech" icon={AudioLines} label={t.editor.generateSpeech} shortLabel={t.editor.speechShort} actions={actions} disabled={!hasSlides || busy("synthesize_speech")} />
-        <Button
-          icon={UserRound}
-          disabled={!hasSlides || busy("generate_avatar")}
-          title={avatarEnabled ? t.editor.generateAvatar : t.editor.avatarDisabled}
-          aria-label={t.editor.generateAvatar}
-          onClick={() =>
-            avatarEnabled ? void actions.enqueue({ type: "generate_avatar", force: false }) : toast(t.editor.avatarDisabled, "info")
-          }
-        >
-          <span className="min-[1200px]:hidden">{t.editor.avatarShort}</span>
-          <span className="hidden min-[1200px]:inline">{t.editor.generateAvatar}</span>
-        </Button>
+        {sourceDocument ? (
+          <BatchMenu actions={actions} onReplace={() => void pickFile()} />
+        ) : (
+          <Button icon={Upload} onClick={() => void pickFile()}>
+            {t.editor.upload}
+          </Button>
+        )}
         <ExportMenu actions={actions} disabled={!hasSlides} />
       </div>
 

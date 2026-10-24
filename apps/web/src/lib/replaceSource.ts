@@ -1,0 +1,19 @@
+import type { ProjectDetail } from "@lvs/shared";
+import { fmt, t } from "../i18n";
+import { confirmAction } from "../store/confirmStore";
+
+/**
+ * Asks before a new upload replaces the deck (a finished step looks like "look back", not "redo").
+ * Resolves true straight away when there is nothing to replace yet.
+ */
+export function confirmReplaceSource(detail: ProjectDetail | null | undefined): Promise<boolean> {
+  const doc = detail?.sourceDocument;
+  if (!doc) return Promise.resolve(true);
+  return confirmAction({
+    title: t.upload.replaceTitle,
+    lines: [fmt(t.upload.replaceCurrent, { name: doc.filename, n: detail.slides.length })],
+    note: t.upload.replaceConfirm,
+    confirmLabel: t.upload.replaceAction,
+    danger: true,
+  });
+}

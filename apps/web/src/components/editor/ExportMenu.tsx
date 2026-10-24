@@ -3,6 +3,7 @@ import type { Asset, CostEstimate, Job } from "@lvs/shared";
 import { AlertTriangle, Download, FileText, Film, Subtitles } from "lucide-react";
 import { useApi, useAssetUrl } from "../../api/context";
 import type { EditorActions } from "../../hooks/useEditorActions";
+import { usePendingEstimate } from "../../hooks/usePendingEstimate";
 import { fmt, t } from "../../i18n";
 import { armAutoExport, DOWNLOADED_EVENT, markDownloaded, wasDownloaded } from "../../lib/autoExport";
 import { canChooseSaveLocation, formatBytes, formatRelativeTime, type saveFileAs } from "../../lib/format";
@@ -111,24 +112,6 @@ export function ExportMenu({ actions, disabled }: { actions: Pick<EditorActions,
   );
 }
 
-/** Pending cost of a job type, for labelling the "make it first" buttons. */
-function usePendingEstimate(projectId: string | undefined, type: "synthesize_speech" | "generate_avatar", enabled: boolean): CostEstimate | undefined {
-  const api = useApi();
-  const [estimate, setEstimate] = useState<CostEstimate>();
-  useEffect(() => {
-    if (!projectId || !enabled) return;
-    let alive = true;
-    api.getEstimate(projectId, type).then(
-      (e) => alive && setEstimate(e),
-      () => alive && setEstimate(undefined),
-    );
-    return () => {
-      alive = false;
-    };
-  }, [api, projectId, type, enabled]);
-  return enabled ? estimate : undefined;
-}
-
 function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueue">; onDone: () => void }) {
   const api = useApi();
   const detail = useEditor((s) => s.detail);
@@ -147,8 +130,9 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
     detail?.project.settings.avatar.enabled && detail.project.settings.avatar.avatarId
       ? scenes.filter((s) => s.avatar.status !== "ready").map((s) => s.index + 1)
       : [];
-  const speechCost = usePendingEstimate(detail?.project.id, "synthesize_speech", audioNotReady.length > 0);
-  const avatarCost = usePendingEstimate(detail?.project.id, "generate_avatar", audioNotReady.length === 0 && avatarNotReady.length > 0);
+  const speechCost = usePendingEstimate(detail?.project.id, audioNotReady.length > 0 ? "synthesize_speech" : undefined);
+  // The avatar job also makes any missing narration first, so its estimate covers both.
+  const avatarCost = usePendingEstimate(detail?.project.id, avatarNotReady.length > 0 ? "generate_avatar" : undefined);
   if (!detail) return null;
 
   const videoOutdated =
@@ -192,7 +176,7 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
     "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-neutral-200 hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent";
 
   const preflightNote = (text: string) => (
-    <p className="flex gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
+    <p className="flex gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs whitespace-pre-line text-amber-200">
       <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
       {text}
     </p>
@@ -213,7 +197,7 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
         >
           {videoOutdated ? <AlertTriangle className="size-4" aria-hidden /> : <Download className="size-4" aria-hidden />}
           <span className="flex-1">{videoOutdated ? t.export.downloadOld : t.export.download}</span>
-          <span className="basis-full pl-6 text-[11px] text-neutral-400">
+          <span className="basis-full pl-6 text-xs text-neutral-400">
             {videoOutdated && <span className="text-amber-300/90">{t.export.outdated}・</span>}
             {fmt(videoOutdated ? t.export.lastVideo : t.export.latestVideo, { time: formatRelativeTime(video.createdAt) })} · {formatBytes(video.sizeBytes)}
           </span>
@@ -244,6 +228,24 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
         {renderJob ? (
           // A running export always shows its progress, whatever else is still missing.
           <RenderProgress job={renderJob} />
+        ) : audioNotReady.length > 0 && avatarNotReady.length > 0 ? (
+          // Everything missing is listed at once: making only the narration would export a video
+          // whose presenter disappears on these pages.
+          <div className="flex flex-col gap-2" data-testid="export-preflight">
+            {preflightNote(
+              [
+                t.export.preflightBoth,
+                fmt(t.export.preflightBothAudio, { pages: pageRanges(audioNotReady), cost: costLabel(speechCost) }),
+                fmt(t.export.preflightBothAvatar, { pages: pageRanges(avatarNotReady), cost: costLabel(avatarCost) }),
+              ].join("\n"),
+            )}
+            <Button variant="primary" size="sm" className="w-full" onClick={() => void makeThenExport("generate_avatar")} data-testid="fix-all">
+              {fmt(t.export.fixAllThenExport, { cost: costLabel(avatarCost) })}
+            </Button>
+            <Button size="sm" className="w-full" onClick={() => void makeThenExport("synthesize_speech")} data-testid="fix-audio">
+              {fmt(t.export.fixAudioOnlyThenExport, { cost: costLabel(speechCost) })}
+            </Button>
+          </div>
         ) : audioNotReady.length > 0 ? (
           <div className="flex flex-col gap-2" data-testid="export-preflight">
             {preflightNote(fmt(t.export.preflightAudio, { pages: pageRanges(audioNotReady) }))}
@@ -277,7 +279,7 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
         ) : (
           <button type="button" className={item} disabled title={t.export.srtUnavailable}>
             <Subtitles className="size-4" aria-hidden /> {t.export.srt}
-            <span className="ml-auto text-[11px] text-neutral-500">{t.export.srtUnavailable}</span>
+            <span className="ml-auto text-xs text-neutral-500">{t.export.srtUnavailable}</span>
           </button>
         )}
         <button type="button" className={item} onClick={() => void exportScript("txt")}>

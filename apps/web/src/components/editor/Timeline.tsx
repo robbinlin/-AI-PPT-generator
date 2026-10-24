@@ -224,7 +224,7 @@ function Ruler({ totalSec, pxPerSec }: { totalSec: number; pxPerSec: number }) {
   const ticks: number[] = [];
   for (let s = 0; s <= totalSec + 0.001; s += step) ticks.push(s);
   return (
-    <div className="relative h-5 border-b border-neutral-800 text-[11px] text-neutral-400" style={{ marginLeft: LABEL_W }}>
+    <div className="relative h-5 border-b border-neutral-800 text-xs text-neutral-400" style={{ marginLeft: LABEL_W }}>
       {ticks.map((s) => (
         <span key={s} className="absolute top-0 h-full border-l border-neutral-700 pl-1" style={{ left: s * pxPerSec }}>
           {formatDuration(s)}
@@ -293,7 +293,7 @@ function SlideBlock({
         className="flex h-full shrink-0 cursor-grab items-center gap-1 focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:outline-none active:cursor-grabbing"
       >
         {thumb && <img src={thumb} alt="" className="h-full shrink-0 object-cover" draggable={false} />}
-        <span className="shrink-0 px-1 text-[11px] font-semibold text-neutral-200">P{block.index + 1}</span>
+        <span className="shrink-0 px-1 text-xs font-semibold text-neutral-200">P{block.index + 1}</span>
       </span>
       {block.scene.muted && <VolumeX className="size-3 shrink-0 text-amber-300" aria-label={t.timeline.mute} />}
       <button
@@ -490,7 +490,7 @@ function NarrationBlock({
             ))}
           </svg>
         ) : (
-          <span className="absolute inset-0 flex items-center px-1 text-[11px] text-neutral-400">{block.scene.muted ? t.player.mutedScene : t.timeline.noAudio}</span>
+          <span className="absolute inset-0 flex items-center px-1 text-xs text-neutral-400">{block.scene.muted ? t.player.mutedScene : t.timeline.noAudio}</span>
         )}
       </div>
       {block.tail > 0 && (

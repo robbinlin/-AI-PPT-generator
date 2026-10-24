@@ -231,7 +231,11 @@ export const ScriptRevision = z.object({
   pronunciationText: z.string(),
   /** Formal spelling for on-screen subtitles. */
   subtitleText: z.string(),
-  source: z.enum(["ai", "user"]),
+  /**
+   * `ai` follows its slide and outline (stale when they change); `user` and `translation` (made
+   * from another project's script, not from the slides) are never staled by upstream changes.
+   */
+  source: z.enum(["ai", "user", "translation"]),
   outlineRevisionId: Id.optional(),
   /** sha256 of script + settings that affect speech; drives audio reuse. */
   contentHash: z.string(),
@@ -353,6 +357,8 @@ export const JobPayload = z.discriminatedUnion("type", [
     /** Omit to (re)generate every scene whose script is missing or stale. */
     sceneIds: z.array(Id).optional(),
     force: z.boolean().default(false),
+    /** 「AI 重寫本頁」 with a direction (更口語、縮短到 30 秒…): the current script is revised accordingly. */
+    instruction: z.string().trim().max(500).optional(),
   }),
   z.object({ type: z.literal("synthesize_speech"), sceneIds: z.array(Id).optional(), force: z.boolean().default(false) }),
   z.object({ type: z.literal("generate_avatar"), sceneIds: z.array(Id).optional(), force: z.boolean().default(false) }),

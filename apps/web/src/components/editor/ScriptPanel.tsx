@@ -5,11 +5,12 @@ import type { EditorActions } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
 import { twdShort } from "../../lib/paidJobs";
 import { countChars, estimateSpeechSeconds } from "../../lib/scenes";
-import { confirmAction } from "../../store/confirmStore";
 import { currentScript, useEditor, type SaveState } from "../../store/editorStore";
 import { toast } from "../../store/toastStore";
 import { Button, IconButton } from "../ui/Button";
 import { Spinner } from "../ui/Misc";
+import { RewriteDialog } from "./RewriteDialog";
+import { openEditorTab } from "./RightPanel";
 
 export const SCRIPT_MAX_CHARS = 5000;
 /** HeyGen API price per avatar second (pipeline price table): video twin (Avatar III) / photo (Avatar IV). */
@@ -29,6 +30,7 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const undo = useEditor((s) => s.undo);
   const redo = useEditor((s) => s.redo);
   const [focused, setFocused] = useState(false);
+  const [rewriteOpen, setRewriteOpen] = useState(false);
 
   const scene = useMemo(() => detail?.scenes.find((s) => s.id === sceneId), [detail, sceneId]);
   if (!detail || !scene) {
@@ -62,21 +64,14 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
     }
   };
 
-  const rewrite = async () => {
-    // AI rewrite replaces the page; a hand-edited script is not recoverable from here.
-    if (revision?.source === "user") {
-      const ok = await confirmAction({
-        title: t.script.rewriteConfirmTitle,
-        lines: [fmt(t.script.rewriteConfirmBody, { n: scene.index + 1 }), ...(paidAvatarReady ? [fmt(t.script.editWarnAvatar, { cost: redoCost })] : [])],
-        note: t.script.rewriteConfirmNote,
-        confirmLabel: t.script.rewriteConfirm,
-        danger: true,
-      });
-      if (!ok) return;
-    }
-    const job = await actions.enqueue({ type: "generate_script", sceneIds: [scene.id], force: true });
+  const rewrite = async (instruction: string | undefined) => {
+    setRewriteOpen(false);
+    // The dialog already said what is replaced and what it costs; a one-page script needs no second ask.
+    const job = await actions.enqueue({ type: "generate_script", sceneIds: [scene.id], force: true, ...(instruction ? { instruction } : {}) }, { confirm: false });
     if (job) toast(t.script.aiRewriteQueued);
   };
+  const sourceLabel = (source: ScriptRevision["source"]) =>
+    source === "ai" ? t.script.sourceAi : source === "translation" ? t.script.sourceTranslation : t.script.sourceUser;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 p-4">
@@ -84,10 +79,10 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-neutral-100">{fmt(t.script.heading, { n: scene.index + 1 })}</h2>
           {revision && (
-            <p className="text-[11px] text-neutral-500">
+            <p className="text-xs text-neutral-500">
               {fmt(t.script.revisionInfo, {
                 v: revision.version,
-                source: revision.source === "ai" ? t.script.sourceAi : t.script.sourceUser,
+                source: sourceLabel(revision.source),
               })}
             </p>
           )}
@@ -96,9 +91,17 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
       </div>
 
       <div className="flex items-center gap-1.5">
-        <Button size="sm" icon={WandSparkles} onClick={() => void rewrite()} disabled={generating}>
+        <Button size="sm" icon={WandSparkles} onClick={() => setRewriteOpen(true)} disabled={generating} data-testid="ai-rewrite">
           {t.script.aiRewrite}
         </Button>
+        <RewriteDialog
+          open={rewriteOpen}
+          page={scene.index + 1}
+          userEdited={revision?.source === "user"}
+          avatarCost={paidAvatarReady ? redoCost : undefined}
+          onClose={() => setRewriteOpen(false)}
+          onRewrite={(instruction) => void rewrite(instruction)}
+        />
         <Button
           size="sm"
           variant={scene.muted ? "primary" : "secondary"}
@@ -228,6 +231,9 @@ function DerivedTexts({ revision, pending }: { revision: ScriptRevision | undefi
       {open && (
         <div className="flex max-h-56 flex-col gap-3 overflow-y-auto border-t border-neutral-800 px-2.5 py-2">
           <ReadOnlyText label={t.script.pronunciation} text={revision?.pronunciationText} />
+          <button type="button" className="self-start text-xs text-accent-300 hover:underline" onClick={() => openEditorTab("outline")} data-testid="fix-reading">
+            {t.script.fixReading}
+          </button>
           <ReadOnlyText label={t.script.subtitle} text={revision?.subtitleText} />
         </div>
       )}
@@ -238,7 +244,7 @@ function DerivedTexts({ revision, pending }: { revision: ScriptRevision | undefi
 function ReadOnlyText({ label, text }: { label: string; text: string | undefined }) {
   return (
     <div>
-      <div className="mb-1 text-[11px] font-medium text-neutral-500">{label}</div>
+      <div className="mb-1 text-xs font-medium text-neutral-500">{label}</div>
       <p className="text-xs leading-relaxed whitespace-pre-wrap text-neutral-300">{text || t.script.derivedEmpty}</p>
     </div>
   );

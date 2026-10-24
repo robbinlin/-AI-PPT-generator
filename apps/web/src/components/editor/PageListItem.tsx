@@ -59,7 +59,7 @@ export function PageListItem(props: PageListItemProps) {
               <ImageOff className="size-5 text-neutral-600" aria-hidden />
             </div>
           )}
-          <span className="absolute top-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[11px] font-semibold text-white">
+          <span className="absolute top-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-xs font-semibold text-white">
             P{position}
           </span>
           <span className="absolute top-1 right-1 flex gap-1">

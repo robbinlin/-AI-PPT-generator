@@ -47,8 +47,8 @@ async function reuseAvatarClip(ctx: JobContext, sceneId: string, inputHash: stri
 }
 
 const NO_SLIDES = "專案還沒有投影片，請先上傳簡報";
-export const AVATAR_DISABLED = "這個專案沒有啟用虛擬人像，請到「虛擬人與聲音」分頁開啟";
-export const AVATAR_NOT_SELECTED = "請先在「虛擬人與聲音」分頁選擇虛擬人像";
+export const AVATAR_DISABLED = "這個專案沒有啟用人像，請到「人像與聲音」分頁開啟";
+export const AVATAR_NOT_SELECTED = "請先在「人像與聲音」分頁選擇人像";
 
 // ---------------------------------------------------------------------------
 // Seams. Replace the bodies; keep the signatures.
@@ -73,6 +73,9 @@ export interface GenerationSeams {
     settings: ProjectSettings;
     /** Latest script of the preceding visible scene, for continuity. */
     previousScript?: string;
+    /** 「AI 重寫本頁」 direction, applied to `currentScript`. */
+    instruction?: string;
+    currentScript?: string;
   }): Promise<ScriptRevision>;
   /** TODO(providers): TtsProvider.synthesize → store `audio` asset (+ timestamps) and `subtitle` asset (SRT); update scene states + durationSec. */
   synthesizeSpeech(args: {
@@ -169,7 +172,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
     return { outlineRevisionId: outline.id, reused: false };
   };
 
-  const generateScript: JobHandler<{ type: "generate_script"; sceneIds?: string[]; force: boolean }> = async (ctx) => {
+  const generateScript: JobHandler<{ type: "generate_script"; sceneIds?: string[]; force: boolean; instruction?: string }> = async (ctx) => {
     let { detail, visibleScenes, slidesById } = await loadDetail(ctx);
     // The editor's single "產生講稿" button must work on a fresh project: plan the outline first
     // when it is missing or no longer matches the slides/settings, then write the scripts.
@@ -212,6 +215,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
           outline: detail.outline,
           settings: detail.project.settings,
           previousScript: prevScene ? latestScript.get(prevScene.id) : undefined,
+          ...(ctx.job.payload.instruction ? { instruction: ctx.job.payload.instruction, currentScript: latestScript.get(scene.id) } : {}),
         });
         latestScript.set(scene.id, rev.script);
         results.set(scene.id, rev.id);
@@ -367,7 +371,9 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
         script: out.script,
         pronunciationText: out.pronunciationText,
         subtitleText: out.subtitleText,
-        source: "ai",
+        // Made from the source project's script, so hiding or reordering pages here must not
+        // mark it stale (that would point 下一步 at 產生全部講稿 and overwrite the translation).
+        source: "translation",
         language: to,
         inputHash: scriptInputHash({ slide, prev: orderedSlides[i - 1], next: orderedSlides[i + 1], outlineInputHash: outlineHash, settings }),
         estimatedDurationSec: out.estimatedDurationSec,

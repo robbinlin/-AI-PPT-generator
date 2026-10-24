@@ -97,6 +97,16 @@ export const UpdateScriptRequest = z.object({
 });
 export type UpdateScriptRequest = z.infer<typeof UpdateScriptRequest>;
 
+/** Replaces the glossary (term / reading / definition) of the latest outline. */
+export const UpdateGlossaryRequest = z.object({
+  glossary: z
+    .array(z.object({ term: z.string().max(100), reading: z.string().max(200).optional(), definition: z.string().max(500).optional() }))
+    .max(300),
+});
+export type UpdateGlossaryRequest = z.infer<typeof UpdateGlossaryRequest>;
+export const UpdateGlossaryResponse = z.object({ outline: OutlineRevision, affectedSceneIds: z.array(Id) });
+export type UpdateGlossaryResponse = z.infer<typeof UpdateGlossaryResponse>;
+
 export const ReorderSlidesRequest = z.object({
   /** Full ordered list of slide ids. */
   slideIds: z.array(Id).min(1),
