@@ -1,6 +1,8 @@
+import { avatarInVideo } from "@lvs/shared";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Ban, Check, ChevronDown, Loader2, Pencil, Play, Plus, RotateCcw, Search, Square, Trash2, UserRound } from "lucide-react";
 import type { AvatarLayout, AvatarSettings, Project, ProviderInfo, SubtitleSettings, SubtitleStyle, UpdateProjectRequest, VoiceSettings } from "@lvs/shared";
+import { Link } from "react-router";
 import { useApi } from "../../api/context";
 import { errorMessage, type AvatarOption, type VoiceOption } from "../../api/types";
 import type { EditorActions } from "../../hooks/useEditorActions";
@@ -10,7 +12,7 @@ import { LAYOUT_PRESETS, matchLayoutPreset, matchSubtitlePreset, SUBTITLE_PRESET
 import { useEditor } from "../../store/editorStore";
 import { confirmAction } from "../../store/confirmStore";
 import { toast } from "../../store/toastStore";
-import { Button } from "../ui/Button";
+import { Button, IconButton } from "../ui/Button";
 import { Field, Select, Toggle } from "../ui/Field";
 import { Modal } from "../ui/Modal";
 import { ColorInput, CommitNumber, CommitRange } from "./settingsFields";
@@ -87,7 +89,10 @@ function ProviderPills({
 }) {
   const list = providers.filter((p) => p.kind === kind);
   if (list.length === 0) return null;
+  // Like the 設定 tab: a service without a key can't be chosen (the next job would only fail).
+  const blocked = (p: ProviderInfo) => !p.configured && p.id !== value;
   return (
+    <>
     <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t.studio.provider}>
       {list.map((p) => (
         <button
@@ -95,13 +100,14 @@ function ProviderPills({
           type="button"
           role="radio"
           aria-checked={p.id === value}
+          disabled={blocked(p)}
           title={p.hint ?? (p.configured ? undefined : t.settings.notConfigured)}
           onClick={() => onChange(p.id)}
           className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
             p.id === value
               ? "border-accent-400 bg-accent-500/20 text-accent-100"
               : "border-neutral-700 text-neutral-300 hover:border-neutral-500"
-          } ${p.configured ? "" : "opacity-60"}`}
+          } ${p.configured ? "" : "opacity-60"} disabled:cursor-not-allowed`}
         >
           {p.displayName}
           {priceHint(p.id) && <span className="text-xs text-neutral-400">・{priceHint(p.id)}</span>}
@@ -109,6 +115,15 @@ function ProviderPills({
         </button>
       ))}
     </div>
+    {list.some(blocked) && (
+      <p className="text-xs text-neutral-400">
+        {t.studio.needsKey}{" "}
+        <Link to="/settings/providers" className="text-accent-300 hover:underline">
+          {t.app.navProviders}
+        </Link>
+      </p>
+    )}
+    </>
   );
 }
 
@@ -210,7 +225,7 @@ function AvatarSection({
   avatars: AvatarOption[];
   loading: boolean;
   setAvatars: (l: AvatarOption[]) => void;
-  setAvatar: (p: Partial<AvatarSettings>) => void;
+  setAvatar: (p: Partial<AvatarSettings>) => unknown;
 }) {
   const api = useApi();
   const s = project.settings.avatar;
@@ -254,13 +269,13 @@ function AvatarSection({
 
   const remove = async () => {
     if (!s.providerId || !selected) return;
-    if (!(await confirmAction({ title: fmt(t.settings.deleteCharacterConfirm, { name: selected.name }), lines: [], confirmLabel: t.common.remove, danger: true }))) return;
+    if (!(await confirmAction({ title: fmt(t.settings.deleteCharacterConfirm, { name: selected.name }), lines: [t.settings.deleteForever, t.settings.deleteOtherProjects], confirmLabel: t.common.remove, danger: true }))) return;
     try {
       await api.deleteAvatarCharacter(s.providerId, selected.id);
       invalidateAvatars(s.providerId);
-      const list = await api.listAvatars(s.providerId);
-      setAvatars(list);
-      setAvatar({ avatarId: list[0]?.id });
+      // No silent replacement: the studio lists pick a new one only when nothing finished depends
+      // on it, and otherwise ask the user to choose (see useStudioLists).
+      setAvatars(await api.listAvatars(s.providerId));
     } catch (err) {
       toast(errorMessage(err), "error");
     }
@@ -557,12 +572,13 @@ function LayoutSection({
 }: {
   project: Project;
   setLayout: (p: Partial<AvatarLayout>) => void;
-  setAvatar: (p: Partial<AvatarSettings>) => void;
+  setAvatar: (p: Partial<AvatarSettings>) => unknown;
   patch: (s: SettingsPatch) => void;
 }) {
   const s = project.settings;
   const layout = s.avatar.layout;
-  const active = s.avatar.enabled ? matchLayoutPreset(layout) : "hidden";
+  const presenterOn = avatarInVideo(s.avatar);
+  const active = presenterOn ? matchLayoutPreset(layout) : "hidden";
   const pct = (v: number) => `${Math.round(v * 100)}%`;
   return (
     <Section title={t.studio.layout}>
@@ -572,11 +588,16 @@ function LayoutSection({
             key={p.id}
             type="button"
             aria-pressed={active === p.id}
-            onClick={() =>
-              p.layout.visible === false
-                ? setAvatar({ layout: { ...layout, ...p.layout } })
-                : setAvatar({ enabled: true, layout: { ...layout, ...p.layout } })
-            }
+            // 「只有投影片」 is the same switch as 「不使用」 (presenter off), so the page list, timeline,
+            // prices and gallery all agree; the layout itself stays for when it is switched back on.
+            onClick={() => {
+              const before = { enabled: s.avatar.enabled, layout };
+              void Promise.resolve(
+                p.layout.visible === false
+                  ? setAvatar({ enabled: false, layout: { ...layout, visible: true } })
+                  : setAvatar({ enabled: true, layout: { ...layout, ...p.layout, visible: true } }),
+              ).then((ok) => ok !== false && toast(fmt(t.studio.layoutApplied, { name: p.label }), "info", { label: t.impact.undo, run: () => void setAvatar(before) }));
+            }}
             className={`flex flex-col items-center gap-1 rounded-md border p-1.5 text-xs ${
               active === p.id ? "border-accent-400 bg-accent-500/10 text-accent-100" : "border-neutral-700 text-neutral-300 hover:border-neutral-500"
             }`}
@@ -591,14 +612,17 @@ function LayoutSection({
         <Field label={t.studio.background}>
           <ColorInput label={t.studio.background} value={s.backgroundColor ?? "#000000"} onCommit={(backgroundColor) => patch({ backgroundColor })} />
         </Field>
-        <Field label={t.settings.shape}>
+        {/* Presenter-only controls disappear with the presenter (只有投影片／不使用). */}
+        {presenterOn && <Field label={t.settings.shape}>
           <Select value={layout.shape} options={[{ value: "circle", label: t.options.shape.circle }, { value: "rect", label: t.studio.shapeRect }]} onChange={(shape) => setLayout({ shape })} />
-        </Field>
+        </Field>}
       </div>
-      <Field label={t.settings.size}>
-        <CommitRange label={t.settings.size} value={layout.size} min={0.1} max={1} step={0.01} format={pct} onCommit={(size) => setLayout({ size })} />
-      </Field>
-      {s.avatar.enabled && layout.visible !== false && layout.size < minReadableSize(layout) && (
+      {presenterOn && (
+        <Field label={t.settings.size}>
+          <CommitRange label={t.settings.size} value={layout.size} min={0.1} max={1} step={0.01} format={pct} onCommit={(size) => setLayout({ size })} />
+        </Field>
+      )}
+      {presenterOn && layout.size < minReadableSize(layout) && (
         <p className="text-xs text-amber-300" role="note" data-testid="avatar-size-hint">
           {fmt(t.studio.sizeSmall, { min: pct(minReadableSize(layout)) })}
         </p>
@@ -606,7 +630,7 @@ function LayoutSection({
       <Field label={t.studio.slideScale}>
         <CommitRange label={t.studio.slideScale} value={layout.slideScale ?? 1} min={0.5} max={1} step={0.01} format={pct} onCommit={(slideScale) => setLayout({ slideScale })} />
       </Field>
-      {layout.x !== undefined && (
+      {presenterOn && layout.x !== undefined && (
         <Button size="sm" variant="ghost" icon={RotateCcw} onClick={() => setLayout({ x: undefined, y: undefined })}>
           {t.studio.resetPosition}
         </Button>
@@ -725,14 +749,15 @@ function VoiceSection({
       toast(errorMessage(err), "error");
     }
   };
-  const remove = async () => {
-    if (!selected) return;
-    if (!(await confirmAction({ title: fmt(t.settings.deleteVoiceConfirm, { name: selected.name }), lines: [], confirmLabel: t.common.remove, danger: true }))) return;
+  // Any of the user's own voices can be deleted from its row, without choosing it first (choosing
+  // could itself make finished presenters outdated).
+  const remove = async (target: VoiceOption | undefined = selected) => {
+    if (!target) return;
+    if (!(await confirmAction({ title: fmt(t.settings.deleteVoiceConfirm, { name: target.name }), lines: [t.settings.deleteForever, t.settings.deleteOtherProjects], confirmLabel: t.common.remove, danger: true }))) return;
     try {
-      await api.deleteVoice(s.providerId, selected.id);
-      const list = await api.listVoices(s.providerId);
-      setVoices(list);
-      setVoice({ voiceId: list[0]?.id ?? "" });
+      await api.deleteVoice(s.providerId, target.id);
+      // The chosen voice gone: the studio lists pick another (and say so) or ask, see useStudioLists.
+      setVoices(await api.listVoices(s.providerId));
     } catch (err) {
       toast(errorMessage(err), "error");
     }
@@ -795,6 +820,9 @@ function VoiceSection({
                     .join("・")}</div>}
               </button>
               {isSel && <Check className="size-4 shrink-0 text-accent-300" aria-hidden />}
+              {!isSel && v.name.startsWith("我的聲音") && (
+                <IconButton icon={Trash2} label={fmt(t.settings.deleteVoiceNamed, { name: v.name })} onClick={() => void remove(v)} />
+              )}
             </li>
           );
         })}
@@ -953,6 +981,7 @@ function SubtitleSection({
         <Toggle label={t.settings.subtitlesEnabled} checked={sub.enabled} onChange={(enabled) => setSubtitles({ enabled })} />
         <Toggle label={t.settings.burnIn} checked={sub.burnIn} disabled={!sub.enabled} onChange={(burnIn) => setSubtitles({ burnIn })} />
       </div>
+      {sub.enabled && !sub.burnIn && <p className="text-xs text-amber-300" role="note">{t.studio.burnInOffHint}</p>}
       <div className="grid grid-cols-3 gap-2" data-testid="subtitle-presets">
         {SUBTITLE_PRESETS.map((p) => {
           const preview = { ...style, ...p.style } as SubtitleStyle;
@@ -977,6 +1006,8 @@ function SubtitleSection({
           );
         })}
       </div>
+      {/* Style details only matter for subtitles that are made (and burned in). */}
+      <fieldset disabled={!sub.enabled} className="m-0 min-w-0 border-0 p-0 disabled:opacity-40">
       <Disclosure label={t.studio.subtitleDetails}>
         <div className="grid grid-cols-2 gap-3">
           <Field label={t.settings.fontSize}>
@@ -1021,6 +1052,7 @@ function SubtitleSection({
         </Field>
         <Toggle label={t.studio.bold} checked={!!style.bold} onChange={(bold) => setStyle({ bold })} />
       </Disclosure>
+      </fieldset>
     </Section>
   );
 }

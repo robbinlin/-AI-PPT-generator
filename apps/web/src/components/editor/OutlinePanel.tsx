@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { isTranslationNotReading, usesGlossaryTerm, type GlossaryEntry } from "@lvs/shared";
+import { avatarInVideo, isTranslationNotReading, usesGlossaryTerm, type GlossaryEntry } from "@lvs/shared";
 import { ListTree, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useApi } from "../../api/context";
 import { errorMessage } from "../../api/types";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
 import { formatRelativeTime } from "../../lib/format";
-import { formatTwdFirst } from "../../lib/format";
+import { twdShort } from "../../lib/paidJobs";
 import { pageRanges, visibleScenes } from "../../lib/settingsImpact";
 import { confirmDiscard, setUnsaved } from "../../lib/unsavedGuard";
 import { confirmAction } from "../../store/confirmStore";
@@ -169,12 +169,12 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
     const changed = [...new Set([...before.keys(), ...after.keys()])].filter((term) => (before.get(term) ?? "") !== (after.get(term) ?? ""));
     const settings = detail.project.settings;
     const affected = visibleScenes(detail).filter((s) => !s.muted && changed.some((term) => detail.scripts[s.id]?.script.includes(term)));
-    const paid = settings.avatar.enabled ? affected.filter((s) => s.avatar.status === "ready") : [];
+    const paid = avatarInVideo(settings.avatar) ? affected.filter((s) => s.avatar.status === "ready") : [];
     if (paid.length > 0) {
       let cost = "";
       try {
         const est = await api.getEstimate(detail.project.id, "generate_avatar", { scope: "all", sceneIds: paid.map((s) => s.id) });
-        cost = formatTwdFirst(est.total, est.currency);
+        cost = twdShort(est.total, est.currency);
       } catch {
         cost = "";
       }

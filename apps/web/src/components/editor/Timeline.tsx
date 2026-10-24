@@ -1,3 +1,4 @@
+import { avatarInVideo } from "@lvs/shared";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, horizontalListSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
@@ -204,7 +205,7 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
               />
             ))}
           </TrackRow>
-          {detail.project.settings.avatar.enabled && (
+          {avatarInVideo(detail.project.settings.avatar) && (
             <TrackRow label={t.timeline.avatar} height={TRACK_H.avatar}>
               {model.blocks.map((b) => (
                 <StatusBar key={b.scene.id} block={b} pxPerSec={pxPerSec} status={b.scene.avatar.status} />

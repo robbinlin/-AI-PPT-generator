@@ -3,7 +3,6 @@ import type { CostEstimate, EnqueueJobRequest, Job, UpdateProjectRequest, Update
 import { useApi } from "../api/context";
 import { errorMessage, type EstimateType } from "../api/types";
 import { fmt, t } from "../i18n";
-import { formatTwdFirst } from "../lib/format";
 import { requestNotifyPermission } from "../lib/notify";
 import { avatarInVideo } from "@lvs/shared";
 import {
@@ -14,6 +13,7 @@ import {
   needsConfirm,
   needsConfirmWithoutEstimate,
   requestedScenes,
+  twdShort,
   unknownEstimateContent,
 } from "../lib/paidJobs";
 import { pickLike, visibleScenes } from "../lib/settingsImpact";
@@ -149,15 +149,23 @@ export function useEditorActions() {
       if (!detail) return false;
       const previous = pickLike(settings as Record<string, unknown>, detail.project.settings as unknown as Record<string, unknown>) as SettingsPatch;
       const scenes = visibleScenes(detail).filter((s) => !s.muted);
-      const avatarReady = impact === "none" || !detail.project.settings.avatar.enabled ? [] : scenes.filter((s) => s.avatar.status === "ready");
+      const avatarReady = impact === "none" || !avatarInVideo(detail.project.settings.avatar) ? [] : scenes.filter((s) => s.avatar.status === "ready");
       const audioReady = impact === "audio" ? scenes.filter((s) => s.audio.status === "ready") : [];
       if (avatarReady.length > 0) {
+        // The estimate is priced with the current settings: right for a new look or voice, wrong
+        // when the presenter service itself changes (HeyGen → 本機人像 is free). Say that instead.
+        const nextProvider = (settings as { avatar?: { providerId?: string } }).avatar?.providerId;
+        const providerChanges = !!nextProvider && nextProvider !== detail.project.settings.avatar.providerId;
         let value = "";
-        try {
-          const est = await api.getEstimate(detail.project.id, "generate_avatar", { scope: "all", sceneIds: avatarReady.map((s) => s.id) });
-          value = formatTwdFirst(est.total, est.currency);
-        } catch {
-          value = "";
+        if (providerChanges) {
+          value = nextProvider === "local" || nextProvider === "mock" ? t.impact.redoFree : "";
+        } else {
+          try {
+            const est = await api.getEstimate(detail.project.id, "generate_avatar", { scope: "all", sceneIds: avatarReady.map((s) => s.id) });
+            value = twdShort(est.total, est.currency);
+          } catch {
+            value = "";
+          }
         }
         const ok = await confirmAction({
           title: t.impact.title,

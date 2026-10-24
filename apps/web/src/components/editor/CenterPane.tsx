@@ -11,6 +11,7 @@ import { ScenePlayer } from "./ScenePlayer";
 import { SlidePreview } from "./SlidePreview";
 import { Timeline } from "./Timeline";
 import { ParseProgress, UploadDropZone } from "./UploadDropZone";
+import { toast } from "../../store/toastStore";
 
 export function CenterPane({
   onUpload,
@@ -34,11 +35,20 @@ export function CenterPane({
   if (!detail) return null;
   const avatarPreviewUrl = avatarImageUrl(api, avatarSettings?.providerId, avatars.find((a) => a.id === avatarSettings?.avatarId));
   // A page with its own layout keeps it; otherwise dragging edits the project-wide layout.
+  const saveLayout = (layout: AvatarLayout): Promise<boolean> =>
+    !actions
+      ? Promise.resolve(false)
+      : scene?.avatarLayout
+        ? actions.updateScene(scene.id, { avatarLayout: layout })
+        : actions.updateProject({ settings: { avatar: { ...detail.project.settings.avatar, layout } } });
+  // A drag can land the presenter somewhere unintended: offer the way back to where it was.
   const commitLayout = actions
-    ? (layout: AvatarLayout): Promise<boolean> =>
-        scene?.avatarLayout
-          ? actions.updateScene(scene.id, { avatarLayout: layout })
-          : actions.updateProject({ settings: { avatar: { ...detail.project.settings.avatar, layout } } })
+    ? async (layout: AvatarLayout): Promise<boolean> => {
+        const previous = scene?.avatarLayout ?? detail.project.settings.avatar.layout;
+        const ok = await saveLayout(layout);
+        if (ok) toast(t.studio.layoutMoved, "info", { label: t.impact.undo, run: () => void saveLayout(previous) });
+        return ok;
+      }
     : undefined;
 
   const source = detail.sourceDocument;

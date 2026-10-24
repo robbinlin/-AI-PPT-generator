@@ -1,3 +1,4 @@
+import { avatarInVideo } from "@lvs/shared";
 import type { DerivedStatus, ProjectSettings, Scene } from "@lvs/shared";
 import { fmt, t } from "../../i18n";
 import { useEditor } from "../../store/editorStore";
@@ -31,13 +32,13 @@ export function statusLabel(field: StatusField, status: DerivedStatus): string {
 /** Fields the project actually produces: no avatar / subtitles when they are switched off. */
 export function activeFields(settings: Pick<ProjectSettings, "avatar" | "subtitles"> | undefined): StatusField[] {
   if (!settings) return [...STATUS_FIELDS];
-  return STATUS_FIELDS.filter((f) => (f === "avatar" ? settings.avatar.enabled : f === "subtitle" ? settings.subtitles.enabled : true));
+  return STATUS_FIELDS.filter((f) => (f === "avatar" ? avatarInVideo(settings.avatar) : f === "subtitle" ? settings.subtitles.enabled : true));
 }
 
 function useActiveFields(): StatusField[] {
-  const avatarOn = useEditor((s) => s.detail?.project.settings.avatar.enabled ?? true);
+  const avatarOn = useEditor((s) => (s.detail ? avatarInVideo(s.detail.project.settings.avatar) : true));
   const subtitlesOn = useEditor((s) => s.detail?.project.settings.subtitles.enabled ?? true);
-  return activeFields({ avatar: { enabled: avatarOn }, subtitles: { enabled: subtitlesOn } } as Pick<ProjectSettings, "avatar" | "subtitles">);
+  return STATUS_FIELDS.filter((f) => (f === "avatar" ? avatarOn : f === "subtitle" ? subtitlesOn : true));
 }
 
 /** Four labelled chips (講/語/人/字), each showing its asset's state by colour and border. */

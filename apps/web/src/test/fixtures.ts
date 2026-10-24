@@ -95,7 +95,7 @@ export function makeDetail(pages = 3): ProjectDetail {
     scripts[first.id] = makeRevision(first.id, "第一頁講稿");
   }
   return {
-    project: { id: projectId, ownerId: "dev", name: "Test", settings: ProjectSettings.parse({}), createdAt: TS, updatedAt: TS },
+    project: { id: projectId, ownerId: "dev", name: "Test", settings: ProjectSettings.parse({ avatar: { avatarId: "test-avatar" } }), createdAt: TS, updatedAt: TS },
     slides,
     scenes,
     scripts,

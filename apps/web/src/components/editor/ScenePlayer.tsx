@@ -90,7 +90,8 @@ export function ScenePlayer({ projectId, scene, hidden }: ScenePlayerProps) {
   const total = time.duration || scene?.durationSec || 0;
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
+    // The note (舊語音…) gets its own line, so the seek bar never shrinks to nothing on narrow screens.
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
       <audio
         ref={(el) => {
           audioRef.current = el;
@@ -141,7 +142,7 @@ export function ScenePlayer({ projectId, scene, hidden }: ScenePlayerProps) {
           {formatDuration(time.duration || scene?.durationSec || 0)}
         </span>
       </div>
-      {note && <span className={`text-xs ${scene?.audio.status === "stale" && !scene.muted ? "text-amber-300" : "text-neutral-400"}`}>{note}</span>}
+      {note && <span className={`order-last basis-full text-xs ${scene?.audio.status === "stale" && !scene.muted ? "text-amber-300" : "text-neutral-400"}`}>{note}</span>}
       {playback.playAll ? (
         <Button size="sm" icon={Square} onClick={() => editorStore.getState().stopPlayback()}>
           {t.player.stopAll}

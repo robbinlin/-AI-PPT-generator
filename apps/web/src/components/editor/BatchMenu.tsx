@@ -100,7 +100,7 @@ export function BatchMenu({ actions, onReplace }: { actions: Pick<EditorActions,
   const rows: Array<{ kind: Kind; label: string; list: Scene[]; redo: boolean; off?: string }> = [
     { kind: "generate_script", label: t.batch.script, list: all, redo: true },
     { kind: "synthesize_speech", label: t.batch.speech, list: spoken, redo: true },
-    { kind: "generate_avatar", label: t.batch.avatar, list: spoken, redo: false, off: avatarOn ? undefined : avatarSettings.enabled && avatarSettings.avatarId ? t.batch.avatarHidden : t.batch.avatarOff },
+    { kind: "generate_avatar", label: t.batch.avatar, list: spoken, redo: false, off: avatarOn ? undefined : !avatarSettings.enabled || avatarSettings.layout.visible === false ? t.batch.avatarHidden : t.batch.avatarOff },
   ];
   const item = "block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent";
 

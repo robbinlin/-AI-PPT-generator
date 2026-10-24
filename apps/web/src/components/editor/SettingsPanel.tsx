@@ -52,7 +52,7 @@ function providerOptions(
       value: p.id,
       label: p.configured
         ? p.displayName
-        : `${p.displayName} ${t.settings.notConfigured}`,
+        : `${p.displayName}${t.settings.notConfigured}`,
       // Choosing a service without a key would only make the next job fail; the current one stays pickable.
       disabled: !p.configured && p.id !== current,
     }));
@@ -127,13 +127,14 @@ export function SettingsPanel({
           <Field label={t.settings.targetDuration}>
             <CommitNumber
               label={t.settings.targetDuration}
-              value={s.targetDurationSec}
-              min={10}
-              max={36000}
-              step={30}
+              // Lecturers think in minutes; stored in seconds.
+              value={s.targetDurationSec === undefined ? undefined : Math.round((s.targetDurationSec / 60) * 10) / 10}
+              min={0.5}
+              max={600}
+              step={0.5}
               allowEmpty
               placeholder={t.settings.targetDurationAuto}
-              onCommit={(targetDurationSec) => scriptPatch({ targetDurationSec })}
+              onCommit={(minutes) => scriptPatch({ targetDurationSec: minutes === undefined ? undefined : Math.round(minutes * 60) })}
             />
           </Field>
         </div>

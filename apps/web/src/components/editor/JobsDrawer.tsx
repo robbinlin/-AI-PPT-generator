@@ -83,6 +83,10 @@ function JobAnnouncer() {
         setMessage(fmt(t.jobs.announceProgress, { type: t.jobs.types[job.type], pct: quarter * 25 }));
       }
     }
+    // A finished job leaves no 「進行到 75%」 behind (its toast says how it ended).
+    const ids = new Set((jobs ?? []).map((j) => j.id));
+    for (const id of [...seen.current.keys()]) if (!ids.has(id)) seen.current.delete(id);
+    if (ids.size === 0) setMessage("");
   }, [jobs]);
   return (
     <span className="sr-only" aria-live="polite" data-testid="job-announcer">

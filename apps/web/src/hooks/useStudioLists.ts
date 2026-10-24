@@ -3,7 +3,7 @@ import type { Project, ProviderInfo } from "@lvs/shared";
 import { VoiceSettings } from "@lvs/shared";
 import { useApi } from "../api/context";
 import { errorMessage, type AvatarOption, type VoiceOption } from "../api/types";
-import { t } from "../i18n";
+import { fmt, t } from "../i18n";
 import { useEditor } from "../store/editorStore";
 import { toast } from "../store/toastStore";
 import type { EditorActions } from "./useEditorActions";
@@ -130,8 +130,18 @@ export function useStudioLists(project: Project | undefined, actions: Pick<Edito
   const currentVoiceId = project?.settings.voice.voiceId;
   useEffect(() => {
     if (!project || voices.length === 0 || voices.some((v) => v.id === currentVoiceId) || audioReady) return;
-    const fallback = voices.find((v) => v.id === DEFAULT_VOICE_ID) ?? voices[0]!;
-    void actions.updateProject({ settings: { voice: { ...project.settings.voice, voiceId: fallback.id } } });
+    // A voice that speaks the project's language, preferring the default and stock voices over
+    // someone's personal clone; and say which one was picked.
+    const lang = project.settings.language === "en" ? "en" : "zh-TW";
+    const speaks = (v: (typeof voices)[number]) => !v.languages?.length || v.languages.includes(lang);
+    const fallback =
+      voices.find((v) => v.id === DEFAULT_VOICE_ID && speaks(v)) ??
+      voices.find((v) => speaks(v) && !v.name.startsWith("我的聲音")) ??
+      voices.find(speaks) ??
+      voices[0]!;
+    void actions.updateProject({ settings: { voice: { ...project.settings.voice, voiceId: fallback.id } } }).then((ok) => {
+      if (ok && currentVoiceId) toast(fmt(t.studio.voiceAutoPicked, { name: fallback.name }), "info");
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voices, currentVoiceId]);
 

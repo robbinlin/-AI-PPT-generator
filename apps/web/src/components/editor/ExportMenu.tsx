@@ -271,8 +271,12 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
             disabled={!detail.project.settings.subtitles.enabled || !!renderJob}
             onChange={(e) => setBurn(e.target.checked)}
           />
-          {t.export.burnSubtitles}
+          {/* A choice for this export only; the project's own setting lives in 人像與聲音. */}
+          {t.export.burnSubtitlesOnce}
         </label>
+        {detail.project.settings.subtitles.enabled && burn !== detail.project.settings.subtitles.burnIn && (
+          <p className="-mt-1 mb-2 text-xs text-amber-300">{burn ? t.export.burnDiffersOn : t.export.burnDiffersOff}</p>
+        )}
         {renderJob ? (
           // A running export always shows its progress, whatever else is still missing.
           <RenderProgress job={renderJob} />

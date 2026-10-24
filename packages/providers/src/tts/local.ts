@@ -249,7 +249,7 @@ export class LocalTtsProvider implements TtsProvider {
 
 export const localTtsFactory: ProviderFactory<TtsProvider> = {
   id: "local",
-  displayName: "本機語音（免費，聲音複製）",
+  displayName: "本機語音（免費・聲音複製）",
   requiresApiKey: false,
   create: (creds) => new LocalTtsProvider(creds),
 };

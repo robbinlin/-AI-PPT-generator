@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { SUBTITLE_SIDE_MARGIN, subtitleSideMargins, type Asset, type AvatarLayout, type DerivedStatus, type Project, type Scene, type Slide } from "@lvs/shared";
 import { EyeOff, ImageOff, Move, UserRound } from "lucide-react";
 import { useAssetUrl } from "../../api/context";
@@ -96,6 +96,7 @@ export function SlidePreview({
           <SubtitleOverlay
             text={cue}
             style={subtitles.style}
+            notBurned={!subtitles.burnIn}
             // Like the export: beside the presenter when it reaches into the subtitle line. Also
             // while the clip is still to be made, so the layout does not jump once it exists.
             sideMargins={
@@ -184,6 +185,32 @@ function AvatarOverlay({
     g.last = next;
     onDraft?.(next);
   };
+  // Keyboard: arrows preview at once and save once the keys pause (one save, one 復原, per move).
+  const keyTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const pendingKey = useRef<AvatarLayout | null>(null);
+  const flushKey = () => {
+    clearTimeout(keyTimer.current);
+    const next = pendingKey.current;
+    pendingKey.current = null;
+    if (next) onCommit?.(next);
+  };
+  const keyChange = (next: AvatarLayout) => {
+    onDraft?.(next);
+    pendingKey.current = next;
+    clearTimeout(keyTimer.current);
+    keyTimer.current = setTimeout(flushKey, 700);
+  };
+  useEffect(() => () => clearTimeout(keyTimer.current), []);
+  const onMoveKey = (e: ReactKeyboardEvent) => {
+    const step = e.shiftKey ? 0.05 : 0.01;
+    const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+    const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+    if (!dx && !dy) return;
+    e.preventDefault();
+    e.stopPropagation();
+    keyChange(moveTo(layout, ratio, box.left + box.width / 2 + dx, box.top + box.height / 2 + dy));
+  };
+
   const end = (e: ReactPointerEvent) => {
     const g = gesture.current;
     if (!g) return;
@@ -206,6 +233,9 @@ function AvatarOverlay({
       className={`group absolute ${editable ? "cursor-move touch-none" : ""}`}
       style={boxStyle(box)}
       title={editable ? t.studio.dragHint : t.preview.avatar}
+      {...(editable
+        ? { tabIndex: 0, role: "group", "aria-label": t.studio.moveKeys, onKeyDown: (e: ReactKeyboardEvent) => e.target === e.currentTarget && onMoveKey(e), onBlur: flushKey }
+        : {})}
       onPointerDown={start("move")}
       onPointerMove={move}
       onPointerUp={end}
@@ -264,10 +294,9 @@ function AvatarOverlay({
               if (!step) return;
               e.preventDefault();
               e.stopPropagation();
-              const next = resizeTo(layout, ratio, Math.min(1, Math.max(0.1, layout.size + step)));
-              onDraft?.(next);
-              onCommit?.(next);
+              keyChange(resizeTo(layout, ratio, Math.min(1, Math.max(0.1, layout.size + step))));
             }}
+            onBlur={flushKey}
             onPointerDown={start("resize")}
             onPointerMove={move}
             onPointerUp={end}
@@ -283,18 +312,22 @@ function SubtitleOverlay({
   text,
   style,
   sideMargins,
+  notBurned = false,
 }: {
   text: string;
   style: Project["settings"]["subtitles"]["style"];
   sideMargins?: { left: number; right: number } | null;
+  /** Subtitles go to the SRT only: shown faded, labelled, so the preview doesn't promise them in the MP4. */
+  notBurned?: boolean;
 }) {
   // Style sizes are specified for a 1080-px-tall frame; scale with the preview's height.
   const scale = (px: number) => `${(px / 1080) * 100}cqh`;
   const sides = sideMargins ?? { left: SUBTITLE_SIDE_MARGIN, right: SUBTITLE_SIDE_MARGIN };
   return (
     <div
-      className="pointer-events-none absolute flex justify-center"
+      className={`pointer-events-none absolute flex flex-col items-center ${notBurned ? "opacity-50" : ""}`}
       data-testid="subtitle-band"
+      data-burned={!notBurned}
       style={{
         left: pct(sides.left),
         right: pct(sides.right),
@@ -308,6 +341,7 @@ function SubtitleOverlay({
       >
         {text}
       </p>
+      {notBurned && <span className="mt-0.5 rounded on-dark bg-black/70 px-1 text-xs text-neutral-100">{t.preview.subtitlesNotBurned}</span>}
     </div>
   );
 }
