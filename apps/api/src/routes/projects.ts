@@ -355,6 +355,15 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const dedupeKey = payload.type === "generate_outline" || payload.type === "render_video" ? `${payload.type}:${JSON.stringify(payload)}` : undefined;
     // A double click or a second tab must not start the same paid work twice: refuse a job of the
     // same kind while one is queued or running for any of the same pages.
+    // While a new deck is being read, its pages are about to change: no page work or export yet.
+    if (PAGE_JOBS.has(payload.type) || payload.type === "render_video") {
+      const [parsing] = await db
+        .select()
+        .from(jobs)
+        .where(and(eq(jobs.projectId, project.id), eq(jobs.type, "parse_document"), inArray(jobs.status, ["queued", "running"])))
+        .limit(1);
+      if (parsing) throw conflict("簡報正在更新（解析新檔案中），完成後再開始這項工作。");
+    }
     if (PAGE_JOBS.has(payload.type)) {
       const mine = (payload as { sceneIds?: string[] }).sceneIds;
       const active = await db

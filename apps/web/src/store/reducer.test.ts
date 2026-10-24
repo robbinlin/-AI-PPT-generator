@@ -52,7 +52,8 @@ describe("applyProjectEvent", () => {
       scene: { ...scene, audio: { status: "ready", assetId: testId() }, durationSec: 4 },
     });
     expect(next.scenes[1]?.audio.status).toBe("ready");
-    expect(next.totalDurationSec).toBe(10 + 0.5 + 4 + 0.5);
+    // The default transition is a fade: page 2 overlaps page 1 by 0.4 s, like the rendered video.
+    expect(next.totalDurationSec).toBeCloseTo(10 + 0.5 + 4 + 0.5 - 0.4);
     expect(next.scenes.map((s) => s.id)).toEqual(detail.scenes.map((s) => s.id));
   });
 

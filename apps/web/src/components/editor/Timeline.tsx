@@ -355,7 +355,7 @@ function SlideBlock({
       style={style}
       data-testid="timeline-slide"
       data-scene-id={block.scene.id}
-      className={`group absolute top-1 bottom-1 flex cursor-pointer items-center gap-1 overflow-hidden rounded border bg-neutral-800 ${
+      className={`group isolate absolute top-1 bottom-1 flex cursor-pointer items-center gap-1 overflow-hidden rounded border bg-neutral-800 ${
         selected ? "border-accent-400 ring-1 ring-accent-400" : "border-neutral-700 hover:border-neutral-500"
       } ${isDragging ? "opacity-80 shadow-lg" : ""}`}
       onClick={() => editorStore.getState().select(block.scene.id)}
@@ -554,7 +554,7 @@ function NarrationBlock({
   const stale = block.scene.audio.status === "stale";
   return (
     <div
-      className="absolute top-1 bottom-1 flex overflow-hidden rounded"
+      className="isolate absolute top-1 bottom-1 flex overflow-hidden rounded"
       style={blockStyle(block, pxPerSec)}
       onClick={() => editorStore.getState().select(block.scene.id)}
       title={block.estimated ? `${t.timeline.estimated} ${formatDuration(block.narration)}` : formatDuration(block.narration)}

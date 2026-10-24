@@ -224,6 +224,7 @@ export const zhTW = {
     legend: "狀態標示說明",
     scriptOldOutline: "講稿依舊的大綱或設定寫成（可不改）",
     translating: "翻譯中…",
+    scriptSlideChanged: "投影片換過了，請確認講稿",
     skipToScript: "跳到講稿",
     activeCount: "{active}/{n} 頁啟用",
     title: "頁面",
@@ -703,6 +704,7 @@ export const zhTW = {
     replaceCurrent: "目前的簡報：{name}（{n} 頁）",
     replacePaid: "已完成的人像 {n} 頁（已付費）：內容有變的頁面需要重做並另外計費。",
     replaceNoUndo: "替換後無法復原；需要的話請先保留原本的簡報檔。",
+    replaceBusy: "「{job}」正在進行，請等它完成（或在「工作」停止）後再替換簡報。",
     replaceAction: "選擇新檔案",
   },
   batch: {
@@ -846,6 +848,7 @@ export const zhTW = {
     detailPages: "第 {pages} 頁",
     detailCount: "{n} 頁",
     detailPartial: "其中 {n} 頁已完成，其餘可用「補齊」接著做",
+    detailPartialForced: "其中 {n} 頁已重做，其餘頁面仍是舊版本（可再按一次「全部重新產生」）",
     detailReused: "{n} 頁沿用不另收費",
     detailThenRender: "完成後自動匯出",
     showOlder: "顯示較早的 {n} 筆",

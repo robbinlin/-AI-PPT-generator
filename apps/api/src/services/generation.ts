@@ -37,12 +37,12 @@ import { render } from "@lvs/render";
 import type { Config } from "../config.js";
 import type { Db } from "../db/client.js";
 import { toAsset, toOutline, toScene } from "../db/mappers.js";
-import { assets, outlineRevisions, projects, scenes, timelineRevisions, type SceneRow } from "../db/schema.js";
+import { assets, outlineRevisions, projects, scenes, scriptRevisions, timelineRevisions, type SceneRow } from "../db/schema.js";
 import { NonRetryableJobError, providerErrorMessage } from "../errors.js";
 import type { JobContext } from "../jobs/context.js";
 import { throwIfAborted } from "../jobs/context.js";
 import { AVATAR_NOT_SELECTED, type GenerationSeams } from "../jobs/handlers/generation.js";
-import { scriptInputHash, subtitleInputHash } from "../jobs/hashes.js";
+import { scriptInputHash, subtitleBuiltWidth, subtitleInputHash } from "../jobs/hashes.js";
 import { ProviderNotConfiguredError, providerLabel, type ProviderService } from "./providers.js";
 import { createScriptRevision } from "./scripts.js";
 import { recordUsage, type UsageLine } from "./usage.js";
@@ -420,6 +420,11 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       for (const s of scenesInOrder) for (const id of [s.audio.assetId, s.avatar.assetId]) if (id) assetIds.add(id);
       const slideRows = await ctx.db.select().from(scenes).where(inArray(scenes.id, scenesInOrder.map((s) => s.id)));
       const slideIdByScene = new Map(slideRows.map((r) => [r.id, r.slideId]));
+      // Subtitle text per scene: to tell which line width its stored cues were built for.
+      const revIds = slideRows.map((r) => r.scriptRevisionId).filter((id): id is string => !!id);
+      const revRows = revIds.length ? await ctx.db.select().from(scriptRevisions).where(inArray(scriptRevisions.id, revIds)) : [];
+      const subtitleTextByRev = new Map(revRows.map((r) => [r.id, r.subtitleText]));
+      const subtitleTextByScene = new Map(slideRows.map((r) => [r.id, r.scriptRevisionId ? (subtitleTextByRev.get(r.scriptRevisionId) ?? "") : ""]));
       const { slides } = await import("../db/schema.js");
       const slideRowsAll = await ctx.db.select().from(slides).where(inArray(slides.id, [...slideIdByScene.values()]));
       for (const s of slideRowsAll) if (s.imageAssetId) assetIds.add(s.imageAssetId);
@@ -439,8 +444,12 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         const avatarAsset = settings.avatar.enabled && !s.muted && s.avatar.status === "ready" && s.avatar.assetId ? assetMap.get(s.avatar.assetId) : undefined;
         const layout = s.avatarLayout ?? settings.avatar.layout;
         const chroma = avatarAsset?.producedBy.providerId ? CHROMA_KEY_BY_PROVIDER[avatarAsset.producedBy.providerId] : undefined;
-        // Re-wrapped for the current line width (a width change alone doesn't need new speech).
-        const cues: SubtitleCue[] = settings.subtitles.enabled && !s.muted ? rechunkCues(s.subtitle.cues ?? [], settings.subtitles.style.maxCharsPerLine) : [];
+        // Cues built for another line width are re-wrapped (free; a width change alone needs no
+        // new speech). At the width they were built for they are used as they are.
+        const width = settings.subtitles.style.maxCharsPerLine;
+        const built = subtitleBuiltWidth({ subtitleInputHash: s.subtitle.inputHash, audioInputHash: s.audio.inputHash, subtitleText: subtitleTextByScene.get(s.id) ?? "", settings });
+        const stored = s.subtitle.cues ?? [];
+        const cues: SubtitleCue[] = settings.subtitles.enabled && !s.muted ? (built !== undefined && built !== width ? rechunkCues(stored, width) : stored) : [];
         renderScenes.push({
           sceneId: s.id,
           imagePath: await localFile(ctx.storage, image, workDir),

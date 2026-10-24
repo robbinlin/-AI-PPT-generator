@@ -130,9 +130,10 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
         const slide = insertedSlides[i]!;
         const m = matched.get(slide.id);
         if (m) {
-          // A page hidden before stays hidden (13 of 18 hidden pages must not all come back).
+          // A page the user hid stays hidden when it comes back unchanged (13 of 18 hidden pages must
+          // not all return). A page kept from an earlier replacement that is back in the deck shows again.
           const was = m.scene.slideId ? oldSlideById.get(m.scene.slideId) : undefined;
-          if (was?.hidden) {
+          if (m.kind === "same" && was?.hidden && was.pageNumber < KEPT_PAGE_BASE) {
             const [h] = await tx.update(slides).set({ hidden: true }).where(eq(slides.id, slide.id)).returning();
             insertedSlides[i] = h!;
           }
@@ -173,7 +174,8 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
           const index = insertedSlides.length;
           const [copy] = await tx
             .insert(slides)
-            .values({ ...old, id: randomUUID(), sourceDocumentId: docId, index, hidden: true })
+            // Page numbers past KEPT_PAGE_BASE: never matched by position against a later deck.
+            .values({ ...old, id: randomUUID(), sourceDocumentId: docId, index, hidden: true, pageNumber: KEPT_PAGE_BASE + (old.pageNumber % KEPT_PAGE_BASE) })
             .returning();
           insertedSlides.push(copy!);
           const [row] = await tx.update(scenes).set({ slideId: copy!.id, index }).where(eq(scenes.id, id)).returning();
@@ -187,7 +189,7 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
       await tx.delete(slides).where(and(eq(slides.projectId, projectId), ne(slides.sourceDocumentId, docId)));
       await tx
         .update(sourceDocuments)
-        .set({ parseStatus: "succeeded", pageCount: insertedSlides.length })
+        .set({ parseStatus: "succeeded", pageCount: created.length })
         .where(eq(sourceDocuments.id, docId));
       return { newSlides: insertedSlides, newScenes: resultScenes };
     });
@@ -233,6 +235,9 @@ type Match = { scene: SceneRow; kind: "same" | "changed" };
  * Pass 2: same page number => same scene, script marked stale.
  * Anything else is a new scene; unmatched old scenes are deleted.
  */
+/** Kept pages (hand-written scripts whose slide left the deck) carry page numbers from here up. */
+export const KEPT_PAGE_BASE = 100_000;
+
 export function matchScenes(newSlides: SlideRow[], old: OldEntry[]): Map<string, Match> {
   const out = new Map<string, Match>();
   const unused = new Set(old.map((_, i) => i));

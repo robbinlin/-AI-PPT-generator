@@ -11,6 +11,7 @@ import {
   outlineInputHash,
   renderInputHash,
   scriptInputHash,
+  subtitleBuiltWidth,
   subtitleInputHash,
 } from "../jobs/hashes.js";
 
@@ -170,12 +171,9 @@ export function withEffectiveStatuses(
       out.subtitle = { ...scene.subtitle, status: effectiveStatus(scene.subtitle, sHash) };
       // Only 「每行字數上限」 changed (same audio and text): the export re-wraps the cues for free,
       // so the subtitles count as current rather than asking for new speech.
-      if (out.subtitle.status === "stale" && out.audio.status === "ready" && scene.subtitle.cues?.length && scene.subtitle.inputHash) {
-        const stored = scene.subtitle.inputHash;
-        const onlyWidth = Array.from({ length: 75 }, (_, k) => k + 6).some(
-          (m) => subtitleInputHash({ audioInputHash: aHash, subtitleText: script.subtitleText, settings: { ...settings, subtitles: { ...settings.subtitles, style: { ...settings.subtitles.style, maxCharsPerLine: m } } } }) === stored,
-        );
-        if (onlyWidth) out.subtitle = { ...out.subtitle, status: "ready" };
+      if (out.subtitle.status === "stale" && out.audio.status === "ready" && scene.subtitle.cues?.length) {
+        const built = subtitleBuiltWidth({ subtitleInputHash: scene.subtitle.inputHash, audioInputHash: aHash, subtitleText: script.subtitleText, settings });
+        if (built !== undefined) out.subtitle = { ...out.subtitle, status: "ready" };
       }
       if (scene.audio.assetId) {
         const vHash = avatarInputHash({ audioAssetId: scene.audio.assetId, settings });
@@ -248,13 +246,20 @@ export async function getProjectDetail(db: Db, ownerId: string, projectId: strin
     if (srt) assetMap[srt.id] = toAsset(srt);
   }
 
+  // Same layout as the render (and the editor's timeline): a fade into a page overlaps the
+  // previous one by up to 0.4 s, at most half of either page.
   let totalDurationSec = 0;
+  let prevLen: number | undefined;
   for (const s of sceneListEffective) {
     const slide = slidesById.get(s.slideId);
     if (slide?.hidden) continue;
     // Muted pages hold for MUTED_SCENE_SEC (generation.ts) whatever audio they once had.
     const d = s.muted ? 3 : (s.durationSec ?? scripts[s.id]?.estimatedDurationSec ?? 0);
-    totalDurationSec += d + (d > 0 ? s.tailPauseSec : 0);
+    if (d <= 0) continue;
+    const len = Math.max(0.5, d + s.tailPauseSec);
+    const fade = prevLen !== undefined && (s.transitionIn ?? project.settings.transition) === "fade";
+    totalDurationSec += len - (fade ? Math.min(0.4, prevLen! / 2, len / 2) : 0);
+    prevLen = len;
   }
 
   return {

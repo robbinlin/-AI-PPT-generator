@@ -88,6 +88,8 @@ export function StatusDots({ scene }: { scene: Scene }) {
 export function statusSummary(
   scene: Scene,
   active: readonly StatusField[] = STATUS_FIELDS,
+  /** Who wrote the script: a hand-written one goes stale only when its slide changed. */
+  scriptSource?: "ai" | "user" | "translation",
 ): { text: string; tone: "error" | "warn" | "muted" } | null {
   const fields = (status: DerivedStatus) => active.filter((f) => scene[f].status === status).map((f) => t.status[f]);
   const failed = fields("failed");
@@ -95,7 +97,8 @@ export function statusSummary(
   // A script from an older outline is optional to redo: say so calmly, not as 「需更新」.
   const stale = active.filter((f) => f !== "script" && scene[f].status === "stale").map((f) => t.status[f]);
   if (stale.length) return { text: fmt(t.pageList.needsWork, { list: stale.join("、") }), tone: "warn" };
-  if (active.includes("script") && scene.script.status === "stale") return { text: t.pageList.scriptOldOutline, tone: "muted" };
+  if (active.includes("script") && scene.script.status === "stale")
+    return scriptSource && scriptSource !== "ai" ? { text: t.pageList.scriptSlideChanged, tone: "warn" } : { text: t.pageList.scriptOldOutline, tone: "muted" };
   const missing = fields("missing");
   if (missing.length && missing.length < active.length) return { text: fmt(t.pageList.notMade, { list: missing.join("、") }), tone: "muted" };
   return null;
@@ -104,7 +107,9 @@ export function statusSummary(
 export function StatusSummary({ scene }: { scene: Scene }) {
   // A new translated copy has no scripts until the translation job writes them: say it's coming.
   const translating = useEditor((s) => !!s.detail?.activeJobs.some((j) => j.type === "translate_script"));
-  const summary = translating && scene.script.status !== "ready" ? { text: t.pageList.translating, tone: "muted" as const } : statusSummary(scene, useActiveFields());
+  const fields = useActiveFields(); // before any condition: hooks keep their order
+  const source = useEditor((s) => s.detail?.scripts[scene.id]?.source);
+  const summary = translating && scene.script.status !== "ready" ? { text: t.pageList.translating, tone: "muted" as const } : statusSummary(scene, fields, source);
   if (!summary) return null;
   const color = summary.tone === "error" ? "text-rose-300" : summary.tone === "warn" ? "text-amber-200" : "text-neutral-400";
   return <p className={`mt-1 text-xs leading-snug ${color}`}>{summary.text}</p>;

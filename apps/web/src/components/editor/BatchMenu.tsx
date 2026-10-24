@@ -45,7 +45,8 @@ export function BatchMenu({ actions, onReplace }: { actions: Pick<EditorActions,
   const pid = open ? detail?.project.id : undefined;
   const scenesNow = detail ? visibleScenes(detail) : [];
   const scriptMissing = scenesNow.filter((s) => s.script.status === "missing" || s.script.status === "failed").map((s) => s.id);
-  const scriptStale = scenesNow.filter((s) => s.script.status === "stale").map((s) => s.id);
+  // Only AI-written pages: a hand-written one on a changed slide is confirmed by its author (「講稿沒問題」), never rewritten by AI.
+  const scriptStale = scenesNow.filter((s) => s.script.status === "stale" && detail?.scripts[s.id]?.source === "ai").map((s) => s.id);
   const cost: Partial<Record<Kind, CostEstimate | undefined>> = {
     generate_script: usePendingEstimate(scriptMissing.length ? pid : undefined, "generate_script", "", "pending", scriptMissing),
     synthesize_speech: usePendingEstimate(pid, "synthesize_speech"),

@@ -238,6 +238,8 @@ export class MockApiClient implements ApiClient {
     ps.detail.totalDurationSec = computeTotalDuration(
       ps.detail.slides,
       ps.detail.scenes,
+      ps.detail.project.settings.transition,
+      ps.detail.scripts,
     );
   }
 

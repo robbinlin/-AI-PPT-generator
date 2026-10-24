@@ -430,16 +430,19 @@ export function alignToPauses(
 }
 
 /**
- * Re-wraps existing timed cues for a new 「每行字數上限」 without the audio's word timings: each
- * cue is split like buildCues would, and its time shared by text weight. Free (no TTS), so a
- * width change doesn't make every page's subtitles 需更新.
+ * Re-wraps existing timed cues for a new 「每行字數上限」 without the audio's word timings: the
+ * old line breaks are removed, each cue is split and wrapped like buildCues would, and its time
+ * is shared by text weight. Free (no TTS). Callers only use it when the cues were built for a
+ * different width; at the same width the cues are already right.
  */
 export function rechunkCues(cues: SubtitleCue[], maxCharsPerLine: number): SubtitleCue[] {
   const out: SubtitleCue[] = [];
   for (const cue of cues) {
-    const parts = segmentCueTexts(cue.text, maxCharsPerLine);
+    // Undo wrapCueLines: no space between CJK characters, a space between Latin words.
+    const joined = cue.text.replace(/(\S)\n(\S)/g, (_m, a: string, b: string) => (/[A-Za-z0-9]/.test(a) && /[A-Za-z0-9]/.test(b) ? `${a} ${b}` : `${a}${b}`)).replace(/\n/g, " ");
+    const parts = segmentCueTexts(joined, maxCharsPerLine);
     if (parts.length <= 1) {
-      out.push({ ...cue, index: out.length + 1 });
+      out.push({ ...cue, index: out.length + 1, text: wrapCueLines(parts[0] ?? joined, maxCharsPerLine) });
       continue;
     }
     const weights = parts.map((t) => textUnits(t).reduce((a, u) => a + unitWeight(u.text), 0) || 1);
@@ -449,7 +452,8 @@ export function rechunkCues(cues: SubtitleCue[], maxCharsPerLine: number): Subti
       const startSec = cue.startSec + (acc / total) * (cue.endSec - cue.startSec);
       acc += weights[i]!;
       const endSec = i === parts.length - 1 ? cue.endSec : cue.startSec + (acc / total) * (cue.endSec - cue.startSec);
-      out.push({ index: out.length + 1, startSec, endSec, text: parts[i]! });
+      const words = cue.words?.filter((w) => w.startSec >= startSec - 0.01 && w.startSec < endSec);
+      out.push({ index: out.length + 1, startSec, endSec, text: wrapCueLines(parts[i]!, maxCharsPerLine), ...(words?.length ? { words } : {}) });
     }
   }
   return out;

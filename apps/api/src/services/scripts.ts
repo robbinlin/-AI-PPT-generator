@@ -80,7 +80,8 @@ export async function createScriptRevision(db: Db, input: CreateRevisionInput): 
     latest.script === input.script &&
     latest.pronunciationText === pronunciationText &&
     latest.subtitleText === subtitleText &&
-    latest.source === input.source
+    // Re-saving a translation's own text by hand changes nothing (it stays 翻譯, no new version).
+    (latest.source === input.source || (input.source === "user" && latest.source === "translation"))
   ) {
     // Saving the same hand-written text again confirms it still fits a slide that changed (deck
     // replaced): the page stops reading 需更新.

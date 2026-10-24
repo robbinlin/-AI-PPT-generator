@@ -44,7 +44,8 @@ function JobDetail({ job }: { job: Job }) {
   const field = FIELD[job.type];
   if (job.status === "failed" && field && scenes) {
     const done = scenes.filter((s) => (s[field] as { jobId?: string }).jobId === job.id && s[field].status === "ready").length;
-    if (done > 0) parts.push(fmt(t.jobs.detailPartial, { n: done }));
+    const forced = "force" in job.payload && job.payload.force === true;
+    if (done > 0) parts.push(fmt(forced ? t.jobs.detailPartialForced : t.jobs.detailPartial, { n: done }));
   }
   const ids = "sceneIds" in job.payload ? job.payload.sceneIds : undefined;
   const result = job.result as { processed?: number; reused?: number } | undefined;
@@ -287,7 +288,9 @@ function isSuperseded(job: Job, recent: Job[], scenes: Scene[]): boolean {
   const field = FIELD[job.type];
   const ids = "sceneIds" in job.payload ? job.payload.sceneIds : undefined;
   const covered = scenes.filter((s) => (ids?.length ? ids.includes(s.id) : field !== "script" ? !s.muted : true));
-  if (field && covered.length > 0 && covered.every((s) => s[field].status === "ready")) return true;
+  // Not for 「全部重新產生」: its pages read ready with their *old* results even when it did nothing.
+  const forced = "force" in job.payload && job.payload.force === true;
+  if (!forced && field && covered.length > 0 && covered.every((s) => s[field].status === "ready")) return true;
   const key = (j: Job) => `${j.type}:${"sceneIds" in j.payload ? (j.payload.sceneIds ?? []).join(",") : ""}`;
   const at = (j: Job) => j.finishedAt ?? j.createdAt;
   return recent.some((o) => o.status === "succeeded" && key(o) === key(job) && at(o) > at(job));

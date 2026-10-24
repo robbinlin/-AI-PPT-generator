@@ -103,3 +103,16 @@ export function selectScenesToProcess<T extends { id: string }>(
 export function latestScriptHashInputs(rev: ScriptRevision | undefined) {
   return rev ? { pronunciationText: rev.pronunciationText, subtitleText: rev.subtitleText } : undefined;
 }
+
+/**
+ * The 「每行字數上限」 a scene's stored cues were built with, recovered from their hash (same audio
+ * and text). Undefined when the audio or text changed too, i.e. the cues are really outdated.
+ */
+export function subtitleBuiltWidth(args: { subtitleInputHash?: string; audioInputHash?: string; subtitleText: string; settings: ProjectSettings }): number | undefined {
+  if (!args.subtitleInputHash || !args.audioInputHash) return undefined;
+  for (let m = 6; m <= 80; m++) {
+    const settings = { ...args.settings, subtitles: { ...args.settings.subtitles, style: { ...args.settings.subtitles.style, maxCharsPerLine: m } } };
+    if (subtitleInputHash({ audioInputHash: args.audioInputHash, subtitleText: args.subtitleText, settings }) === args.subtitleInputHash) return m;
+  }
+  return undefined;
+}

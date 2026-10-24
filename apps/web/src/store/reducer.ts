@@ -14,7 +14,7 @@ function upsertById<T extends { id: string }>(items: readonly T[], item: T): T[]
 }
 
 function withDuration(detail: ProjectDetail): ProjectDetail {
-  return { ...detail, totalDurationSec: computeTotalDuration(detail.slides, detail.scenes) };
+  return { ...detail, totalDurationSec: computeTotalDuration(detail.slides, detail.scenes, detail.project.settings.transition, detail.scripts) };
 }
 
 export function applyJob(detail: ProjectDetail, job: Job): ProjectDetail {

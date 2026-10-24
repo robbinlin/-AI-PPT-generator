@@ -1,15 +1,27 @@
-import type { Asset, AvatarLayout, Language, Project, Scene, Slide } from "@lvs/shared";
-import { MUTED_SCENE_SEC } from "./timelineModel";
+import type { Asset, AvatarLayout, Language, Project, Scene, Slide, Transition } from "@lvs/shared";
+import { FADE_SEC, MUTED_SCENE_SEC } from "./timelineModel";
 
-/** Narration length of the visible (non-hidden) scenes, including each scene's tail pause. */
-export function computeTotalDuration(slides: readonly Slide[], scenes: readonly Scene[]): number {
+/**
+ * Video length as the server computes it (services/projects.ts) and the renderer lays it out:
+ * visible pages, muted ones at their hold time, each with its tail pause, minus cross-fades.
+ */
+export function computeTotalDuration(
+  slides: readonly Slide[],
+  scenes: readonly Scene[],
+  transition: Transition = "none",
+  scripts: Readonly<Record<string, { estimatedDurationSec?: number } | undefined>> = {},
+): number {
   const hidden = new Set(slides.filter((s) => s.hidden).map((s) => s.id));
   let total = 0;
-  for (const scene of scenes) {
+  let prevLen: number | undefined;
+  for (const scene of [...scenes].sort((a, b) => a.index - b.index)) {
     if (hidden.has(scene.slideId)) continue;
-    // A muted page holds for a fixed time (like the render), whatever its old narration length.
-    if (scene.muted) total += MUTED_SCENE_SEC + scene.tailPauseSec;
-    else if (scene.durationSec !== undefined) total += scene.durationSec + scene.tailPauseSec;
+    const d = scene.muted ? MUTED_SCENE_SEC : (scene.durationSec ?? scripts[scene.id]?.estimatedDurationSec ?? 0);
+    if (d <= 0) continue;
+    const len = Math.max(0.5, d + scene.tailPauseSec);
+    const fade = prevLen !== undefined && (scene.transitionIn ?? transition) === "fade";
+    total += len - (fade ? Math.min(FADE_SEC, prevLen! / 2, len / 2) : 0);
+    prevLen = len;
   }
   return Math.round(total * 100) / 100;
 }

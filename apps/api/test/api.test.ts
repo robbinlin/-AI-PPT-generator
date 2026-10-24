@@ -375,6 +375,24 @@ describe("replacing the deck", () => {
       expect((await get()).scenes.find((sc) => sc.id === keptScene.id)!.script.status).toBe("stale");
       await t.app.inject({ method: "PUT", url: `/projects/${id}/scenes/${keptScene.id}/script`, payload: { script: "我親手寫的結果說明。" } });
       expect((await get()).scenes.find((sc) => sc.id === keptScene.id)!.script.status).toBe("ready");
+      expect(d.sourceDocument?.pageCount).toBe(2); // the parsed pages, not the kept one
+
+      // The slide comes back: its kept page shows again (with the hand-written script), and while
+      // the new deck is being read no page job can start.
+      parser.pages = [
+        { pageNumber: 1, title: "Intro", plainText: "Welcome" },
+        { pageNumber: 2, title: "Methods", plainText: "ANOVA" },
+        { pageNumber: 3, title: "Results", plainText: "Effects" },
+      ];
+      await t.app.inject({ method: "POST", url: `/projects/${id}/source`, ...multipart("v3.pdf", TINY_PDF, "application/pdf") });
+      const during = await t.app.inject({ method: "POST", url: `/projects/${id}/jobs`, payload: { type: "synthesize_speech", force: false } });
+      expect(during.statusCode).toBe(409);
+      await t.ctx.runner.drain();
+      d = await get();
+      expect(d.slides).toHaveLength(3);
+      const back = d.scenes.find((sc) => sc.id === keptScene.id)!;
+      expect(d.slides.find((sl) => sl.id === back.slideId)!.hidden).toBe(false);
+      expect(d.slides[0]!.hidden).toBe(true); // the page the user hid stays hidden
     } finally {
       await t.close();
     }

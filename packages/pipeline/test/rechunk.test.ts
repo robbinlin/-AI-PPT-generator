@@ -1,18 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { rechunkCues } from "../src/subtitles.js";
+import { buildCues, rechunkCues } from "../src/subtitles.js";
 
 describe("rechunkCues", () => {
-  it("splits long cues for a narrower line and keeps the timing span", () => {
-    const cues = [
-      { index: 1, startSec: 0, endSec: 4, text: "今天我們要看高強度間歇訓練對最大攝氧量的影響，以及它和中等強度訓練的差別。" },
-      { index: 2, startSec: 4, endSec: 5, text: "好。" },
-    ];
-    const out = rechunkCues(cues, 12);
-    expect(out.length).toBeGreaterThan(2);
-    expect(out[0]!.startSec).toBe(0);
-    expect(out.at(-2)!.endSec).toBeCloseTo(4);
-    expect(out.at(-1)).toMatchObject({ startSec: 4, endSec: 5, text: "好。" });
-    expect(out.map((c) => c.index)).toEqual(out.map((_, i) => i + 1));
-    for (let i = 1; i < out.length; i++) expect(out[i]!.startSec).toBeGreaterThanOrEqual(out[i - 1]!.startSec);
+  const text = "今天我們要看高強度間歇訓練對最大攝氧量的影響，以及它和中等強度訓練的差別。好。";
+  const cues = buildCues({ subtitleText: text, durationSec: 10, maxCharsPerLine: 14, language: "zh-TW" });
+
+  it("keeps two-line cues whole at the width they were built for", () => {
+    const same = rechunkCues(cues, 14);
+    expect(same.map((c) => c.text)).toEqual(cues.map((c) => c.text));
+  });
+
+  it("splits for a narrower line and keeps the timing span", () => {
+    const out = rechunkCues(cues, 8);
+    expect(out.length).toBeGreaterThan(cues.length);
+    expect(out[0]!.startSec).toBe(cues[0]!.startSec);
+    expect(out.at(-1)!.endSec).toBe(cues.at(-1)!.endSec);
+    for (const c of out) for (const line of c.text.split("\n")) expect(line.length).toBeLessThanOrEqual(8);
+  });
+
+  it("re-wraps lines for a wider line", () => {
+    const wide = rechunkCues(cues, 40);
+    expect(wide.some((c) => !c.text.includes("\n") && c.text.length > 14)).toBe(true);
   });
 });
