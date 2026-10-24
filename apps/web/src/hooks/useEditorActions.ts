@@ -5,7 +5,9 @@ import { errorMessage, type EstimateType } from "../api/types";
 import { fmt, t } from "../i18n";
 import { formatTwdFirst } from "../lib/format";
 import { requestNotifyPermission } from "../lib/notify";
+import { avatarInVideo } from "@lvs/shared";
 import {
+  type AvatarLoss,
   confirmContent,
   ESTIMATED_TYPES,
   estimateWaitSec,
@@ -60,6 +62,26 @@ export function useEditorActions() {
      * Starts a job. Paid/slow job types are estimated first (only the pages that would really be
      * processed); avatars, forced reruns and anything above the threshold need a confirmation.
      */
+    /**
+     * Redoing speech or scripts gives those pages new audio, and a presenter clip is made from the
+     * audio: say how many paid clips would have to be made again, and roughly for how much.
+     */
+    const avatarLoss = async (req: EnqueueJobRequest): Promise<AvatarLoss | undefined> => {
+      const detail = store().detail;
+      if (!detail || !isForced(req) || (req.type !== "synthesize_speech" && req.type !== "generate_script")) return undefined;
+      if (!avatarInVideo(detail.project.settings.avatar)) return undefined;
+      const only = requestedScenes(req);
+      const hit = visibleScenes(detail).filter((s) => !s.muted && s.avatar.status === "ready" && (!only || only.includes(s.id)));
+      if (!hit.length) return undefined;
+      let redo: CostEstimate | undefined;
+      try {
+        redo = await api.getEstimate(projectId(), "generate_avatar", { scope: "all", sceneIds: hit.map((s) => s.id) });
+      } catch {
+        redo = undefined;
+      }
+      return { pages: hit.length, ...(redo ? { redo } : {}) };
+    };
+
     const enqueue = async (req: EnqueueJobRequest, options: EnqueueOptions = {}): Promise<Job | null> => {
       if (ESTIMATED_TYPES.has(req.type) && options.confirm !== false) {
         const type = req.type as EstimateType;
@@ -74,8 +96,9 @@ export function useEditorActions() {
           return null;
         }
         const avatarProvider = store().detail?.project.settings.avatar.providerId;
-        if (estimate && needsConfirm(req, estimate)) {
-          const ok = await confirmAction(confirmContent(type, req, estimate, avatarProvider));
+        const loss = await avatarLoss(req);
+        if (estimate && (needsConfirm(req, estimate) || loss)) {
+          const ok = await confirmAction(confirmContent(type, req, estimate, avatarProvider, loss));
           if (!ok) return null;
         } else if (!estimate && needsConfirmWithoutEstimate(req)) {
           // No estimate (network/API error) must never mean "start paid avatars unasked".
@@ -176,20 +199,33 @@ export function useEditorActions() {
       }
     };
 
+    const saveScript = async (sceneId: string, text: string, options: { quiet?: boolean } = {}): Promise<void> => {
+      const failedBefore = store().saveState[sceneId]?.status === "error";
+      store().markSaving(sceneId);
+      try {
+        const rev = await api.updateScript(projectId(), sceneId, { script: text });
+        store().markSaved(sceneId, rev, text);
+      } catch (err) {
+        store().markSaveError(sceneId, errorMessage(err));
+        // The inline note is easy to miss: say it once, with a way to try again.
+        if (!options.quiet && !failedBefore) {
+          toast(fmt(t.script.saveFailedToast, { n: pageNo(sceneId), message: errorMessage(err) }), "error", {
+            label: t.app.retry,
+            run: () => {
+              const draft = store().drafts[sceneId];
+              if (draft !== undefined) void saveScript(sceneId, draft);
+            },
+          });
+        }
+      }
+    };
+
     return {
       enqueue,
       updateProject,
       changeSettings,
 
-      async saveScript(sceneId: string, text: string): Promise<void> {
-        store().markSaving(sceneId);
-        try {
-          const rev = await api.updateScript(projectId(), sceneId, { script: text });
-          store().markSaved(sceneId, rev, text);
-        } catch (err) {
-          store().markSaveError(sceneId, errorMessage(err));
-        }
-      },
+      saveScript,
 
       async cancelJob(jobId: string): Promise<void> {
         try {

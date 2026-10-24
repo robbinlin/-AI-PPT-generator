@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { avatarInVideo } from "@lvs/shared";
 import { Link } from "react-router";
 import { ChevronDown, ChevronLeft, Clock, FileText, Settings, Upload } from "lucide-react";
 import { ThemeToggle } from "../ThemeToggle";
@@ -37,7 +38,7 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
         : "",
     [detail],
   );
-  const avatarEnabled = detail?.project.settings.avatar.enabled ?? false;
+  const avatarEnabled = detail ? avatarInVideo(detail.project.settings.avatar) : false;
   // Like 下一步 and 補齊: only pages without a script count as work left (an outdated one is optional).
   const missingScripts = useMemo(
     () => (detail ? detail.scenes.filter((s) => !detail.slides.find((sl) => sl.id === s.slideId)?.hidden && (s.script.status === "missing" || s.script.status === "failed")).map((s) => s.id) : []),
@@ -60,7 +61,7 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
   };
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-neutral-800 bg-neutral-900 px-3">
+    <header tabIndex={-1} data-editor-start aria-label={project.name} className="flex h-14 shrink-0 items-center gap-3 border-b border-neutral-800 bg-neutral-900 px-3 outline-none">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <Link
           to="/"

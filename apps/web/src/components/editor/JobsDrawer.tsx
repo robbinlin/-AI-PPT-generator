@@ -12,6 +12,7 @@ import { friendlyJobError } from "../../lib/jobErrors";
 import { isVideoCurrent } from "../../lib/scenes";
 import { pageRanges } from "../../lib/settingsImpact";
 import { saveVideo } from "../../lib/saveFiles";
+import { confirmAction } from "../../store/confirmStore";
 
 function JobError({ message }: { message: string }) {
   const friendly = friendlyJobError(message);
@@ -141,6 +142,22 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
   const [showAll, setShowAll] = useState(false);
   const panel = useRef<HTMLElement>(null);
 
+  // Stopping a presenter job throws away the clip being made, which the provider may already
+  // have billed: ask first. Other jobs stop right away (nothing paid is lost).
+  const stop = async (job: Job) => {
+    if (job.type === "generate_avatar") {
+      const heygen = editorStore.getState().detail?.project.settings.avatar.providerId === "heygen";
+      const ok = await confirmAction({
+        title: t.jobs.stopTitle,
+        lines: [t.jobs.stopLines, ...(heygen ? [t.jobs.stopBilled] : [])],
+        confirmLabel: t.jobs.stopConfirm,
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    await actions.cancelJob(job.id);
+  };
+
   // A modal drawer: focus moves in, Tab stays inside, and returns to 工作 when it closes.
   useEffect(() => {
     if (!open) return;
@@ -208,7 +225,7 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
                     {t.jobs.types[job.type]}
                     <JobDetail job={job} />
                   </span>
-                  <Button size="sm" variant="ghost" onClick={() => void actions.cancelJob(job.id)}>
+                  <Button size="sm" variant="ghost" onClick={() => void stop(job)}>
                     {t.jobs.cancel}
                   </Button>
                 </div>
@@ -308,7 +325,13 @@ function RenderDownload({ job }: { job: Job }) {
         preset: job.payload.type === "render_video" && job.payload.preset === "preview_540p" ? "540p" : "1080p",
         time: new Date(job.finishedAt ?? job.createdAt).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }),
       })}
-      onClick={() => void saveVideo(url, projectName, assetId)}
+      onClick={() =>
+        void saveVideo(url, projectName, {
+          id: assetId,
+          height: job.payload.type === "render_video" && job.payload.preset === "preview_540p" ? 540 : 1080,
+          createdAt: job.finishedAt ?? job.createdAt,
+        })
+      }
     >
       <Download className="size-3.5" aria-hidden />
       {t.jobs.download}

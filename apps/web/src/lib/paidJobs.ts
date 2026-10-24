@@ -69,7 +69,14 @@ export function estimateLines(estimate: CostEstimate): string[] {
   return out;
 }
 
-export function confirmContent(type: EstimateType, req: EnqueueJobRequest, estimate: CostEstimate, avatarProviderId?: string) {
+/** Finished presenter clips a forced speech/script rerun would make outdated (new audio = new clip). */
+export interface AvatarLoss {
+  pages: number;
+  /** Cost of making those clips again, when it could be estimated. */
+  redo?: CostEstimate;
+}
+
+export function confirmContent(type: EstimateType, req: EnqueueJobRequest, estimate: CostEstimate, avatarProviderId?: string, loss?: AvatarLoss) {
   const pages = estimate.sceneCount;
   const wait = estimateWaitSec(type, estimate, avatarProviderId);
   const lines = [
@@ -78,6 +85,14 @@ export function confirmContent(type: EstimateType, req: EnqueueJobRequest, estim
     ...estimateLines(estimate).map((l) => `・${l}`),
     fmt(t.paid.wait, { wait: formatWait(wait) }),
   ];
+  if (loss && loss.pages > 0) {
+    lines.push(
+      fmt(t.paid.avatarLoss, {
+        n: loss.pages,
+        cost: loss.redo && loss.redo.total > 0 ? fmt(t.paid.avatarLossCost, { cost: twdShort(loss.redo.total, loss.redo.currency) }) : "",
+      }),
+    );
+  }
   const notes = [isForced(req) ? t.paid.forcedNote : "", wait > 90 ? t.paid.longNote : ""].filter(Boolean);
   // 「全部做完再匯出」: say that the video follows, and how it will be exported.
   const then = "thenRender" in req ? req.thenRender : undefined;
@@ -94,6 +109,7 @@ export function confirmContent(type: EstimateType, req: EnqueueJobRequest, estim
     lines,
     note: notes.join(" "),
     confirmLabel: fmt(then ? t.paid.startThenRender : t.paid.start, { cost: twdShort(estimate.total, estimate.currency) }),
+    ...(loss && loss.pages > 0 ? { danger: true } : {}),
   };
 }
 

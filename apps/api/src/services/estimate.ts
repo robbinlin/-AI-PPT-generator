@@ -1,4 +1,5 @@
 import type { CostEstimate, JobType, ProjectDetail } from "@lvs/shared";
+import { avatarInVideo } from "@lvs/shared";
 import { avatarEngine, estimateCost } from "@lvs/pipeline";
 import {
   audioReady,
@@ -77,6 +78,7 @@ export function estimateJob(detail: ProjectDetail, type: JobType, opts: Estimate
       return merge([estimateCost("synthesize_speech", { providerId: s.voice.providerId, chars })], targets.length, secondsOf(targets));
     }
     case "generate_avatar": {
+      if (!avatarInVideo(s.avatar)) return merge([], 0, 0);
       const targets = avatarTargets(detail, opts);
       const seconds = secondsOf(targets);
       const parts: CostEstimate[] = [];

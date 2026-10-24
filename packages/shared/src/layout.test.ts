@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AvatarLayout } from "./entities.js";
-import { avatarFrameBox, subtitleSideMargins } from "./layout.js";
+import { avatarFrameBox, avatarInVideo, subtitleSideMargins } from "./layout.js";
 
 const RATIO = 16 / 9;
 const style = { position: "bottom" as const, fontFrac: 44 / 1080, marginPx: 0, marginFrac: 48 / 1080 };
@@ -28,5 +28,15 @@ describe("subtitleSideMargins", () => {
   it("does nothing for a hidden presenter", () => {
     const layout = AvatarLayout.parse({ anchor: "bottom-left", size: 0.6, visible: false });
     expect(subtitleSideMargins(layout, RATIO, style)).toBeNull();
+  });
+});
+
+describe("avatarInVideo", () => {
+  const layout = { visible: true } as never;
+  it("needs the presenter on, chosen and shown", () => {
+    expect(avatarInVideo({ enabled: true, avatarId: "a", layout })).toBe(true);
+    expect(avatarInVideo({ enabled: false, avatarId: "a", layout })).toBe(false);
+    expect(avatarInVideo({ enabled: true, avatarId: undefined, layout } as never)).toBe(false);
+    expect(avatarInVideo({ enabled: true, avatarId: "a", layout: { visible: false } as never })).toBe(false);
   });
 });

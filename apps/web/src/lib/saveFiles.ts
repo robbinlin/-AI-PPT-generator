@@ -30,11 +30,31 @@ export function safeFileBase(projectName: string): string {
   return projectName.replace(/[\\/:*?"<>|]+/g, "_");
 }
 
-export function videoFileName(projectName: string): string {
-  return `${safeFileBase(projectName)}.mp4`;
+export interface VideoFileInfo {
+  id: string;
+  height?: number;
+  createdAt?: string | Date;
+}
+
+/**
+ * 「運動生理學_1080p_1025-1430.mp4」 (+「_舊版」): quality and export time in the name, so a 540p
+ * check or an older export never overwrites the good copy, and the files tell themselves apart.
+ */
+export function videoFileName(projectName: string, video?: Omit<VideoFileInfo, "id">, old = false): string {
+  const parts = [safeFileBase(projectName)];
+  if (video?.height) parts.push(`${video.height}p`);
+  if (video?.createdAt) {
+    const d = new Date(video.createdAt);
+    if (!Number.isNaN(d.getTime())) {
+      const two = (n: number) => String(n).padStart(2, "0");
+      parts.push(`${two(d.getMonth() + 1)}${two(d.getDate())}-${two(d.getHours())}${two(d.getMinutes())}`);
+    }
+  }
+  if (old) parts.push(t.export.oldSuffix);
+  return `${parts.join("_")}.mp4`;
 }
 
 /** Saves a project video and remembers it was downloaded (clears the export button's dot). */
-export function saveVideo(url: string, projectName: string, assetId: string): Promise<void> {
-  return saveWithToasts(url, videoFileName(projectName), VIDEO_FILE_TYPE, true, () => markDownloaded(assetId));
+export function saveVideo(url: string, projectName: string, video: VideoFileInfo, old = false): Promise<void> {
+  return saveWithToasts(url, videoFileName(projectName, video, old), VIDEO_FILE_TYPE, true, () => markDownloaded(video.id));
 }

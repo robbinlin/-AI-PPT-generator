@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { avatarInVideo } from "@lvs/shared";
 import { Check, ChevronRight } from "lucide-react";
 import type { ProjectDetail } from "@lvs/shared";
 import type { EstimateType } from "../../api/types";
@@ -52,7 +53,7 @@ export function buildSteps(detail: ProjectDetail, uploading = false): { steps: S
     total: scenes.length,
   };
   const audioCount = countReady(spoken, "audio");
-  const avatarOn = detail.project.settings.avatar.enabled && !!detail.project.settings.avatar.avatarId;
+  const avatarOn = avatarInVideo(detail.project.settings.avatar);
   const avatarCount = countReady(spoken, "avatar");
   const video = latestProjectAsset(detail.assets, detail.scenes, "video");
   const videoCurrent = isVideoCurrent(detail.currentRenderHashes, video);

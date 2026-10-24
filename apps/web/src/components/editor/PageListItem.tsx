@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core";
 import type { Scene, Slide } from "@lvs/shared";
 import { Eye, EyeOff, GripVertical, ImageOff, MoreHorizontal, Volume2, VolumeX } from "lucide-react";
@@ -27,6 +27,7 @@ export interface PageListItemProps {
 }
 
 export function PageListItem(props: PageListItemProps) {
+  const uid = useId();
   const { slide, scene, position, scriptText, thumbnailUrl, selected, dragging = false } = props;
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
@@ -54,8 +55,14 @@ export function PageListItem(props: PageListItemProps) {
         tabIndex={selected ? 0 : -1}
         data-page-button
         onClick={props.onSelect}
-        aria-label={fmt(t.editor.pageOf, { n: position })}
+        // Name = 「第 N 頁」 (+ 已隱藏／靜音); the script line and status are its description, so a
+        // screen reader hears them too instead of only the page number.
+        aria-labelledby={`${uid}-name`}
+        aria-describedby={`${uid}-desc`}
       >
+        <span id={`${uid}-name`} className="sr-only">
+          {[fmt(t.editor.pageOf, { n: position }), slide.hidden ? t.pageList.hidden : "", muted ? t.pageList.muted : ""].filter(Boolean).join("，")}
+        </span>
         <div className={`relative aspect-video overflow-hidden rounded-md bg-neutral-800 ${slide.hidden ? "opacity-40" : ""}`}>
           {thumbnailUrl ? (
             <img src={thumbnailUrl} alt="" className="size-full object-cover" draggable={false} />
@@ -64,7 +71,7 @@ export function PageListItem(props: PageListItemProps) {
               <ImageOff className="size-5 text-neutral-600" aria-hidden />
             </div>
           )}
-          <span className="absolute top-1 left-1 rounded on-dark bg-black/70 px-1.5 py-0.5 text-xs font-semibold text-white">
+          <span aria-hidden className="absolute top-1 left-1 rounded on-dark bg-black/70 px-1.5 py-0.5 text-xs font-semibold text-white">
             P{position}
           </span>
           <span className="absolute top-1 right-1 flex gap-1">
@@ -80,10 +87,12 @@ export function PageListItem(props: PageListItemProps) {
             )}
           </span>
         </div>
+        <span id={`${uid}-desc`} className="block">
         <p className={`mt-1.5 line-clamp-2 text-xs leading-snug [@media(max-height:800px)]:line-clamp-1 ${line ? "text-neutral-300" : "text-neutral-400 italic"}`}>
           {line || t.pageList.noScript}
         </p>
         {scene && <StatusSummary scene={scene} />}
+        </span>
       </button>
       <div className="mt-1.5 flex items-center justify-between">
         {scene ? <StatusDots scene={scene} /> : <span />}

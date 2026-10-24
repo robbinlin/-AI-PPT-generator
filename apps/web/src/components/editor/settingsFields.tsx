@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { inputClass } from "../ui/Field";
 
 /** Text input that commits on blur / Enter rather than on every keystroke. */
@@ -101,7 +101,11 @@ export function CommitNumber({
   );
 }
 
-/** Slider that previews locally and commits on release. */
+/**
+ * Slider that previews locally and commits on release; from the keyboard, once the keys have
+ * paused (one confirmation per adjustment, not per step). `onCommit` returning false (the user
+ * declined) puts the slider back on the saved value.
+ */
 export function CommitRange({
   value,
   onCommit,
@@ -112,7 +116,7 @@ export function CommitRange({
   label,
 }: {
   value: number;
-  onCommit: (v: number) => void;
+  onCommit: (v: number) => unknown;
   min: number;
   max: number;
   step: number;
@@ -121,9 +125,19 @@ export function CommitRange({
 }) {
   const [local, setLocal] = useState(value);
   useEffect(() => setLocal(value), [value]);
-  const commit = () => {
-    if (local !== value) onCommit(local);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const busy = useRef(false);
+  const commit = async () => {
+    clearTimeout(timer.current);
+    if (local === value || busy.current) return;
+    busy.current = true;
+    try {
+      if ((await onCommit(local)) === false) setLocal(value);
+    } finally {
+      busy.current = false;
+    }
   };
+  useEffect(() => () => clearTimeout(timer.current), []);
   return (
     <div className="flex items-center gap-2">
       <input
@@ -135,9 +149,12 @@ export function CommitRange({
         max={max}
         step={step}
         onChange={(e) => setLocal(Number(e.target.value))}
-        onPointerUp={commit}
-        onKeyUp={commit}
-        onBlur={commit}
+        onPointerUp={() => void commit()}
+        onKeyUp={() => {
+          clearTimeout(timer.current);
+          timer.current = setTimeout(() => void commit(), 700);
+        }}
+        onBlur={() => void commit()}
       />
       <span className="w-12 text-right font-mono text-xs text-neutral-400 tabular-nums">{format(local)}</span>
     </div>

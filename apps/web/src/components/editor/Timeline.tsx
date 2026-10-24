@@ -141,6 +141,15 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
       </div>
       {collapsed ? null : (
         <>
+      {/* Each page has a few stops here; keyboard users can jump straight to the right panel. */}
+      <button
+        type="button"
+        className="sr-only focus:not-sr-only focus:m-2 focus:rounded focus:bg-accent-600 focus:px-2 focus:py-1 focus:text-xs focus:text-white"
+        onClick={() => document.querySelector<HTMLElement>('[role=tablist] [role=tab][aria-selected="true"]')?.focus()}
+        data-testid="skip-timeline"
+      >
+        {t.timeline.skip}
+      </button>
       {!tipSeen && (
         <div className="flex items-center gap-2 border-b border-neutral-800 bg-accent-500/10 px-3 py-1.5 text-xs text-accent-100" role="note" data-testid="timeline-tip">
           <GripVertical className="size-3.5 shrink-0" aria-hidden />

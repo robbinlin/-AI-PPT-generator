@@ -32,11 +32,12 @@ export function StudioPanel({ actions }: { actions: Pick<EditorActions, "updateP
   // before paid avatars become 需更新 and offers 復原 afterwards.
   const setVoice = (p: Partial<VoiceSettings>) => {
     const audio = VOICE_AUDIO_KEYS.some((k) => k in p && p[k] !== s.voice[k]);
-    void actions.changeSettings({ voice: { ...s.voice, ...p } }, audio ? "audio" : "none");
+    // Returned so a slider can snap back when the user declines (see CommitRange).
+    return actions.changeSettings({ voice: { ...s.voice, ...p } }, audio ? "audio" : "none");
   };
   const setAvatar = (p: Partial<AvatarSettings>) => {
     const changesClip = ("avatarId" in p && p.avatarId !== s.avatar.avatarId) || ("providerId" in p && p.providerId !== s.avatar.providerId);
-    void actions.changeSettings({ avatar: { ...s.avatar, ...p } }, changesClip ? "avatar" : "none");
+    return actions.changeSettings({ avatar: { ...s.avatar, ...p } }, changesClip ? "avatar" : "none");
   };
   const setLayout = (p: Partial<AvatarLayout>) => setAvatar({ layout: { ...s.avatar.layout, ...p } });
   const setSubtitles = (p: Partial<SubtitleSettings>) => patch({ subtitles: { ...s.subtitles, ...p } });
@@ -279,7 +280,8 @@ function AvatarSection({
       <ProviderPills providers={providers} kind="avatar" value={s.providerId} onChange={(providerId) => setAvatar({ providerId, enabled: true })} />
       {provider?.hint && <p className="text-xs text-amber-300/90">{provider.hint}</p>}
       <AvatarProviderCompare providers={providers} selected={s.enabled ? s.providerId : undefined} />
-      <div className="grid grid-cols-4 gap-2" data-testid="avatar-gallery">
+      {/* Four across only when the panel is wide enough for the faces not to be covered. */}
+      <div className="grid grid-cols-3 gap-2 min-[1360px]:grid-cols-4" data-testid="avatar-gallery">
         {custom && (
           <button
             type="button"
@@ -467,10 +469,10 @@ function AvatarTile({
       {/* The user's own presenters already carry their type in the name (我的照片型人像 1). */}
       {a.kind !== "personal" && (a.source || number) && (
         <span className="absolute top-1 left-1 rounded on-dark bg-black/70 px-1 py-px text-xs leading-tight text-neutral-100">
-          {[a.source ? t.studio.source[a.source] : "", number].filter(Boolean).join(" ")}
+          {[a.source ? t.studio.sourceShort[a.source] : "", number].filter(Boolean).join(" ")}
         </span>
       )}
-      <span className="absolute inset-x-0 bottom-0 line-clamp-2 on-dark bg-black/75 px-1 py-0.5 text-xs leading-tight break-words text-neutral-100">{name}</span>
+      <span className="absolute inset-x-0 bottom-0 line-clamp-2 on-dark bg-black/75 px-1 py-0.5 text-xs leading-tight break-words break-keep text-neutral-100">{name}</span>
       {selected && (
         <span className="absolute top-1 right-1 rounded-full bg-accent-500 p-0.5 text-white">
           <Check className="size-3" aria-hidden />
@@ -500,8 +502,20 @@ function AllAvatarsModal({
   const api = useApi();
   const [q, setQ] = useState("");
   // Hundreds of stock presenters bury the user's own: start with theirs when they have any.
-  const [onlyMine, setOnlyMine] = useState(() => avatars.some((a) => a.kind === "personal"));
-  const list = avatars.filter((a) => (!onlyMine || a.kind === "personal") && a.name.toLowerCase().includes(q.trim().toLowerCase()));
+  const hasMine = avatars.some((a) => a.kind === "personal");
+  const [onlyMine, setOnlyMine] = useState(hasMine);
+  // Decided each time the dialog opens (the list may still have been loading when it mounted).
+  useEffect(() => {
+    if (open) setOnlyMine(hasMine);
+  }, [open, hasMine]);
+  // Search what is on screen (「Dante・辦公室」, 照片型) as well as the provider's own name.
+  const needle = q.trim().toLowerCase();
+  const list = avatars.filter((a) => {
+    if (onlyMine && a.kind !== "personal") return false;
+    if (!needle) return true;
+    const hay = [names.get(a.id) ?? "", a.name, a.source ? t.studio.source[a.source] : "", a.source ? t.studio.sourceShort[a.source] : ""].join(" ").toLowerCase();
+    return hay.includes(needle);
+  });
   return (
     <Modal title={t.studio.allAvatars} open={open} onClose={onClose} width="w-[760px]">
       <div className="mb-3 flex items-center gap-2">
@@ -737,7 +751,7 @@ function VoiceSection({
     // Scroll the list itself only: scrollIntoView would also scroll the whole tab and hide the
     // presenter choice at the top.
     const ul = voiceList.current;
-    const el = ul?.querySelector<HTMLElement>('[aria-selected="true"]');
+    const el = ul?.querySelector<HTMLElement>('[data-selected="true"]');
     if (!ul || !el) return;
     const top = el.getBoundingClientRect().top - ul.getBoundingClientRect().top + ul.scrollTop;
     if (top < ul.scrollTop || top + el.offsetHeight > ul.scrollTop + ul.clientHeight) ul.scrollTop = Math.max(0, top - (ul.clientHeight - el.offsetHeight) / 2);
@@ -747,15 +761,16 @@ function VoiceSection({
     <Section title={t.studio.voice}>
       <ProviderPills providers={providers} kind="tts" value={s.providerId} onChange={(providerId) => setVoice({ providerId })} />
       {provider?.hint && <p className="text-xs text-amber-300/90">{provider.hint}</p>}
-      <ul ref={voiceList} className="max-h-64 overflow-y-auto rounded-md border border-neutral-800" role="listbox" aria-label={t.settings.voiceId} data-testid="voice-list">
+      <ul ref={voiceList} className="max-h-64 overflow-y-auto rounded-md border border-neutral-800" aria-label={t.settings.voiceId} data-testid="voice-list">
         {shownVoices.map((v) => {
           const isSel = v.id === s.voiceId;
           const state = player.playingId === v.id ? player.state : "idle";
           return (
             <li
               key={v.id}
-              role="option"
-              aria-selected={isSel}
+              // A plain list of voices: each row has 試聽 and a choose button (aria-pressed), which
+              // is what keyboard and screen-reader users actually get, rather than a fake listbox.
+              data-selected={isSel}
               className={`flex items-center gap-2 border-b border-neutral-800/70 px-2 py-1.5 last:border-b-0 ${isSel ? "bg-accent-500/15" : "hover:bg-neutral-800/60"}`}
             >
               <button
@@ -766,7 +781,7 @@ function VoiceSection({
               >
                 {state === "loading" ? <Loader2 className="size-3.5 animate-spin" /> : state === "playing" ? <Square className="size-3" /> : <Play className="size-3.5" />}
               </button>
-              <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setVoice({ voiceId: v.id })}>
+              <button type="button" aria-pressed={isSel} className="min-w-0 flex-1 text-left" onClick={() => setVoice({ voiceId: v.id })}>
                 <div className="truncate text-sm text-neutral-100">
                   {v.name}
                   {!speaks(v) && (

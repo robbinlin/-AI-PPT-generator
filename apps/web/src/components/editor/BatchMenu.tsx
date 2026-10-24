@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { avatarInVideo } from "@lvs/shared";
 import { ChevronDown, Layers, Upload } from "lucide-react";
 import type { CostEstimate, Scene } from "@lvs/shared";
 import type { EditorActions } from "../../hooks/useEditorActions";
@@ -73,7 +74,8 @@ export function BatchMenu({ actions, onReplace }: { actions: Pick<EditorActions,
   // Speech and avatars need a script first: pages without one are not 補齊-able here.
   const spoken = all.filter((s) => !s.muted && s.script.status !== "missing" && !!detail.scripts[s.id]?.script.trim());
   const noScript = all.filter((s) => !s.muted).length - spoken.length;
-  const avatarOn = detail.project.settings.avatar.enabled && !!detail.project.settings.avatar.avatarId;
+  const avatarSettings = detail.project.settings.avatar;
+  const avatarOn = avatarInVideo(avatarSettings);
   const busy = (type: Kind) => detail.activeJobs.some((j) => j.type === type);
   const hasSlides = detail.slides.length > 0;
 
@@ -98,7 +100,7 @@ export function BatchMenu({ actions, onReplace }: { actions: Pick<EditorActions,
   const rows: Array<{ kind: Kind; label: string; list: Scene[]; redo: boolean; off?: string }> = [
     { kind: "generate_script", label: t.batch.script, list: all, redo: true },
     { kind: "synthesize_speech", label: t.batch.speech, list: spoken, redo: true },
-    { kind: "generate_avatar", label: t.batch.avatar, list: spoken, redo: false, off: avatarOn ? undefined : t.batch.avatarOff },
+    { kind: "generate_avatar", label: t.batch.avatar, list: spoken, redo: false, off: avatarOn ? undefined : avatarSettings.enabled && avatarSettings.avatarId ? t.batch.avatarHidden : t.batch.avatarOff },
   ];
   const item = "block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent";
 

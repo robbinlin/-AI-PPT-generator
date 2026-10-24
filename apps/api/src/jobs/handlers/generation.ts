@@ -4,6 +4,7 @@
  * clearly marked function that @lvs/pipeline / @lvs/providers will fill in.
  */
 import { and, desc, eq } from "drizzle-orm";
+import { avatarInVideo } from "@lvs/shared";
 import type { GlossaryEntry, Language, OutlineRevision, ProjectSettings, Scene, ScriptRevision, Slide } from "@lvs/shared";
 import { toScene } from "../../db/mappers.js";
 import { assets, projects, scenes } from "../../db/schema.js";
@@ -47,6 +48,7 @@ async function reuseAvatarClip(ctx: JobContext, sceneId: string, inputHash: stri
 }
 
 const NO_SLIDES = "專案還沒有投影片，請先上傳簡報";
+export const AVATAR_HIDDEN = "目前的版面是「只有投影片」，影片不會出現人像，所以不製作人像。要人像請先在「人像與聲音」選一個有人像的版面";
 export const AVATAR_DISABLED = "這個專案沒有啟用人像，請到「人像與聲音」分頁開啟";
 export const AVATAR_NOT_SELECTED = "請先在「人像與聲音」分頁選擇人像";
 
@@ -265,6 +267,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
     const settings = detail.project.settings;
     if (!settings.avatar.enabled) throw new NonRetryableJobError(AVATAR_DISABLED);
     if (!settings.avatar.providerId || !settings.avatar.avatarId) throw new NonRetryableJobError(AVATAR_NOT_SELECTED);
+    if (!avatarInVideo(settings.avatar)) throw new NonRetryableJobError(AVATAR_HIDDEN);
     // Every narrated page with a script is a candidate; pages whose audio is missing or stale
     // get it synthesized first, so "產生人像" never silently skips them.
     const candidates = narratedCandidates(detail);

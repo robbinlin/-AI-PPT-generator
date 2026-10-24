@@ -100,7 +100,7 @@ describe("PageList", () => {
     const user = userEvent.setup();
     const actions = renderList();
     const second = editorStore.getState().detail?.scenes[1];
-    await user.click(screen.getByRole("button", { name: "第 2 頁" }));
+    await user.click(screen.getByRole("button", { name: /^第 2 頁(，|$)/ }));
     expect(editorStore.getState().selectedSceneId).toBe(second?.id);
 
     const item = screen.getAllByRole("listitem").find((li) => li.getAttribute("data-scene-id") === second?.id);

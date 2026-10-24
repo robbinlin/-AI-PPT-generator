@@ -1,4 +1,4 @@
-import type { AvatarLayout } from "./entities.js";
+import type { AvatarLayout, AvatarSettings } from "./entities.js";
 
 /**
  * Frame geometry shared by the render worker and the editor preview, so both put the presenter
@@ -63,4 +63,13 @@ export function subtitleSideMargins(
     ? { left: SUBTITLE_SIDE_MARGIN, right: 1 - box.left + gap }
     : { left: box.left + box.width + gap, right: SUBTITLE_SIDE_MARGIN };
   return 1 - margins.left - margins.right >= MIN_SUBTITLE_WIDTH ? margins : null;
+}
+
+/**
+ * Whether the video shows a presenter: switched on, one chosen, and not the 「只有投影片」 layout.
+ * Everything that offers, prices or makes presenter clips goes by this, so nobody pays for clips
+ * the render would leave out.
+ */
+export function avatarInVideo(avatar: Pick<AvatarSettings, "enabled" | "avatarId" | "layout">): boolean {
+  return avatar.enabled && !!avatar.avatarId && avatar.layout.visible !== false;
 }

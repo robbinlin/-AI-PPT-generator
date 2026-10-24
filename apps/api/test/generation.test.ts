@@ -335,6 +335,14 @@ describe("generation handlers", () => {
     expect(off.row.status).toBe("failed");
     expect(off.row.error).toBe("這個專案沒有啟用人像，請到「人像與聲音」分頁開啟");
     await t.app.inject({ method: "PATCH", url: `/projects/${projectId}`, payload: { settings: { avatar: { enabled: true } } } });
+    // 「只有投影片」: the render leaves the presenter out, so nothing is priced or made for it.
+    const layout = (await detail()).project.settings.avatar.layout;
+    await t.app.inject({ method: "PATCH", url: `/projects/${projectId}`, payload: { settings: { avatar: { layout: { ...layout, visible: false } } } } });
+    expect((await estimate("type=generate_avatar&scope=all")).sceneCount).toBe(0);
+    const hidden = await run({ type: "generate_avatar", force: true });
+    expect(hidden.row.status).toBe("failed");
+    expect(hidden.row.error).toContain("只有投影片");
+    await t.app.inject({ method: "PATCH", url: `/projects/${projectId}`, payload: { settings: { avatar: { layout } } } });
 
     const empty = (await t.app.inject({ method: "POST", url: "/projects", payload: { name: "empty" } })).json() as Project;
     const r = await run({ type: "render_video" }, empty.id);

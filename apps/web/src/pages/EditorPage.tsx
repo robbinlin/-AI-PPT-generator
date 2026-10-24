@@ -22,7 +22,7 @@ import { fmt, t } from "../i18n";
 import { friendlyJobError } from "../lib/jobErrors";
 import { notifyIfHidden } from "../lib/notify";
 import { takePendingUpload } from "../lib/pendingUpload";
-import { confirmDiscard, hasUnsaved } from "../lib/unsavedGuard";
+import { confirmDiscard, hasUnsaved, setUnsaved } from "../lib/unsavedGuard";
 import { editorStore, useEditor } from "../store/editorStore";
 import { toast } from "../store/toastStore";
 
@@ -40,6 +40,19 @@ export function EditorPage() {
   const [error, setError] = useState<string | null>(null);
   useDocumentTitle(projectName ?? (error ? t.editor.errorTitle : undefined));
   const [jobsOpen, setJobsOpen] = useState(false);
+
+  // Arriving from 建立並上傳 or the project list leaves focus on <body>, so the first Tab landed in
+  // the page list: start keyboard users at the top of the editor instead. Not on 下一步 itself,
+  // where a Space meant for play would start a job.
+  useEffect(() => {
+    if (!loaded) return;
+    const id = setTimeout(() => {
+      const a = document.activeElement;
+      if (a && a !== document.body) return;
+      document.querySelector<HTMLElement>("[data-editor-start]")?.focus({ preventScroll: true });
+    }, 50);
+    return () => clearTimeout(id);
+  }, [loaded, projectId]);
 
   // Load the project and follow its event stream. Events that arrive before the snapshot are
   // buffered and replayed on top of it.
@@ -88,7 +101,7 @@ export function EditorPage() {
           // Resolve the URL first so the click on 下載影片 opens the save dialog right away.
           const name = editorStore.getState().detail?.project.name ?? "video";
           void assetUrls.get(projectId, videoAssetId).then(
-            (url) => toast(t.export.readyToast, "success", { label: t.export.readyAction, run: () => void saveVideo(url, name, videoAssetId) }, 120_000),
+            (url) => toast(t.export.readyToast, "success", { label: t.export.readyAction, run: () => void saveVideo(url, name, editorStore.getState().detail?.assets[videoAssetId] ?? { id: videoAssetId }) }, 120_000),
             () => toast(fmt(t.jobs.doneToast, { type }), "success"),
           );
         } else {
@@ -123,14 +136,33 @@ export function EditorPage() {
 
   useScriptAutosave(drafts, actions.saveScript);
 
-  // Unsaved glossary edits: any navigation away (a link, the gear, the browser's back) asks first.
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => hasUnsaved() && currentLocation.pathname !== nextLocation.pathname);
+  // Unsaved edits (glossary, or script text not saved yet): any navigation away (a link, the gear,
+  // the browser's back) first saves the scripts; whatever still could not be saved is asked about.
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) => (hasUnsaved() || editorStore.getState().dirty) && currentLocation.pathname !== nextLocation.pathname,
+  );
   const blockerRef = useRef(blocker);
   blockerRef.current = blocker;
   useEffect(() => {
     if (blocker.state !== "blocked") return;
-    void confirmDiscard().then((ok) => (ok ? blockerRef.current.proceed?.() : blockerRef.current.reset?.()));
-  }, [blocker.state]);
+    void (async () => {
+      // A save that already failed is not retried here (that took seconds with nothing on screen):
+      // it goes straight to the question. Edits not yet sent are saved now.
+      const { drafts: open, saveState } = editorStore.getState();
+      const pending = Object.entries(open).filter(([sceneId]) => saveState[sceneId]?.status !== "error");
+      if (pending.length) toast(t.unsaved.saving, "info");
+      await Promise.all(pending.map(([sceneId, text]) => actions.saveScript(sceneId, text, { quiet: true })));
+      const left = editorStore.getState();
+      const pages = Object.keys(left.drafts)
+        .map((id) => (left.detail?.scenes.find((s) => s.id === id)?.index ?? 0) + 1)
+        .sort((a, b) => a - b);
+      setUnsaved("scripts", pages.length ? fmt(t.unsaved.scripts, { pages: pages.join("、") }) : null);
+      const ok = await confirmDiscard();
+      if (ok) blockerRef.current.proceed?.();
+      else blockerRef.current.reset?.();
+    })();
+  }, [blocker.state]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => setUnsaved("scripts", null), []);
 
   // A save that got no response is retried for a few seconds: say so instead of staying silent.
   useEffect(() => {

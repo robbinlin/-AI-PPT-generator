@@ -1,4 +1,5 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
+import { avatarInVideo } from "@lvs/shared";
 import type { ScriptRevision } from "@lvs/shared";
 import { AlertTriangle, ChevronRight, Redo2, Undo2, Volume2, VolumeX, WandSparkles } from "lucide-react";
 import type { EditorActions } from "../../hooks/useEditorActions";
@@ -55,7 +56,7 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   // A hidden page is not in the video: never offer to pay for its narration or presenter.
   const hidden = detail.slides.find((sl) => sl.id === scene.slideId)?.hidden ?? false;
   const audioNeeds = !hidden && !scene.muted && !!revision && (needs(scene.audio) || scene.audio.status === "missing");
-  const avatarOn = settings.avatar.enabled && !!settings.avatar.avatarId;
+  const avatarOn = avatarInVideo(settings.avatar);
   const avatarNeeds = !hidden && avatarOn && !scene.muted && !!revision && (needs(scene.avatar) || scene.avatar.status === "missing");
   const busy = (type: string) => detail.activeJobs.some((j) => j.type === type);
   // A finished paid avatar is lip-synced to this exact text: say so before the first keystroke

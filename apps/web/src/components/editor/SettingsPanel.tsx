@@ -15,6 +15,7 @@ import { targetLanguageName, useTranslateProject } from "../../hooks/useTranslat
 import { Button } from "../ui/Button";
 import { fmt, t } from "../../i18n";
 import { confirmAction } from "../../store/confirmStore";
+import { toast } from "../../store/toastStore";
 import { useEditor } from "../../store/editorStore";
 import { Field, Select, type Option } from "../ui/Field";
 import { CommitNumber, CommitText, SettingsSection } from "./settingsFields";
@@ -74,6 +75,11 @@ export function SettingsPanel({
   const s = project.settings;
   const patch = (settings: SettingsPatch) =>
     void actions.updateProject({ settings });
+  // Script settings only shape scripts written from now on: say so when some already exist.
+  const scriptPatch = (settings: SettingsPatch) =>
+    void actions.updateProject({ settings }).then((ok) => {
+      if (ok && hasScripts) toast(t.settings.scriptSettingSaved, "info");
+    });
 
   return (
     <div className="pb-6">
@@ -87,14 +93,14 @@ export function SettingsPanel({
             <Select
               value={s.audience}
               options={opts(AUDIENCES, t.options.audience)}
-              onChange={(audience) => patch({ audience })}
+              onChange={(audience) => scriptPatch({ audience })}
             />
           </Field>
           <Field label={t.settings.mode}>
             <Select
               value={s.mode}
               options={opts(MODES, t.options.mode)}
-              onChange={(mode) => patch({ mode })}
+              onChange={(mode) => scriptPatch({ mode })}
             />
           </Field>
           <Field label={t.settings.language}>
@@ -127,7 +133,7 @@ export function SettingsPanel({
               step={30}
               allowEmpty
               placeholder={t.settings.targetDurationAuto}
-              onCommit={(targetDurationSec) => patch({ targetDurationSec })}
+              onCommit={(targetDurationSec) => scriptPatch({ targetDurationSec })}
             />
           </Field>
         </div>
@@ -146,7 +152,7 @@ export function SettingsPanel({
               label={t.settings.audienceNote}
               value={s.audienceNote ?? ""}
               maxLength={500}
-              onCommit={(audienceNote) => patch({ audienceNote })}
+              onCommit={(audienceNote) => scriptPatch({ audienceNote })}
             />
           </Field>
         )}
@@ -164,14 +170,14 @@ export function SettingsPanel({
             maxLength={1000}
             value={s.styleNote ?? ""}
             placeholder={t.settings.styleNotePlaceholder}
-            onCommit={(styleNote) => patch({ styleNote })}
+            onCommit={(styleNote) => scriptPatch({ styleNote })}
           />
         </Field>
         <Field label={t.settings.llmProvider}>
           <Select
             value={s.llmProviderId}
             options={providerOptions(providers, "llm", s.llmProviderId)}
-            onChange={(llmProviderId) => patch({ llmProviderId })}
+            onChange={(llmProviderId) => scriptPatch({ llmProviderId })}
           />
         </Field>
       </SettingsSection>

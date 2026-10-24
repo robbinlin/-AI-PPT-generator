@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { avatarInVideo } from "@lvs/shared";
 import type { Asset, CostEstimate, Job } from "@lvs/shared";
 import { AlertTriangle, Download, FileText, Film, Subtitles } from "lucide-react";
 import { useApi, useAssetUrl } from "../../api/context";
@@ -8,7 +9,7 @@ import { fmt, t } from "../../i18n";
 import { DOWNLOADED_EVENT, markDownloaded, wasDownloaded } from "../../lib/autoExport";
 import { canChooseSaveLocation, formatBytes, formatRelativeTime, type saveFileAs } from "../../lib/format";
 import { twdShort } from "../../lib/paidJobs";
-import { saveWithToasts, VIDEO_FILE_TYPE } from "../../lib/saveFiles";
+import { saveWithToasts, VIDEO_FILE_TYPE, videoFileName } from "../../lib/saveFiles";
 import { isVideoCurrent, latestProjectAsset } from "../../lib/scenes";
 import { pageRanges, visibleScenes } from "../../lib/settingsImpact";
 import { useEditor } from "../../store/editorStore";
@@ -171,7 +172,7 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
   const noScript = scenes.filter((s) => s.script.status === "missing" || !detail?.scripts[s.id]?.script.trim());
   const audioNotReady = scenes.filter((s) => s.audio.status !== "ready").map((s) => s.index + 1);
   const avatarNotReady =
-    detail?.project.settings.avatar.enabled && detail.project.settings.avatar.avatarId
+    detail && avatarInVideo(detail.project.settings.avatar)
       ? scenes.filter((s) => s.avatar.status !== "ready").map((s) => s.index + 1)
       : [];
   const speechCost = usePendingEstimate(detail?.project.id, audioNotReady.length > 0 ? "synthesize_speech" : undefined);
@@ -238,7 +239,7 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
         <button
           type="button"
           className={`${item} mb-1 flex-wrap ${videoOutdated ? "bg-amber-500/10 text-amber-200" : "bg-emerald-500/10 text-emerald-300"}`}
-          onClick={() => void save(videoUrl, `${baseName}.mp4`, VIDEO_FILE_TYPE, true, () => markDownloaded(video.id))}
+          onClick={() => void save(videoUrl, videoFileName(detail?.project.name ?? baseName, video, videoOutdated), VIDEO_FILE_TYPE, true, () => markDownloaded(video.id))}
           title={canChooseSaveLocation() ? t.export.chooseLocation : undefined}
           data-testid="download-video"
         >
