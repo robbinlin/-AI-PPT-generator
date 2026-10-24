@@ -101,6 +101,7 @@ export interface TtsProvider {
   /** Providers with `capabilities.customVoices`. */
   createVoice?(input: { data: Uint8Array; mimeType: string; fileName: string; name: string; transcript?: string }): Promise<Voice>;
   deleteVoice?(id: string): Promise<void>;
+  renameVoice?(id: string, name: string): Promise<void>;
 }
 
 // ------------------------------------------------------------- Avatar ------

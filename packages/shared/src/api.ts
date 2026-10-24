@@ -52,6 +52,8 @@ export const CreateTranslationRequest = z.object({
   language: Language,
   /** Defaults to "<name>（英文版）". */
   name: z.string().min(1).max(200).optional(),
+  /** A voice of the same provider that speaks the new language (the current one may not). */
+  voiceId: z.string().min(1).max(200).optional(),
 });
 export type CreateTranslationRequest = z.infer<typeof CreateTranslationRequest>;
 
@@ -156,3 +158,6 @@ export type ProviderInfo = z.infer<typeof ProviderInfo>;
 
 export const SetProviderKeyRequest = z.object({ apiKey: z.string().min(1).max(500) });
 export type SetProviderKeyRequest = z.infer<typeof SetProviderKeyRequest>;
+
+export const RenameVoiceRequest = z.object({ name: z.string().trim().min(1).max(80) });
+export type RenameVoiceRequest = z.infer<typeof RenameVoiceRequest>;

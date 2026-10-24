@@ -9,6 +9,8 @@ export interface TimelineBlock {
   scene: Scene;
   slide: Slide;
   index: number;
+  /** Position in the whole deck (hidden pages included), as the page list and script panel number it. */
+  pageNumber: number;
   /** Seconds from the start of the video. */
   start: number;
   /** Narration length (measured, or the model's estimate when `estimated`). */
@@ -46,7 +48,7 @@ export function buildTimeline(
     }
     const tail = tailOverride?.sceneId === scene.id ? tailOverride.tail : (scene.tailPauseSec ?? 0.5);
     const total = Math.max(0.5, narration + tail);
-    blocks.push({ scene, slide, index: blocks.length, start: t, narration, tail, total, estimated });
+    blocks.push({ scene, slide, index: blocks.length, pageNumber: slide.index + 1, start: t, narration, tail, total, estimated });
     t += total;
   }
   return { blocks, totalSec: t };

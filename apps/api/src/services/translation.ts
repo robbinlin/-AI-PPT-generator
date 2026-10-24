@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { asc, desc, eq, inArray } from "drizzle-orm";
-import type { Job, Language, Project, ProjectSettings } from "@lvs/shared";
+import type { Job, Language, Project, ProjectSettings, Slide } from "@lvs/shared";
 import { ProjectSettings as ProjectSettingsSchema } from "@lvs/shared";
 import type { AppContext } from "../context.js";
 import { toProject } from "../db/mappers.js";
-import { assets, projects, scenes, slides, sourceDocuments } from "../db/schema.js";
+import { assets, outlineRevisions, projects, scenes, slides, sourceDocuments } from "../db/schema.js";
+import { outlineInputHash } from "../jobs/hashes.js";
 import { conflict } from "../errors.js";
 import { requireProject } from "./projects.js";
 
@@ -32,6 +33,7 @@ export async function createTranslatedProject(
   sourceId: string,
   language: Language,
   name?: string,
+  voiceId?: string,
 ): Promise<{ project: Project; job: Job }> {
   const { db, storage } = ctx;
   const source = await requireProject(db, ownerId, sourceId);
@@ -44,7 +46,8 @@ export async function createTranslatedProject(
 
   const projectId = randomUUID();
   const docId = randomUUID();
-  const settings: ProjectSettings = ProjectSettingsSchema.parse({ ...(source.settings as ProjectSettings), language });
+  const base = source.settings as ProjectSettings;
+  const settings: ProjectSettings = ProjectSettingsSchema.parse({ ...base, language, ...(voiceId ? { voice: { ...base.voice, voiceId } } : {}) });
 
   // Files first (outside the transaction): copy the upload and every slide image/thumbnail.
   const docKey = `projects/${projectId}/source/${docId}/${doc.filename}`;
@@ -79,6 +82,33 @@ export async function createTranslatedProject(
         sourceDocumentId: docId,
         imageAssetId: s.imageAssetId ? (assetCopies.get(s.imageAssetId)?.id ?? null) : null,
         thumbnailAssetId: s.thumbnailAssetId ? (assetCopies.get(s.thumbnailAssetId)?.id ?? null) : null,
+      });
+    }
+    // The source outline comes along (its slide ids mapped to the copy's), so the translated
+    // project has a glossary to correct readings in. Terms stay; readings are cleared — they were
+    // for the old language — and the teacher fills in English ones where needed.
+    const [srcOutline] = await tx
+      .select()
+      .from(outlineRevisions)
+      .where(eq(outlineRevisions.projectId, sourceId))
+      .orderBy(desc(outlineRevisions.version))
+      .limit(1);
+    if (srcOutline) {
+      const mapId = (id: string) => slideIdMap.get(id) ?? id;
+      const ordered = srcScenes
+        .map((sc) => srcSlides.find((sl) => sl.id === sc.slideId))
+        .filter((sl): sl is (typeof srcSlides)[number] => !!sl)
+        .map((sl) => ({ contentHash: sl.contentHash, hidden: sl.hidden }) as unknown as Slide);
+      await tx.insert(outlineRevisions).values({
+        id: randomUUID(),
+        projectId,
+        version: 1,
+        objectives: srcOutline.objectives,
+        summary: srcOutline.summary,
+        sections: srcOutline.sections.map((sec) => ({ ...sec, slideIds: sec.slideIds.map(mapId) })),
+        glossary: srcOutline.glossary.map((g) => ({ term: g.term, ...(g.definition ? { definition: g.definition } : {}) })),
+        timeAllocation: Object.fromEntries(Object.entries(srcOutline.timeAllocation).map(([k, v]) => [mapId(k), v])),
+        inputHash: outlineInputHash(ordered, settings),
       });
     }
     const empty = { status: "missing" as const };

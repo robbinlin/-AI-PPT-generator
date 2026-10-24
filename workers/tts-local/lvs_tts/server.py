@@ -26,6 +26,10 @@ NEEDS_SIMPLIFIED = {"cosyvoice2", "gptsovits"}
 MAX_REF_SECONDS: dict[str, float] = {"gptsovits": 9.5}
 
 
+class RenameVoiceRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
 class SynthesizeRequest(BaseModel):
     text: str = Field(min_length=1, max_length=5000)
     voiceId: str
@@ -111,6 +115,13 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         if not p.is_file():
             raise HTTPException(404, f"voice {vid} not found")
         return FileResponse(p, media_type="audio/wav")
+
+    @app.patch("/voices/{vid}")
+    def rename_voice(vid: str, body: RenameVoiceRequest):
+        v = voices.rename(vid, body.name)
+        if not v:
+            raise HTTPException(404, f"voice {vid} not found")
+        return v.to_json()
 
     @app.delete("/voices/{vid}", status_code=204)
     def delete_voice(vid: str):

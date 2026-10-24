@@ -77,6 +77,7 @@ describe.skipIf(!toolsPresent)("end-to-end on the sample deck (mock providers)",
       PROVIDER_KEY_ENCRYPTION_KEY: Buffer.alloc(32, 3).toString("base64"),
       PUBLIC_BASE_URL: "http://api.test",
       EXPOSE_MOCK_PROVIDERS: true,
+      VERIFY_PROVIDER_KEYS: false,
       DATABASE_URL: undefined,
       // Tests must never pick up real provider keys from a developer's .env.
       GEMINI_API_KEY: undefined,

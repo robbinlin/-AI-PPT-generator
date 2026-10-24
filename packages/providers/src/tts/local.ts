@@ -189,6 +189,14 @@ export class LocalTtsProvider implements TtsProvider {
     );
   }
 
+  async renameVoice(id: string, name: string): Promise<void> {
+    const { voiceId } = splitLocalVoiceId(id);
+    await fetchJson<LocalVoice>(
+      `${this.baseUrl}/voices/${encodeURIComponent(voiceId)}`,
+      this.opts({ method: "PATCH", body: JSON.stringify({ name }), headers: { "content-type": "application/json" } }),
+    );
+  }
+
   async deleteVoice(id: string): Promise<void> {
     const { voiceId } = splitLocalVoiceId(id);
     await fetchWithRetry(

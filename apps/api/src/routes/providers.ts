@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { SetProviderKeyRequest } from "@lvs/shared";
+import { RenameVoiceRequest, SetProviderKeyRequest } from "@lvs/shared";
 import type { AppContext } from "../context.js";
 import { parse } from "../util/validate.js";
 import { badRequest, notFound, upstream } from "../errors.js";
@@ -114,6 +114,28 @@ export async function providerRoutes(
         );
       try {
         await tts.deleteVoice(req.params.voiceId);
+      } catch (err) {
+        throw upstream(req.params.providerId, err);
+      }
+      return reply.code(204).send();
+    },
+  );
+
+  app.patch<{ Params: { providerId: string; voiceId: string } }>(
+    "/providers/:providerId/voices/:voiceId",
+    async (req, reply) => {
+      const { ownerId } = ctx.auth.resolve(req);
+      const body = parse(RenameVoiceRequest, req.body);
+      const tts = await ctx.providers.requireTts(
+        ownerId,
+        req.params.providerId,
+      );
+      if (!tts.renameVoice)
+        throw badRequest(
+          `provider ${req.params.providerId} does not accept custom voices`,
+        );
+      try {
+        await tts.renameVoice(req.params.voiceId, body.name);
       } catch (err) {
         throw upstream(req.params.providerId, err);
       }

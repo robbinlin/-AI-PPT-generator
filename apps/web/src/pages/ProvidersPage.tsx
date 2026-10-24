@@ -30,8 +30,8 @@ export function ProvidersPage() {
     setProviders(
       (list) =>
         list?.map((p) =>
-          p.id === updated.id
-            ? { ...p, configured: updated.configured || !p.requiresApiKey }
+          p.id === updated.id && p.requiresApiKey
+            ? withKeySource({ ...p, configured: updated.configured }, updated.keySource)
             : p,
         ) ?? null,
     );
@@ -60,8 +60,9 @@ export function ProvidersPage() {
         <p className="text-sm text-neutral-400">{t.providers.empty}</p>
       )}
       {providers && providers.length > 0 && (
-        <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-neutral-800 text-sm">
-          <thead className="bg-neutral-900 text-left text-xs text-neutral-400">
+        // Narrow windows (under 1024 px): each provider becomes a card (rows stack, header hidden).
+        <table className="block w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-neutral-800 text-sm lg:table">
+          <thead className="hidden bg-neutral-900 text-left text-xs text-neutral-400 lg:table-header-group">
             <tr>
               <th className="border-b border-neutral-800 px-4 py-2 font-medium">
                 {t.providers.name}
@@ -77,11 +78,12 @@ export function ProvidersPage() {
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="block lg:table-row-group">
             {providers.map((p) => (
               <ProviderRow
                 key={`${p.kind}:${p.id}`}
                 provider={p}
+                sharedWith={providers.filter((o) => o.id === p.id && o.kind !== p.kind).map((o) => t.providers.kinds[o.kind])}
                 onUpdated={applyUpdate}
               />
             ))}
@@ -92,11 +94,21 @@ export function ProvidersPage() {
   );
 }
 
+function withKeySource(p: ProviderInfo, keySource: ProviderInfo["keySource"]): ProviderInfo {
+  const { keySource: _old, ...rest } = p;
+  return keySource ? { ...rest, keySource } : rest;
+}
+
+const cell = "block border-neutral-800/70 px-4 py-1.5 lg:table-cell lg:border-b lg:py-3";
+
 function ProviderRow({
   provider,
+  sharedWith,
   onUpdated,
 }: {
   provider: ProviderInfo;
+  /** Other kinds of the same vendor that use this key (Gemini: 寫稿 + 語音). */
+  sharedWith: string[];
   onUpdated: (p: ProviderInfo) => void;
 }) {
   const api = useApi();
@@ -107,14 +119,16 @@ function ProviderRow({
     text: string;
   } | null>(null);
 
-  const run = async (action: () => Promise<ProviderInfo>, okText: string) => {
+  const run = async (action: () => Promise<ProviderInfo>, okText: string): Promise<boolean> => {
     setBusy(true);
     setMessage(null);
     try {
       onUpdated(await action());
       setMessage({ tone: "ok", text: okText });
+      return true;
     } catch (err) {
       setMessage({ tone: "error", text: errorMessage(err) });
+      return false;
     } finally {
       setBusy(false);
     }
@@ -124,18 +138,21 @@ function ProviderRow({
     e.preventDefault();
     const apiKey = key.trim();
     if (!apiKey) return;
-    // Clear immediately: the key never lingers in component state after submit.
-    setKey("");
+    // Cleared once stored; a rejected key stays so a typo can be fixed instead of pasted again.
     void run(
       () => api.setProviderKey(provider.id, { apiKey }),
       t.providers.saved,
-    );
+    ).then((ok) => ok && setKey(""));
   };
 
   const remove = async () => {
     const ok = await confirmAction({
       title: fmt(t.providers.removeConfirm, { name: provider.displayName }),
-      lines: [],
+      lines: [
+        fmt(t.providers.removeUses, { uses: [t.providers.kinds[provider.kind], ...sharedWith].join("、") }),
+        t.providers.removeAfter,
+      ],
+      note: t.providers.removeNote,
       confirmLabel: t.common.remove,
       danger: true,
     });
@@ -144,16 +161,20 @@ function ProviderRow({
   };
 
   return (
-    <tr className="align-middle">
-      <td className="border-b border-neutral-800/70 px-4 py-3">
+    <tr className="block border-b border-neutral-800 py-2 align-middle last:border-b-0 lg:table-row lg:border-b-0 lg:py-0">
+      <td className={cell}>
         <div className="font-medium text-neutral-100">
           {provider.displayName}
         </div>
+        {sharedWith.length > 0 && provider.requiresApiKey && (
+          <p className="mt-0.5 text-xs text-neutral-400">{fmt(t.providers.keyShared, { kinds: sharedWith.join("、") })}</p>
+        )}
       </td>
-      <td className="border-b border-neutral-800/70 px-4 py-3 text-neutral-300">
+      <td className={`${cell} text-neutral-300`}>
+        <span className="text-neutral-400 lg:hidden">{t.providers.kindLabel}</span>
         {t.providers.kinds[provider.kind]}
       </td>
-      <td className="border-b border-neutral-800/70 px-4 py-3">
+      <td className={cell}>
         {provider.configured ? (
           <Badge tone="success">
             {provider.keySource === "platform"
@@ -169,10 +190,10 @@ function ProviderRow({
           </p>
         )}
       </td>
-      <td className="border-b border-neutral-800/70 px-4 py-3">
+      <td className={cell}>
         {provider.requiresApiKey ? (
           <form className="flex w-full max-w-xl flex-col gap-1" onSubmit={save}>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <input
                 type="password"
                 // "new-password" stops browser password managers from filling a saved value back in

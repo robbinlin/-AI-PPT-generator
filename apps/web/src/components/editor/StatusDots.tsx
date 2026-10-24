@@ -100,7 +100,9 @@ export function statusSummary(
 }
 
 export function StatusSummary({ scene }: { scene: Scene }) {
-  const summary = statusSummary(scene, useActiveFields());
+  // A new translated copy has no scripts until the translation job writes them: say it's coming.
+  const translating = useEditor((s) => !!s.detail?.activeJobs.some((j) => j.type === "translate_script"));
+  const summary = translating && scene.script.status !== "ready" ? { text: t.pageList.translating, tone: "muted" as const } : statusSummary(scene, useActiveFields());
   if (!summary) return null;
   const color = summary.tone === "error" ? "text-rose-300" : summary.tone === "warn" ? "text-amber-200" : "text-neutral-400";
   return <p className={`mt-1 text-xs leading-snug ${color}`}>{summary.text}</p>;

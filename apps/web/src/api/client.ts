@@ -213,6 +213,14 @@ export class HttpApiClient implements ApiClient {
     );
   }
 
+  async renameVoice(providerId: string, voiceId: string, name: string): Promise<void> {
+    await this.send(
+      "PATCH",
+      `/providers/${enc(providerId)}/voices/${enc(voiceId)}`,
+      { name },
+    );
+  }
+
   async deleteVoice(providerId: string, voiceId: string): Promise<void> {
     await this.send(
       "DELETE",
@@ -258,9 +266,11 @@ export class HttpApiClient implements ApiClient {
         if (parsed.success) resolve(parsed.data as T);
         else reject(parsed.error);
       };
+      // Fields before the file: the server reads the stream in order and only sees fields
+      // that arrive ahead of the file (a name sent after it fell back to the file name).
       const form = new FormData();
-      form.append("file", file, file.name);
       for (const [k, v] of Object.entries(fields)) form.append(k, v);
+      form.append("file", file, file.name);
       xhr.send(form);
     });
   }
@@ -295,8 +305,8 @@ export class HttpApiClient implements ApiClient {
         else reject(parsed.error);
       };
       const form = new FormData();
-      form.append("file", file, file.name);
       form.append("name", file.name.replace(/\.[^.]+$/, ""));
+      form.append("file", file, file.name);
       xhr.send(form);
     });
   }

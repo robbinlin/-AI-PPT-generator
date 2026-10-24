@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
+import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, horizontalListSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ChevronDown, ChevronRight, GripVertical, SlidersHorizontal, Volume2, VolumeX, X, ZoomIn } from "lucide-react";
 import { MAX_TAIL_PAUSE_SEC, type Scene, type Transition } from "@lvs/shared";
 import { useAssetUrl } from "../../api/context";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
+import { pageDragAnnouncements, pageDragInstructions } from "../../lib/dndA11y";
 import { formatDuration } from "../../lib/format";
 import { buildTimeline, computePeaks, type TimelineBlock } from "../../lib/timelineModel";
 import { editorStore, useEditor } from "../../store/editorStore";
@@ -40,7 +41,10 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
     });
   // Page length being dragged, or committed and still being saved.
   const [resize, setResize] = useState<ResizeState | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -156,7 +160,12 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
       <div ref={scroller} className="relative overflow-x-auto overflow-y-hidden">
         <div className="relative" style={{ width: contentW }}>
           <Ruler totalSec={model.totalSec} pxPerSec={pxPerSec} />
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={onDragEnd}
+            accessibility={{ announcements: pageDragAnnouncements((id) => model.blocks.find((b) => b.slide.id === id)?.pageNumber), screenReaderInstructions: pageDragInstructions }}
+          >
             <SortableContext items={model.blocks.map((b) => b.slide.id)} strategy={horizontalListSortingStrategy}>
               <TrackRow label={t.timeline.slides} height={TRACK_H.slides}>
                 {model.blocks.map((b) => (
@@ -166,6 +175,7 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
                     projectId={detail.project.id}
                     pxPerSec={pxPerSec}
                     selected={b.scene.id === selectedSceneId}
+                    menuOpen={menuFor === b.scene.id}
                     onMenu={() => setMenuFor(menuFor === b.scene.id ? null : b.scene.id)}
                     resize={resizeProps(b)}
                   />
@@ -214,7 +224,12 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
         <PageMenu
           block={model.blocks.find((b) => b.scene.id === menuFor)}
           projectTransition={detail.project.settings.transition}
-          onClose={() => setMenuFor(null)}
+          onClose={() => {
+            const id = menuFor;
+            setMenuFor(null);
+            // Back to the button that opened it.
+            setTimeout(() => document.querySelector<HTMLElement>(`[data-testid=timeline-slide][data-scene-id="${id}"] [data-page-menu-button]`)?.focus(), 0);
+          }}
           onChange={(req) => void actions.updateScene(menuFor, req)}
         />
       )}
@@ -302,6 +317,7 @@ function SlideBlock({
   projectId,
   pxPerSec,
   selected,
+  menuOpen,
   onMenu,
   resize,
 }: {
@@ -309,6 +325,7 @@ function SlideBlock({
   projectId: string;
   pxPerSec: number;
   selected: boolean;
+  menuOpen: boolean;
   onMenu: () => void;
   resize: ResizeHandleProps;
 }) {
@@ -334,19 +351,22 @@ function SlideBlock({
       <span
         {...attributes}
         {...listeners}
-        aria-label={fmt(t.timeline.reorderHandle, { n: block.index + 1 })}
+        aria-label={fmt(t.timeline.reorderHandle, { n: block.pageNumber })}
         aria-roledescription={t.timeline.sortable}
         title={t.timeline.dragToReorder}
         data-testid="timeline-reorder"
         className="flex h-full shrink-0 cursor-grab items-center gap-1 focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:outline-none active:cursor-grabbing"
       >
         {thumb && <img src={thumb} alt="" className="h-full shrink-0 object-cover" draggable={false} />}
-        <span className="shrink-0 px-1 text-xs font-semibold text-neutral-200">P{block.index + 1}</span>
+        <span className="shrink-0 px-1 text-xs font-semibold text-neutral-200">P{block.pageNumber}</span>
       </span>
       {block.scene.muted && <VolumeX className="size-3 shrink-0 text-amber-300" aria-label={t.timeline.mute} />}
       <button
         type="button"
-        aria-label={fmt(t.timeline.pageMenu, { n: block.index + 1 })}
+        aria-label={fmt(t.timeline.pageMenu, { n: block.pageNumber })}
+        aria-expanded={menuOpen}
+        aria-controls={menuOpen ? PAGE_MENU_ID : undefined}
+        data-page-menu-button
         className="mr-5 ml-auto shrink-0 rounded on-dark bg-black/50 p-0.5 text-neutral-200 opacity-70 hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-400"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
@@ -416,7 +436,7 @@ function ResizeHandle({ block, pxPerSec, state, onDrag, onCommit, keyboard = tru
         role={keyboard ? "slider" : undefined}
         tabIndex={keyboard ? 0 : -1}
         aria-hidden={keyboard ? undefined : true}
-        aria-label={fmt(t.timeline.resize, { n: block.index + 1 })}
+        aria-label={fmt(t.timeline.resize, { n: block.pageNumber })}
         aria-valuemin={roundTail(block.narration)}
         aria-valuemax={roundTail(block.narration + MAX_TAIL_PAUSE_SEC)}
         aria-valuenow={roundTail(block.narration + tail)}
@@ -614,6 +634,8 @@ function PageLengthInput({ block, onCommit }: { block: TimelineBlock; onCommit: 
   );
 }
 
+const PAGE_MENU_ID = "timeline-page-menu";
+
 function PageMenu({
   block,
   projectTransition,
@@ -625,21 +647,40 @@ function PageMenu({
   onClose: () => void;
   onChange: (req: { tailPauseSec?: number; muted?: boolean; transitionIn?: Transition | null }) => void;
 }) {
+  const sceneId = block?.scene.id;
+  const root = useRef<HTMLDivElement>(null);
+  // Opening (or switching page) puts focus on the first setting, the page length.
+  useEffect(() => {
+    root.current?.querySelector<HTMLInputElement>("[data-testid=timeline-page-length]")?.focus();
+  }, [sceneId]);
   if (!block) return null;
   const s = block.scene;
   const tail = s.tailPauseSec ?? 0.5;
   const setTail = (v: number) => onChange({ tailPauseSec: roundTail(Math.min(MAX_TAIL_PAUSE_SEC, Math.max(0, v))) });
   return (
-    <div className="flex flex-wrap items-center gap-3 border-t border-neutral-800 px-3 py-2 text-xs text-neutral-300" data-testid="timeline-page-menu">
-      <span className="font-semibold">{fmt(t.timeline.pageMenu, { n: block.index + 1 })}</span>
+    <div
+      ref={root}
+      id={PAGE_MENU_ID}
+      role="group"
+      aria-label={fmt(t.timeline.pageMenu, { n: block.pageNumber })}
+      className="flex flex-wrap items-center gap-3 border-t border-neutral-800 px-3 py-2 text-xs text-neutral-300"
+      data-testid="timeline-page-menu"
+      onKeyDown={(e) => {
+        if (e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }}
+    >
+      <span className="font-semibold">{fmt(t.timeline.pageMenu, { n: block.pageNumber })}</span>
       <PageLengthInput key={`${s.id}:${block.total}`} block={block} onCommit={(total) => setTail(total - block.narration)} />
       <label className="flex items-center gap-1">
         {t.timeline.tailPause}
-        <button type="button" className="rounded border border-neutral-700 px-1.5" onClick={() => setTail(tail - 0.5)} aria-label="-0.5s">
+        <button type="button" className="rounded border border-neutral-700 px-1.5" onClick={() => setTail(tail - 0.5)} aria-label={t.timeline.tailMinus}>
           −
         </button>
         <span className="w-10 text-center tabular-nums">{tail.toFixed(1)} 秒</span>
-        <button type="button" className="rounded border border-neutral-700 px-1.5" onClick={() => setTail(tail + 0.5)} aria-label="+0.5s">
+        <button type="button" className="rounded border border-neutral-700 px-1.5" onClick={() => setTail(tail + 0.5)} aria-label={t.timeline.tailPlus}>
           +
         </button>
       </label>

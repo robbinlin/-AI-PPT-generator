@@ -15,6 +15,7 @@ import type { Config } from "../config.js";
 import type { Db } from "../db/client.js";
 import { providerKeys } from "../db/schema.js";
 import { badRequest, notFound } from "../errors.js";
+import { checkProviderKey } from "./keyCheck.js";
 
 export interface ProviderDescriptor {
   id: string;
@@ -241,6 +242,8 @@ export class ProviderService {
     apiKey: string,
   ): Promise<ProviderInfo> {
     this.descriptor(providerId);
+    if (this.config.VERIFY_PROVIDER_KEYS && (await checkProviderKey(providerId, apiKey)) === "invalid")
+      throw badRequest(`金鑰無效或沒有權限：${providerLabel(providerId)} 拒絕了這把金鑰。請確認整串都有複製到，或到 ${providerLabel(providerId)} 後台確認權限。`);
     const ciphertext = this.crypto.encrypt(apiKey);
     await this.db
       .insert(providerKeys)

@@ -157,7 +157,8 @@ function deepMerge(base: unknown, patch: unknown): unknown {
   const out: Record<string, unknown> = { ...base };
   for (const [k, v] of Object.entries(patch)) {
     if (v === undefined) continue;
-    out[k] = deepMerge(base[k], v);
+    // Like the API: an avatar layout is replaced whole (a missing x/y means "back to the corner").
+    out[k] = k === "layout" ? v : deepMerge(base[k], v);
   }
   return out;
 }
@@ -1005,6 +1006,12 @@ export class MockApiClient implements ApiClient {
     };
     this.customVoices.unshift(v);
     return clone(v);
+  }
+
+  async renameVoice(_providerId: string, voiceId: string, name: string): Promise<void> {
+    await this.wait();
+    const v = this.customVoices.find((x) => x.id === voiceId);
+    if (v) v.name = `我的聲音・${name}`;
   }
 
   async deleteVoice(_providerId: string, voiceId: string): Promise<void> {

@@ -69,6 +69,10 @@ def test_voice_lifecycle_and_synthesis(client, tmp_path):
     assert voice["previewUrl"] == f"/voices/{voice['id']}/sample.wav"
     assert client.get(voice["previewUrl"]).status_code == 200
     assert [v["id"] for v in client.get("/voices").json()] == [voice["id"]]
+    r = client.patch(f"/voices/{voice['id']}", json={"name": "上課用的聲音"})
+    assert r.status_code == 200 and r.json()["name"] == "上課用的聲音"
+    assert client.get("/voices").json()[0]["name"] == "上課用的聲音"
+    assert client.patch("/voices/nope", json={"name": "x"}).status_code == 404
 
     # unknown engine / not installed
     r = client.post("/synthesize", json={"text": "你好", "voiceId": voice["id"], "engine": "nope"})

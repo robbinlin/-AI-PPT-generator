@@ -63,6 +63,11 @@ export class MockTtsProvider implements TtsProvider {
     return v;
   }
 
+  async renameVoice(id: string, name: string): Promise<void> {
+    const v = this.voices.find((x) => x.id === id);
+    if (v) v.name = `我的聲音・${name}`;
+  }
+
   async deleteVoice(id: string): Promise<void> {
     const i = this.voices.findIndex((v) => v.id === id);
     if (i >= 0) this.voices.splice(i, 1);

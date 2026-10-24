@@ -35,12 +35,20 @@ import { parse } from "../util/validate.js";
 
 const HEAD_BYTES = 64 * 1024;
 
+/**
+ * Objects the editor always sends whole: replaced, not merged, so a field the new value leaves
+ * out is really gone (an avatar layout without x/y means "back to the corner"; merging kept the
+ * old dragged position forever, since JSON cannot carry `undefined`).
+ */
+const REPLACED_WHOLE = new Set(["layout"]);
+
 function deepMerge<T extends Record<string, unknown>>(base: T, patch: Record<string, unknown>): T {
   const out: Record<string, unknown> = { ...base };
   for (const [k, v] of Object.entries(patch)) {
     if (v === undefined) continue;
     const cur = out[k];
-    if (v && typeof v === "object" && !Array.isArray(v) && cur && typeof cur === "object" && !Array.isArray(cur)) {
+    if (REPLACED_WHOLE.has(k)) out[k] = v;
+    else if (v && typeof v === "object" && !Array.isArray(v) && cur && typeof cur === "object" && !Array.isArray(cur)) {
       out[k] = deepMerge(cur as Record<string, unknown>, v as Record<string, unknown>);
     } else out[k] = v;
   }
@@ -101,7 +109,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
   app.post<{ Params: { id: string } }>("/projects/:id/translations", async (req, reply) => {
     const { ownerId } = ctx.auth.resolve(req);
     const body = parse(CreateTranslationRequest, req.body);
-    const result = await createTranslatedProject(ctx, ownerId, req.params.id, body.language, body.name);
+    const result = await createTranslatedProject(ctx, ownerId, req.params.id, body.language, body.name, body.voiceId);
     reply.code(201);
     return result;
   });

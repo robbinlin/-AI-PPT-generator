@@ -95,6 +95,7 @@ export function StepBar({ actions }: { actions: EditorActions }) {
   const undownloaded = useFreshUndownloadedVideo();
   if (!detail || !plan) return null;
   const { steps, next } = plan;
+  const translateJob = detail.activeJobs.find((j) => j.type === "translate_script");
 
   // A finished upload step looks like "look back", so replacing the deck always asks first.
   const pickFile = async () => {
@@ -206,8 +207,10 @@ export function StepBar({ actions }: { actions: EditorActions }) {
                 ? uploadPct !== null
                   ? fmt(t.upload.uploading, { pct: Math.round(uploadPct * 100) })
                   : t.steps.parsing
-                : nextLabel[next.id]}
-              {nextCost && nextCost.sceneCount !== 0 && <span className="font-normal">（{twdShort(nextCost.total, nextCost.currency)}）</span>}
+                : next.id === "script" && translateJob
+                  ? fmt(t.steps.translating, { pct: Math.round(translateJob.progress * 100) })
+                  : nextLabel[next.id]}
+              {nextCost && nextCost.sceneCount !== 0 && !translateJob && <span className="font-normal">（{twdShort(nextCost.total, nextCost.currency)}）</span>}
             </Button>
           </>
         ) : (

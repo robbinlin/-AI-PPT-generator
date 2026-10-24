@@ -3,7 +3,7 @@
  * synthesizing stale audio first, zh-TW job messages, currentRenderHashes and list thumbnails.
  */
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { CostEstimate, Job, Project, ProjectDetail } from "@lvs/shared";
 import { runBackfills } from "../src/db/backfill.js";
@@ -249,6 +249,18 @@ describe("generation handlers", () => {
 
   it("建立英文版 copies the deck under the new project and fills it with translated, current scripts", async () => {
     const src = await detail();
+    const srcOrdered = src.scenes.map((sc) => src.slides.find((sl) => sl.id === sc.slideId)!);
+    await t.ctx.db.insert(outlineRevisions).values({
+      id: randomUUID(),
+      projectId,
+      version: 1,
+      objectives: ["目標"],
+      summary: "課程摘要",
+      sections: [],
+      glossary: [{ term: "VO2max", reading: "最大攝氧量", definition: "有氧能力" }],
+      timeAllocation: { [src.slides[0]!.id]: 40 },
+      inputHash: outlineInputHash(srcOrdered, src.project.settings),
+    });
     const est = await estimate("type=translate_script");
     expect(est.sceneCount).toBe(3);
     expect(est.lines.map((l) => l.unit)).toEqual(["tokens_in", "tokens_out"]); // one LLM call per page (the mock LLM is free)
@@ -299,6 +311,22 @@ describe("generation handlers", () => {
     const after = await detail();
     expect(after.scenes.map((s) => after.scripts[s.id]?.script)).toEqual(src.scenes.map((s) => src.scripts[s.id]?.script));
     expect(after.project.settings.language).toBe(src.project.settings.language);
+    // The copy keeps the outline (glossary readings cleared: they were for the old language) and
+    // it is current, so 下一步 does not pay to plan it again.
+    const [srcOutline] = await t.ctx.db.select().from(outlineRevisions).where(eq(outlineRevisions.projectId, projectId)).orderBy(desc(outlineRevisions.version)).limit(1);
+    const [enOutline] = await t.ctx.db.select().from(outlineRevisions).where(eq(outlineRevisions.projectId, project.id));
+    expect(srcOutline).toBeDefined();
+    expect(enOutline?.summary).toBe(srcOutline!.summary);
+    expect(enOutline?.glossary).toEqual([{ term: "VO2max", definition: "有氧能力" }]);
+    expect(enOutline?.timeAllocation).toEqual({ [en.slides[0]!.id]: 40 });
+    const enEst = (await t.app.inject({ method: "GET", url: `/projects/${project.id}/estimate?type=generate_script` })).json() as { sceneCount: number; lines: unknown[] };
+    expect(enEst.sceneCount).toBe(0);
+    // A voice that cannot speak the new language is swapped by the caller (useTranslateProject).
+    const swapped = await t.app.inject({ method: "POST", url: `/projects/${projectId}/translations`, payload: { language: "en", voiceId: "mock-voice-en" } });
+    expect((swapped.json() as { project: Project }).project.settings.voice.voiceId).toBe("mock-voice-en");
+    await t.ctx.runner.drain();
+    // Later tests share this project and seed their own outline.
+    await t.ctx.db.delete(outlineRevisions).where(eq(outlineRevisions.projectId, projectId));
   });
 
   it("zh-TW errors for a disabled avatar and a project without slides", async () => {

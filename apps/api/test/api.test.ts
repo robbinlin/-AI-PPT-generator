@@ -316,9 +316,44 @@ describe("providers", () => {
     expect(voice.json()).toMatchObject({ name: "我的聲音・my-voice" });
     const voicesNow = (await t.app.inject({ method: "GET", url: "/providers/mock/voices" })).json();
     expect(voicesNow[0].id).toBe(voice.json().id);
+    // The browser sends the name field before the file; a Chinese name arrives intact, and can be changed.
+    const boundary = "----lvsNameFirst";
+    const named = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="name"\r\n\r\n我的上課聲音\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="錄音.wav"\r\nContent-Type: audio/wav\r\n\r\n`),
+      Buffer.from("RIFF"),
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const zh = await t.app.inject({ method: "POST", url: "/providers/mock/voices", payload: named, headers: { "content-type": `multipart/form-data; boundary=${boundary}` } });
+    expect(zh.json()).toMatchObject({ name: "我的聲音・我的上課聲音" });
+    const renamed = await t.app.inject({ method: "PATCH", url: `/providers/mock/voices/${zh.json().id}`, payload: { name: "上課用" } });
+    expect(renamed.statusCode).toBe(204);
+    expect((await t.app.inject({ method: "GET", url: "/providers/mock/voices" })).json()[0].name).toBe("我的聲音・上課用");
+    expect((await t.app.inject({ method: "PATCH", url: `/providers/mock/voices/${zh.json().id}`, payload: { name: " " } })).statusCode).toBe(400);
     expect((await t.app.inject({ method: "DELETE", url: `/providers/mock/voices/${voice.json().id}` })).statusCode).toBe(204);
     const mockAvatars = await t.app.inject({ method: "GET", url: "/providers/mock/avatars" });
     expect(mockAvatars.json()[0].id).toBe("mock-teacher");
+  });
+});
+
+describe("settings patch", () => {
+  it("replaces the presenter layout as a whole, so a preset after a drag drops the dragged position", async () => {
+    const t = await createTestServer();
+    try {
+      const id = (await t.app.inject({ method: "POST", url: "/projects", payload: { name: "layout" } })).json().id as string;
+      const patch = (layout: Record<string, unknown>) =>
+        t.app.inject({ method: "PATCH", url: `/projects/${id}`, payload: { settings: { avatar: { layout } } } });
+      await patch({ shape: "circle", anchor: "bottom-right", size: 0.35, margin: 0.03, visible: true, x: 0.2, y: 0.3 });
+      const res = await patch({ shape: "rect", anchor: "top-left", size: 0.4, margin: 0.03, visible: true });
+      const layout = res.json().settings.avatar.layout;
+      expect(layout).toMatchObject({ shape: "rect", anchor: "top-left", size: 0.4 });
+      expect(layout.x).toBeUndefined();
+      expect(layout.y).toBeUndefined();
+      // Other avatar settings still merge field by field.
+      const other = await t.app.inject({ method: "PATCH", url: `/projects/${id}`, payload: { settings: { avatar: { enabled: false } } } });
+      expect(other.json().settings.avatar.layout).toMatchObject({ anchor: "top-left" });
+    } finally {
+      await t.close();
+    }
   });
 });
 

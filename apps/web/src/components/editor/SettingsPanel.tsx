@@ -14,6 +14,7 @@ import { useStudioLists } from "../../hooks/useStudioLists";
 import { targetLanguageName, useTranslateProject } from "../../hooks/useTranslateProject";
 import { Button } from "../ui/Button";
 import { fmt, t } from "../../i18n";
+import { confirmAction } from "../../store/confirmStore";
 import { useEditor } from "../../store/editorStore";
 import { Field, Select, type Option } from "../ui/Field";
 import { CommitNumber, CommitText, SettingsSection } from "./settingsFields";
@@ -66,6 +67,7 @@ export function SettingsPanel({
 }) {
   const project = useEditor((s) => s.detail?.project);
   const hasSlides = useEditor((s) => (s.detail?.slides.length ?? 0) > 0);
+  const hasScripts = useEditor((s) => Object.values(s.detail?.scripts ?? {}).some((r) => r.script.trim()));
   const { providers } = useStudioLists(project, actions);
   const translate = useTranslateProject();
   if (!project) return null;
@@ -99,7 +101,21 @@ export function SettingsPanel({
             <Select
               value={s.language}
               options={opts(LANGUAGES, t.languages)}
-              onChange={(language) => patch({ language })}
+              onChange={async (language) => {
+                // Changing the language does not translate anything, and it changes how every page
+                // is voiced: say so (and point at 建立英文版) before narration and avatars go stale.
+                if (hasScripts) {
+                  const ok = await confirmAction({
+                    title: t.settings.languageTitle,
+                    lines: [t.settings.languageNoTranslate, t.settings.languageRedo],
+                    note: s.language !== "mixed" ? fmt(t.settings.languageUseCopy, { lang: targetLanguageName(s.language) }) : undefined,
+                    confirmLabel: t.settings.languageConfirm,
+                    danger: true,
+                  });
+                  if (!ok) return;
+                }
+                void actions.changeSettings({ language }, "audio");
+              }}
             />
           </Field>
           <Field label={t.settings.targetDuration}>

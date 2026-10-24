@@ -20,6 +20,7 @@ import type { Scene, Slide } from "@lvs/shared";
 import { useAssetUrl } from "../../api/context";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
+import { pageDragAnnouncements, pageDragInstructions } from "../../lib/dndA11y";
 import { sortByIndex } from "../../lib/scenes";
 import { currentScript, useEditor } from "../../store/editorStore";
 import { PageListItem } from "./PageListItem";
@@ -88,7 +89,12 @@ export function PageList({ actions }: PageListProps) {
         {slides.length === 0 ? (
           <p className="px-2 py-6 text-center text-xs text-neutral-400">{t.editor.noScenes}</p>
         ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={onDragEnd}
+            accessibility={{ announcements: pageDragAnnouncements((id) => { const i = slides.findIndex((s) => s.id === id); return i === -1 ? undefined : i + 1; }), screenReaderInstructions: pageDragInstructions }}
+          >
             <SortableContext items={slides.map((s) => s.id)} strategy={verticalListSortingStrategy}>
               <ol className="flex flex-col gap-1">
                 {slides.map((slide, i) => {

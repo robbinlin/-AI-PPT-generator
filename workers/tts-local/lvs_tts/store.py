@@ -174,6 +174,14 @@ class VoiceStore:
             shutil.rmtree(d, ignore_errors=True)
             raise
 
+    def rename(self, vid: str, name: str) -> Optional[Voice]:
+        voice = self.get(vid)
+        if not voice:
+            return None
+        voice.name = name.strip()[:80] or voice.name
+        (self.dir(vid) / "voice.json").write_text(json.dumps(voice.__dict__, ensure_ascii=False, indent=2), "utf-8")
+        return voice
+
     def delete(self, vid: str) -> bool:
         d = self.dir(vid)
         if not d.is_dir():

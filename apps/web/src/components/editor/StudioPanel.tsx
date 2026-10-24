@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Ban, Check, ChevronDown, Loader2, Play, Plus, RotateCcw, Search, Square, Trash2, UserRound } from "lucide-react";
+import { Ban, Check, ChevronDown, Loader2, Pencil, Play, Plus, RotateCcw, Search, Square, Trash2, UserRound } from "lucide-react";
 import type { AvatarLayout, AvatarSettings, Project, ProviderInfo, SubtitleSettings, SubtitleStyle, UpdateProjectRequest, VoiceSettings } from "@lvs/shared";
 import { useApi } from "../../api/context";
 import { errorMessage, type AvatarOption, type VoiceOption } from "../../api/types";
@@ -696,6 +696,21 @@ function VoiceSection({
       setProgress(null);
     }
   };
+  // Rename in place: the name the user gave, without the 「我的聲音・」 prefix and engine suffix.
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const baseName = (name: string) => name.replace(/^我的聲音・/, "").replace(/（[^（）]*）$/, "");
+  const saveName = async () => {
+    const name = renaming?.trim();
+    if (!selected || !name) return;
+    try {
+      await api.renameVoice(s.providerId, selected.id, name);
+      setVoices(await api.listVoices(s.providerId));
+      setRenaming(null);
+      toast(t.settings.voiceRenamed, "success");
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    }
+  };
   const remove = async () => {
     if (!selected) return;
     if (!(await confirmAction({ title: fmt(t.settings.deleteVoiceConfirm, { name: selected.name }), lines: [], confirmLabel: t.common.remove, danger: true }))) return;
@@ -708,6 +723,13 @@ function VoiceSection({
       toast(errorMessage(err), "error");
     }
   };
+
+  // Voices that cannot speak the project's language (a Chinese-only clone in an English project,
+  // 台語 voices…) are tucked away unless asked for; the chosen one always stays visible.
+  const [showOther, setShowOther] = useState(false);
+  const speaks = (v: VoiceOption) => !v.languages?.length || v.languages.includes(language);
+  const shownVoices = voices.filter((v) => showOther || speaks(v) || v.id === s.voiceId);
+  const otherCount = voices.length - voices.filter((v) => speaks(v) || v.id === s.voiceId).length;
 
   // The chosen voice may sit below the list's fold: bring it into view so it is visible at a glance.
   const voiceList = useRef<HTMLUListElement>(null);
@@ -726,7 +748,7 @@ function VoiceSection({
       <ProviderPills providers={providers} kind="tts" value={s.providerId} onChange={(providerId) => setVoice({ providerId })} />
       {provider?.hint && <p className="text-xs text-amber-300/90">{provider.hint}</p>}
       <ul ref={voiceList} className="max-h-64 overflow-y-auto rounded-md border border-neutral-800" role="listbox" aria-label={t.settings.voiceId} data-testid="voice-list">
-        {voices.map((v) => {
+        {shownVoices.map((v) => {
           const isSel = v.id === s.voiceId;
           const state = player.playingId === v.id ? player.state : "idle";
           return (
@@ -745,10 +767,16 @@ function VoiceSection({
                 {state === "loading" ? <Loader2 className="size-3.5 animate-spin" /> : state === "playing" ? <Square className="size-3" /> : <Play className="size-3.5" />}
               </button>
               <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setVoice({ voiceId: v.id })}>
-                <div className="truncate text-sm text-neutral-100">{v.name}</div>
-                {v.tags && v.tags.length > 0 && <div className="truncate text-xs text-neutral-400">{v.tags
+                <div className="truncate text-sm text-neutral-100">
+                  {v.name}
+                  {!speaks(v) && (
+                    <span className="ml-1 rounded bg-amber-500/15 px-1 text-xs text-amber-300">
+                      {fmt(t.studio.voiceOnly, { lang: v.languages!.map((l) => t.translate.langName[l]).join("／") })}
+                    </span>
+                  )}
+                </div>
+                {voiceTagLabels(v.tags).length > 0 && <div className="truncate text-xs text-neutral-400">{voiceTagLabels(v.tags)
                     .slice(0, 3)
-                    .map((tag) => (t.studio.voiceTags as Record<string, string>)[tag] ?? tag)
                     .join("・")}</div>}
               </button>
               {isSel && <Check className="size-4 shrink-0 text-accent-300" aria-hidden />}
@@ -757,6 +785,11 @@ function VoiceSection({
         })}
         {voices.length === 0 && <li className="px-3 py-4 text-center text-xs text-neutral-400">{provider?.customVoices ? t.settings.noCustomVoices : t.app.loading}</li>}
       </ul>
+      {otherCount > 0 && (
+        <button type="button" className="self-start text-xs text-accent-300 hover:underline" aria-pressed={showOther} onClick={() => setShowOther((v) => !v)}>
+          {showOther ? t.studio.hideOtherVoices : fmt(t.studio.showOtherVoices, { n: otherCount })}
+        </button>
+      )}
       {provider?.customVoices && (
         <div className="flex items-center gap-2">
           <input
@@ -773,10 +806,46 @@ function VoiceSection({
           <Button size="sm" icon={progress === null ? Plus : Loader2} disabled={progress !== null} onClick={() => fileInput.current?.click()}>
             {progress === null ? t.settings.uploadVoice : `${t.settings.uploadingVoice} ${Math.round(progress * 100)}%`}
           </Button>
-          {selected?.name.startsWith("我的聲音") && (
-            <Button size="sm" variant="ghost" icon={Trash2} onClick={() => void remove()}>
-              {t.settings.deleteVoice}
-            </Button>
+          {selected?.name.startsWith("我的聲音") && renaming === null && (
+            <>
+              <Button size="sm" variant="ghost" icon={Pencil} onClick={() => setRenaming(baseName(selected.name))}>
+                {t.settings.renameVoice}
+              </Button>
+              <Button size="sm" variant="ghost" icon={Trash2} onClick={() => void remove()}>
+                {t.settings.deleteVoice}
+              </Button>
+            </>
+          )}
+          {selected && renaming !== null && (
+            <form
+              className="flex w-full items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveName();
+              }}
+            >
+              <input
+                autoFocus
+                value={renaming}
+                maxLength={80}
+                aria-label={t.settings.voiceName}
+                onChange={(e) => setRenaming(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.stopPropagation();
+                    setRenaming(null);
+                  }
+                }}
+                className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs"
+                data-testid="voice-rename-input"
+              />
+              <Button size="sm" type="submit" disabled={!renaming.trim()}>
+                {t.common.save}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setRenaming(null)}>
+                {t.common.cancel}
+              </Button>
+            </form>
           )}
         </div>
       )}
@@ -885,7 +954,7 @@ function SubtitleSection({
             >
               <span className="flex h-9 w-full items-center justify-center rounded-sm bg-gradient-to-br from-slate-400 to-slate-600">
                 <span className="rounded px-1 text-xs leading-tight" style={subtitleCss({ ...preview, fontSizePx: 11 }, (px) => `${px}px`)}>
-                  字幕範例
+                  {t.studio.captionSample[project.settings.language === "en" ? "en" : "zh"]}
                 </span>
               </span>
               {p.label}
@@ -941,3 +1010,9 @@ function SubtitleSection({
   );
 }
 
+/** Chinese labels for a voice's vendor tags ("middle_aged" → 中年); tags without one are left out. */
+export function voiceTagLabels(tags: string[] | undefined): string[] {
+  const table = t.studio.voiceTags as Record<string, string>;
+  const out = (tags ?? []).map((tag) => table[tag.trim().toLowerCase().replace(/[\s-]+/g, "_")]).filter((x): x is string => !!x);
+  return [...new Set(out)];
+}

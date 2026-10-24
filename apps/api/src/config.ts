@@ -69,6 +69,11 @@ const EnvSchema = z.object({
   LOCAL_TTS_URL: z.string().default("http://127.0.0.1:8766"),
   /** Show the offline "mock" providers in the catalogue (tests and demos only; they produce placeholder output). */
   EXPOSE_MOCK_PROVIDERS: z.coerce.boolean().default(false),
+  /** Check a pasted provider key with a free read-only vendor call before storing it. */
+  VERIFY_PROVIDER_KEYS: z
+    .union([z.boolean(), z.string()])
+    .transform((v) => (typeof v === "boolean" ? v : !/^(0|false|no|off)$/i.test(v)))
+    .default(true),
   /** Polling cadence for external avatar tasks. */
   AVATAR_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
   /** Lifetime of the signed audio URL handed to avatar providers (they queue for a while). */
