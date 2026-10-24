@@ -9,7 +9,7 @@ import { DOWNLOADED_EVENT, markDownloaded, wasDownloaded } from "../../lib/autoE
 import { canChooseSaveLocation, formatBytes, formatRelativeTime, type saveFileAs } from "../../lib/format";
 import { twdShort } from "../../lib/paidJobs";
 import { saveWithToasts, VIDEO_FILE_TYPE } from "../../lib/saveFiles";
-import { latestProjectAsset } from "../../lib/scenes";
+import { isVideoCurrent, latestProjectAsset } from "../../lib/scenes";
 import { pageRanges, visibleScenes } from "../../lib/settingsImpact";
 import { useEditor } from "../../store/editorStore";
 import { toast } from "../../store/toastStore";
@@ -51,7 +51,7 @@ export function useFreshUndownloadedVideo(): Asset | undefined {
   if (!detail) return undefined;
   const video = latestProjectAsset(detail.assets, detail.scenes, "video");
   if (!video) return undefined;
-  const current = detail.currentRenderHashes.length === 0 || detail.currentRenderHashes.includes(video.inputHash ?? "");
+  const current = isVideoCurrent(detail.currentRenderHashes, video);
   return current && !wasDownloaded(video.id) ? video : undefined;
 }
 
@@ -136,7 +136,7 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
   if (!detail) return null;
 
   const videoOutdated =
-    !!video && detail.currentRenderHashes.length > 0 && !detail.currentRenderHashes.includes(video.inputHash ?? "");
+    !!video && !isVideoCurrent(detail.currentRenderHashes, video);
   const baseName = detail.project.name.replace(/[\\/:*?"<>|]+/g, "_");
   const renderRequest = {
     type: "render_video" as const,
@@ -244,7 +244,7 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
               {fmt(t.export.fixAllThenExport, { cost: costLabel(avatarCost) })}
             </Button>
             <Button size="sm" className="w-full" onClick={() => void makeThenExport("synthesize_speech")} data-testid="fix-audio">
-              {fmt(t.export.fixAudioOnlyThenExport, { cost: costLabel(speechCost) })}
+              {fmt(t.export.fixAudioOnlyThenExport, { cost: costLabel(speechCost), these: avatarNotReady.length === 1 ? t.export.thisPage : t.export.thesePages })}
             </Button>
           </div>
         ) : audioNotReady.length > 0 ? (
@@ -256,7 +256,7 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
           </div>
         ) : avatarNotReady.length > 0 ? (
           <div className="flex flex-col gap-2" data-testid="export-preflight">
-            {preflightNote(fmt(t.export.preflightAvatar, { pages: pageRanges(avatarNotReady) }))}
+            {preflightNote(fmt(t.export.preflightAvatar, { pages: pageRanges(avatarNotReady), these: avatarNotReady.length === 1 ? t.export.thisPage : t.export.thesePages }))}
             <div className="flex gap-2">
               <Button variant="primary" size="sm" className="flex-1" onClick={() => void makeThenExport("generate_avatar")} data-testid="fix-avatar">
                 {fmt(t.export.fixAvatarThenExport, { cost: costLabel(avatarCost) })}

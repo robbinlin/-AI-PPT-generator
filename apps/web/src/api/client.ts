@@ -43,6 +43,10 @@ import {
   type UploadOptions,
 } from "./types";
 
+
+/** Fired when a save had no response and is being retried (the editor shows 「重新連線中…」). */
+export const RECONNECTING_EVENT = "lvs:api-reconnecting";
+
 export const DEFAULT_API_URL = "http://localhost:4000";
 
 export function apiBaseUrl(): string {
@@ -105,12 +109,13 @@ export class HttpApiClient implements ApiClient {
       } catch (err) {
         if (signal?.aborted) throw err;
         if (attempt < delays.length) {
+          if (attempt === 0) window.dispatchEvent(new Event(RECONNECTING_EVENT));
           await new Promise((r) => setTimeout(r, delays[attempt]));
           continue;
         }
-        throw new Error(
-          `連不上伺服器，請稍後再試；一直發生請聯絡管理者。（${this.baseUrl}）`,
-        );
+        // The address is for whoever maintains the server, not for the lecturer reading the toast.
+        console.warn(`[api] ${method} ${path}: no response from ${this.baseUrl}`, err);
+        throw new Error("連不上伺服器，請稍後再試；一直發生請聯絡管理者。");
       }
       if (!res.ok) throw await toApiError(res);
       return res;

@@ -82,3 +82,12 @@ export function latestProjectAsset(
     .filter((a) => a.kind === kind && !sceneOwned.has(a.id))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
 }
+
+/**
+ * Whether an exported video still matches the project (the export menu, the step bar and the
+ * jobs drawer must agree). True while the server reports no current render hashes.
+ */
+export function isVideoCurrent(currentRenderHashes: readonly string[], video: Pick<Asset, "inputHash"> | undefined): boolean {
+  if (!video) return false;
+  return currentRenderHashes.length === 0 || currentRenderHashes.includes(video.inputHash ?? "");
+}

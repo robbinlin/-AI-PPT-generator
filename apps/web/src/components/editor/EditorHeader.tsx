@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { ChevronLeft, Clock, FileText, Settings, Upload } from "lucide-react";
 import { ThemeToggle } from "../ThemeToggle";
 import type { EditorActions } from "../../hooks/useEditorActions";
@@ -7,6 +7,7 @@ import { useCostEstimate } from "../../hooks/useCostEstimate";
 import { ACCEPTED_EXTENSIONS } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
 import { confirmReplaceSource } from "../../lib/replaceSource";
+import { confirmDiscard, hasUnsaved } from "../../lib/unsavedGuard";
 import { formatDuration, formatTwdFirst } from "../../lib/format";
 import { estimateLines, twdShort } from "../../lib/paidJobs";
 import { buildTimeline } from "../../lib/timelineModel";
@@ -25,6 +26,7 @@ export interface EditorHeaderProps {
 export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
   const detail = useEditor((s) => s.detail);
   const fileInput = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
 
   // Changes whenever a scene's derived state or a script changes, which is what estimates depend on.
   const revision = useMemo(
@@ -59,6 +61,12 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <Link
           to="/"
+          onClick={(e) => {
+            // Unsaved glossary edits are not autosaved: ask before leaving the editor.
+            if (!hasUnsaved()) return;
+            e.preventDefault();
+            void confirmDiscard().then((ok) => ok && navigate("/"));
+          }}
           aria-label={t.editor.projects}
           title={t.editor.projects}
           className="flex shrink-0 items-center gap-0.5 rounded-md px-1.5 py-1 text-xs whitespace-nowrap text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"

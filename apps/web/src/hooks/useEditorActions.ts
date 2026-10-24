@@ -51,6 +51,10 @@ export function useEditorActions() {
       return id;
     };
     const store = () => editorStore.getState();
+    // 「隱藏第 2 頁失敗：連不上伺服器…」: say which action failed, not just why.
+    const failed = (action: string, err: unknown) => toast(fmt(t.actionFailed.toast, { action, message: errorMessage(err) }), "error");
+    const pageNo = (sceneId: string) => (store().detail?.scenes.find((s) => s.id === sceneId)?.index ?? 0) + 1;
+    const slidePageNo = (slideId: string) => (store().detail?.slides.find((s) => s.id === slideId)?.index ?? 0) + 1;
 
     /**
      * Starts a job. Paid/slow job types are estimated first (only the pages that would really be
@@ -96,7 +100,7 @@ export function useEditorActions() {
       try {
         store().setProject(await api.updateProject(detail.project.id, req));
       } catch (err) {
-        toast(errorMessage(err), "error");
+        failed(req.name !== undefined ? t.actionFailed.rename : t.actionFailed.settings, err);
         return false;
       }
       // Page statuses (需更新) and render freshness are derived from settings on the server.
@@ -167,7 +171,7 @@ export function useEditorActions() {
         }
       } catch (err) {
         if (before) store().setSlidesAndScenes(before.slides, before.scenes);
-        toast(errorMessage(err), "error");
+        failed(t.actionFailed.reorder, err);
       }
     };
 
@@ -194,11 +198,13 @@ export function useEditorActions() {
         }
       },
 
-      async updateScene(sceneId: string, req: UpdateSceneRequest): Promise<void> {
+      async updateScene(sceneId: string, req: UpdateSceneRequest): Promise<boolean> {
         try {
           store().upsertScene(await api.updateScene(projectId(), sceneId, req));
+          return true;
         } catch (err) {
-          toast(errorMessage(err), "error");
+          failed(fmt(t.actionFailed.page, { n: pageNo(sceneId) }), err);
+          return false;
         }
       },
 
@@ -206,7 +212,7 @@ export function useEditorActions() {
         try {
           store().upsertSlide(await api.setSlideHidden(projectId(), slideId, hidden));
         } catch (err) {
-          toast(errorMessage(err), "error");
+          failed(fmt(hidden ? t.actionFailed.hide : t.actionFailed.unhide, { n: slidePageNo(slideId) }), err);
         }
       },
 

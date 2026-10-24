@@ -375,6 +375,15 @@ describe("generation handlers", () => {
     expect((await estimate("type=synthesize_speech")).sceneCount).toBe(1);
   });
 
+  it("project list carries progress for the cards (length and whether the video is current)", async () => {
+    const list = (await t.app.inject({ method: "GET", url: "/projects" })).json() as Array<Project & { totalDurationSec?: number; videoStatus?: string }>;
+    const me = list.find((p) => p.id === projectId)!;
+    expect(me.totalDurationSec).toBe((await detail()).totalDurationSec);
+    expect(["current", "outdated"]).toContain(me.videoStatus); // earlier tests rendered a video
+    const empty = list.find((p) => p.name === "empty");
+    if (empty) expect(empty.videoStatus).toBe("none");
+  });
+
   it("「全部做完再匯出」 queues the export on the server once the avatar job succeeds", async () => {
     const before = (await t.ctx.db.select().from(jobs).where(eq(jobs.projectId, projectId))).filter((j) => j.type === "render_video").length;
     const { row } = await run({ type: "generate_avatar", thenRender: { preset: "preview_540p", burnSubtitles: false } });

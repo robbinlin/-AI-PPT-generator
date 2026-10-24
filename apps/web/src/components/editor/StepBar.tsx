@@ -8,7 +8,7 @@ import { usePendingEstimate } from "../../hooks/usePendingEstimate";
 import { fmt, t } from "../../i18n";
 import { twdShort } from "../../lib/paidJobs";
 import { confirmReplaceSource } from "../../lib/replaceSource";
-import { latestProjectAsset } from "../../lib/scenes";
+import { isVideoCurrent, latestProjectAsset } from "../../lib/scenes";
 import { visibleScenes } from "../../lib/settingsImpact";
 import { useEditor } from "../../store/editorStore";
 import { Button } from "../ui/Button";
@@ -48,7 +48,7 @@ export function buildSteps(detail: ProjectDetail): { steps: Step[]; next: Step |
   const avatarOn = detail.project.settings.avatar.enabled && !!detail.project.settings.avatar.avatarId;
   const avatarCount = countReady(spoken, "avatar");
   const video = latestProjectAsset(detail.assets, detail.scenes, "video");
-  const videoCurrent = !!video && (detail.currentRenderHashes.length === 0 || detail.currentRenderHashes.includes(video.inputHash ?? ""));
+  const videoCurrent = isVideoCurrent(detail.currentRenderHashes, video);
   const hasSlides = detail.slides.length > 0;
 
   const steps: Step[] = [
@@ -121,11 +121,13 @@ export function StepBar({ actions }: { actions: EditorActions }) {
     export: t.steps.titleExport,
   };
 
+  // 「補齊 3 頁語音」: the button only makes what is missing; 「全部」 would suggest redoing hand edits.
+  const left = (s: Step | undefined) => (s?.count ? s.count.total - s.count.done : 0);
   const nextLabel: Record<StepId, string> = {
     upload: t.editor.upload,
-    script: t.editor.generateScripts,
-    voice: t.editor.generateSpeech,
-    avatar: t.editor.generateAvatar,
+    script: fmt(t.steps.fillScript, { n: left(steps.find((s) => s.id === "script")) }),
+    voice: fmt(t.steps.fillSpeech, { n: left(steps.find((s) => s.id === "voice")) }),
+    avatar: fmt(t.steps.fillAvatar, { n: left(steps.find((s) => s.id === "avatar")) }),
     export: t.editor.export,
   };
 

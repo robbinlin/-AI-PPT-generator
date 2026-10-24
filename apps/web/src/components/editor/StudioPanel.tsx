@@ -701,11 +701,17 @@ function VoiceSection({
     }
   };
 
+  // The chosen voice may sit below the list's fold: bring it into view so it is visible at a glance.
+  const voiceList = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    voiceList.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [s.voiceId, voices.length]);
+
   return (
     <Section title={t.studio.voice}>
       <ProviderPills providers={providers} kind="tts" value={s.providerId} onChange={(providerId) => setVoice({ providerId })} />
       {provider?.hint && <p className="text-xs text-amber-300/90">{provider.hint}</p>}
-      <ul className="max-h-64 overflow-y-auto rounded-md border border-neutral-800" role="listbox" aria-label={t.settings.voiceId} data-testid="voice-list">
+      <ul ref={voiceList} className="max-h-64 overflow-y-auto rounded-md border border-neutral-800" role="listbox" aria-label={t.settings.voiceId} data-testid="voice-list">
         {voices.map((v) => {
           const isSel = v.id === s.voiceId;
           const state = player.playingId === v.id ? player.state : "idle";

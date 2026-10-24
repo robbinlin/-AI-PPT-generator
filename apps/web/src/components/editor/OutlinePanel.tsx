@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { GlossaryEntry } from "@lvs/shared";
 import { ListTree, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useApi } from "../../api/context";
@@ -8,6 +8,7 @@ import { fmt, t } from "../../i18n";
 import { formatRelativeTime } from "../../lib/format";
 import { formatTwdFirst } from "../../lib/format";
 import { pageRanges, visibleScenes } from "../../lib/settingsImpact";
+import { confirmDiscard, setUnsaved } from "../../lib/unsavedGuard";
 import { confirmAction } from "../../store/confirmStore";
 import { editorStore, useEditor } from "../../store/editorStore";
 import { toast } from "../../store/toastStore";
@@ -109,6 +110,18 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
   const [editing, setEditing] = useState(false);
   const [rows, setRows] = useState<GlossaryEntry[]>(glossary);
   const [saving, setSaving] = useState(false);
+  const dirty = editing && JSON.stringify(rows) !== JSON.stringify(glossary);
+  // Not autosaved like scripts: leaving the tab or the page asks first.
+  useEffect(() => {
+    setUnsaved("glossary", dirty ? t.unsaved.glossary : null);
+    if (!dirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      setUnsaved("glossary", null);
+    };
+  }, [dirty]);
 
   const set = (i: number, patch: Partial<GlossaryEntry>) => setRows((list) => list.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   // Removing is one click next to the inputs, so it can be taken back.
@@ -250,7 +263,8 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
           <span className="ml-auto" />
           <Button
             size="sm"
-            onClick={() => {
+            onClick={async () => {
+              if (dirty && !(await confirmDiscard())) return;
               setRows(glossary);
               setEditing(false);
             }}

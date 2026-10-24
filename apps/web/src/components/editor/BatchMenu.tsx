@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Layers, Upload } from "lucide-react";
 import type { CostEstimate, Scene } from "@lvs/shared";
 import type { EditorActions } from "../../hooks/useEditorActions";
+import { useMenuFocus } from "../../hooks/useMenuFocus";
 import { usePendingEstimate } from "../../hooks/usePendingEstimate";
 import { fmt, t } from "../../i18n";
 import { twdShort } from "../../lib/paidJobs";
@@ -30,6 +31,9 @@ const pendingOf = (list: Scene[], kind: Kind) =>
 export function BatchMenu({ actions, onReplace }: { actions: Pick<EditorActions, "enqueue">; onReplace: () => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useMenuFocus(open, menuRef, close);
   const detail = useEditor((s) => s.detail);
   // Prices of the 補齊 items, fetched while the menu is open (like the 下一步 button's).
   const pid = open ? detail?.project.id : undefined;
@@ -78,12 +82,12 @@ export function BatchMenu({ actions, onReplace }: { actions: Pick<EditorActions,
 
   return (
     <div ref={ref} className="relative">
-      <Button icon={Layers} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} data-testid="batch-menu">
+      <Button icon={Layers} aria-haspopup="menu" aria-expanded={open} aria-label={t.batch.button} title={t.batch.button} onClick={() => setOpen((v) => !v)} data-testid="batch-menu">
         <span className="hidden min-[1200px]:inline">{t.batch.button}</span>
         <ChevronDown className="size-3.5" aria-hidden />
       </Button>
       {open && (
-        <div role="menu" aria-label={t.batch.title} className="absolute top-10 right-0 z-30 w-72 rounded-lg border border-neutral-700 bg-neutral-900 p-2 shadow-2xl">
+        <div ref={menuRef} role="menu" aria-label={t.batch.title} className="absolute top-10 right-0 z-30 w-72 rounded-lg border border-neutral-700 bg-neutral-900 p-2 shadow-2xl">
           <p className="px-2 pb-1 text-xs text-neutral-400">{t.batch.title}</p>
           {rows.map((r) => {
             const pending = pendingOf(r.list, r.kind);

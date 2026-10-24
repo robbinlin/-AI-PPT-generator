@@ -12,7 +12,7 @@ function renderList() {
   const actions = {
     reorder: vi.fn(async () => undefined),
     setHidden: vi.fn(async () => undefined),
-    updateScene: vi.fn(async () => undefined),
+    updateScene: vi.fn(async () => true),
   };
   const env = makeEnv(new MockApiClient({ seed: false }), "requested", "http://test");
   render(

@@ -21,7 +21,8 @@ export interface SlidePreviewProps {
   /** Still image of the chosen character, shown until a clip has been generated for this page. */
   avatarPreviewUrl?: string;
   /** When given, the avatar can be dragged and resized; called once when the gesture ends. */
-  onLayoutCommit?: (layout: AvatarLayout) => void;
+  /** Resolves false when saving failed: the preview then snaps back to the saved layout. */
+  onLayoutCommit?: (layout: AvatarLayout) => Promise<boolean> | void;
 }
 
 const pct = (v: number) => `${v * 100}%`;
@@ -81,7 +82,14 @@ export function SlidePreview({
             stillUrl={avatarPreviewUrl}
             status={scene?.avatar.status ?? "missing"}
             onDraft={onLayoutCommit ? setDraft : undefined}
-            onCommit={onLayoutCommit}
+            onCommit={
+              onLayoutCommit
+                ? (l) =>
+                    void Promise.resolve(onLayoutCommit(l)).then((ok) => {
+                      if (ok === false) setDraft(null);
+                    })
+                : undefined
+            }
           />
         )}
         {subtitles.enabled && cue && (
@@ -133,7 +141,7 @@ function AvatarOverlay({
 }) {
   const url = useAssetUrl(projectId, asset?.id);
   const ref = useRef<HTMLDivElement>(null);
-  const gesture = useRef<{ kind: "move" | "resize"; frame: DOMRect; dx: number; dy: number; last: AvatarLayout } | null>(null);
+  const gesture = useRef<{ kind: "move" | "resize"; frame: DOMRect; dx: number; dy: number; start: AvatarLayout; last: AvatarLayout } | null>(null);
   const editable = !!onCommit;
   const box = avatarBox(layout, ratio);
   const circle = layout.shape === "circle";
@@ -154,7 +162,7 @@ function AvatarOverlay({
     }
     const cx = frame.left + (box.left + box.width / 2) * frame.width;
     const cy = frame.top + (box.top + box.height / 2) * frame.height;
-    gesture.current = { kind, frame, dx: e.clientX - cx, dy: e.clientY - cy, last: layout };
+    gesture.current = { kind, frame, dx: e.clientX - cx, dy: e.clientY - cy, start: layout, last: layout };
   };
   const move = (e: ReactPointerEvent) => {
     const g = gesture.current;
@@ -185,7 +193,8 @@ function AvatarOverlay({
     } catch {
       /* ignore */
     }
-    if (g.last.x !== layout.x || g.last.y !== layout.y || g.last.size !== layout.size) onCommit?.(g.last);
+    // Compare with where the gesture began: `layout` already is the live draft by now.
+    if (g.last.x !== g.start.x || g.last.y !== g.start.y || g.last.size !== g.start.size) onCommit?.(g.last);
   };
 
   return (
@@ -249,13 +258,15 @@ function AvatarOverlay({
             aria-valuetext={`${Math.round(layout.size * 100)}%`}
             title={t.studio.resizeKeys}
             // Always visible (not hover-only) and operable with the arrow keys.
-            className="absolute -right-1.5 -bottom-1.5 size-4 cursor-nwse-resize rounded-sm border-2 border-white bg-accent-500 opacity-80 shadow transition group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-300 focus-visible:outline-none"
+            className="absolute right-0.5 bottom-0.5 size-4 cursor-nwse-resize rounded-sm border-2 border-white bg-accent-500 opacity-80 shadow transition group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-300 focus-visible:outline-none"
             onKeyDown={(e) => {
               const step = e.key === "ArrowUp" || e.key === "ArrowRight" ? 0.02 : e.key === "ArrowDown" || e.key === "ArrowLeft" ? -0.02 : 0;
               if (!step) return;
               e.preventDefault();
               e.stopPropagation();
-              onCommit?.(resizeTo(layout, ratio, Math.min(1, Math.max(0.1, layout.size + step))));
+              const next = resizeTo(layout, ratio, Math.min(1, Math.max(0.1, layout.size + step)));
+              onDraft?.(next);
+              onCommit?.(next);
             }}
             onPointerDown={start("resize")}
             onPointerMove={move}

@@ -13,20 +13,23 @@ export function usePendingEstimate(
   revision = "",
   /** "all": the price of redoing every page (a forced rerun). */
   scope: "pending" | "all" = "pending",
+  /** Only these pages (e.g. redoing one page's avatar). */
+  sceneIds?: string[],
 ): CostEstimate | undefined {
   const api = useApi();
   const [estimate, setEstimate] = useState<{ key: string; value: CostEstimate }>();
-  const key = `${projectId}:${type}:${scope}:${revision}`;
+  const ids = sceneIds?.join(",") ?? "";
+  const key = `${projectId}:${type}:${scope}:${ids}:${revision}`;
   useEffect(() => {
     if (!projectId || !type) return;
     let alive = true;
-    api.getEstimate(projectId, type, { scope }).then(
+    api.getEstimate(projectId, type, { scope, ...(ids ? { sceneIds: ids.split(",") } : {}) }).then(
       (value) => alive && setEstimate({ key, value }),
       () => alive && setEstimate(undefined),
     );
     return () => {
       alive = false;
     };
-  }, [api, projectId, type, scope, key]);
+  }, [api, projectId, type, scope, ids, key]);
   return estimate?.key === key ? estimate.value : undefined;
 }

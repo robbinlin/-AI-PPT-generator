@@ -35,10 +35,10 @@ export function CenterPane({
   const avatarPreviewUrl = avatarImageUrl(api, avatarSettings?.providerId, avatars.find((a) => a.id === avatarSettings?.avatarId));
   // A page with its own layout keeps it; otherwise dragging edits the project-wide layout.
   const commitLayout = actions
-    ? (layout: AvatarLayout) => {
-        if (scene?.avatarLayout) void actions.updateScene(scene.id, { avatarLayout: layout });
-        else void actions.updateProject({ settings: { avatar: { ...detail.project.settings.avatar, layout } } });
-      }
+    ? (layout: AvatarLayout): Promise<boolean> =>
+        scene?.avatarLayout
+          ? actions.updateScene(scene.id, { avatarLayout: layout })
+          : actions.updateProject({ settings: { avatar: { ...detail.project.settings.avatar, layout } } })
     : undefined;
 
   const source = detail.sourceDocument;

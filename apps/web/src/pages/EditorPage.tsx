@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
+import { FileQuestion } from "lucide-react";
 import type { ProjectEvent } from "@lvs/shared";
 import { useApiEnv } from "../api/context";
-import { errorMessage } from "../api/types";
+import { RECONNECTING_EVENT } from "../api/client";
+import { ApiRequestError, errorMessage } from "../api/types";
 import { ConfirmHost } from "../components/ConfirmHost";
 import { CenterPane } from "../components/editor/CenterPane";
 import { EditorHeader } from "../components/editor/EditorHeader";
@@ -98,7 +100,11 @@ export function EditorPage() {
         const file = alive ? takePendingUpload(projectId) : undefined;
         if (file) void actionsRef.current.upload(file);
       })
-      .catch((err: unknown) => alive && setError(errorMessage(err)));
+      .catch((err: unknown) => {
+        if (!alive) return;
+        // A wrong or deleted project gets a plain explanation, not the API's English text.
+        setError(err instanceof ApiRequestError && err.status === 404 ? t.editor.notFound : fmt(t.editor.loadFailed, { message: errorMessage(err) }));
+      });
     api.listJobs(projectId).then(
       (jobs) => alive && editorStore.getState().setRecentJobs(jobs),
       () => undefined,
@@ -112,6 +118,18 @@ export function EditorPage() {
   }, [api, assetUrls, projectId]);
 
   useScriptAutosave(drafts, actions.saveScript);
+
+  // A save that got no response is retried for a few seconds: say so instead of staying silent.
+  useEffect(() => {
+    let last = 0;
+    const onReconnecting = () => {
+      if (Date.now() - last < 10_000) return;
+      last = Date.now();
+      toast(t.actionFailed.reconnecting, "info");
+    };
+    window.addEventListener(RECONNECTING_EVENT, onReconnecting);
+    return () => window.removeEventListener(RECONNECTING_EVENT, onReconnecting);
+  }, []);
 
   // Warn before closing the tab with unsaved script edits.
   useEffect(() => {
@@ -131,11 +149,14 @@ export function EditorPage() {
 
   if (error) {
     return (
-      <div className="mx-auto max-w-md py-24 text-center text-sm">
-        <p className="text-rose-300">{fmt(t.editor.loadFailed, { message: error })}</p>
-        <Link to="/" className="mt-3 inline-block text-accent-400 hover:underline">
-          {t.app.backToProjects}
-        </Link>
+      <div className="flex h-full items-center justify-center bg-neutral-950 p-6">
+        <div className="w-full max-w-md rounded-lg border border-neutral-800 bg-neutral-900 p-6 text-center" role="alert">
+          <FileQuestion className="mx-auto mb-3 size-8 text-neutral-400" aria-hidden />
+          <p className="text-sm text-neutral-200">{error}</p>
+          <Link to="/" className="mt-4 inline-flex items-center rounded-md bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-500">
+            {t.app.backToProjects}
+          </Link>
+        </div>
       </div>
     );
   }

@@ -57,9 +57,34 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
       db,
       rows.map((r) => r.id),
     );
-    return rows.map((r) => {
+    // Progress for the cards (length, whether the exported video is current), as VoAI/HeyGen show it.
+    const progress = await Promise.all(
+      rows.map(async (r) => {
+        try {
+          const d = await getProjectDetail(db, ownerId, r.id);
+          const video = Object.values(d.assets)
+            .filter((a) => a.kind === "video")
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+          const videoStatus = !video
+            ? ("none" as const)
+            : d.currentRenderHashes.length === 0 || d.currentRenderHashes.includes(video.inputHash ?? "")
+              ? ("current" as const)
+              : ("outdated" as const);
+          return { totalDurationSec: d.totalDurationSec, videoStatus };
+        } catch {
+          return {};
+        }
+      }),
+    );
+    return rows.map((r, i) => {
       const e = extras.get(r.id) ?? {};
-      return { ...toProject(r), pageCount: e.pageCount, activePageCount: e.activePageCount,...(e.thumbnailAssetId ? { thumbnailAssetId: e.thumbnailAssetId } : {}) };
+      return {
+        ...toProject(r),
+        pageCount: e.pageCount,
+        activePageCount: e.activePageCount,
+        ...progress[i],
+        ...(e.thumbnailAssetId ? { thumbnailAssetId: e.thumbnailAssetId } : {}),
+      };
     });
   });
 

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { confirmDiscard } from "../../lib/unsavedGuard";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { t } from "../../i18n";
 import { OutlinePanel } from "./OutlinePanel";
@@ -29,7 +30,11 @@ function initialTab(): Tab {
 
 export function RightPanel({ actions }: { actions: EditorActions }) {
   const [tab, setTab] = useState<Tab>(initialTab);
-  const choose = (next: Tab) => {
+  const tabRef = useRef(tab);
+  const choose = async (next: Tab) => {
+    // Switching tabs unmounts the panel: unsaved glossary edits would vanish silently.
+    if (next !== tabRef.current && !(await confirmDiscard())) return;
+    tabRef.current = next;
     setTab(next);
     try {
       localStorage.setItem(TAB_KEY, next);
@@ -40,7 +45,7 @@ export function RightPanel({ actions }: { actions: EditorActions }) {
   useEffect(() => {
     const onOpen = (e: Event) => {
       const next = (e as CustomEvent<Tab>).detail;
-      if ((TABS as string[]).includes(next)) choose(next);
+      if ((TABS as string[]).includes(next)) void choose(next);
     };
     window.addEventListener(OPEN_TAB_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_TAB_EVENT, onOpen);
@@ -57,7 +62,7 @@ export function RightPanel({ actions }: { actions: EditorActions }) {
             id={`tab-${id}`}
             aria-selected={tab === id}
             aria-controls={`panel-${id}`}
-            onClick={() => choose(id)}
+            onClick={() => void choose(id)}
             className={`-mb-px border-b-2 px-2.5 py-2.5 text-sm whitespace-nowrap transition-colors ${
               tab === id ? "border-accent-500 text-neutral-50" : "border-transparent text-neutral-400 hover:text-neutral-200"
             }`}

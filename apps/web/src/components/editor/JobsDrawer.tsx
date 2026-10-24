@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Job } from "@lvs/shared";
 import { CircleCheck, CircleSlash, CircleX, Download, ListChecks, X } from "lucide-react";
 import { useApi, useAssetUrl } from "../../api/context";
@@ -9,6 +9,7 @@ import { editorStore, useEditor } from "../../store/editorStore";
 import { Button, IconButton } from "../ui/Button";
 import { ProgressBar, Spinner } from "../ui/Misc";
 import { friendlyJobError } from "../../lib/jobErrors";
+import { isVideoCurrent } from "../../lib/scenes";
 import { pageRanges } from "../../lib/settingsImpact";
 import { saveVideo } from "../../lib/saveFiles";
 
@@ -107,6 +108,33 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
   const recent = useEditor((s) => s.recentJobs);
   const now = useTick(5000, open && (active?.length ?? 0) > 0);
   const [showAll, setShowAll] = useState(false);
+  const panel = useRef<HTMLElement>(null);
+
+  // A modal drawer: focus moves in, Tab stays inside, and returns to 工作 when it closes.
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    panel.current?.querySelector<HTMLElement>("[data-drawer-close]")?.focus();
+    const onTab = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || !panel.current) return;
+      const items = [...panel.current.querySelectorAll<HTMLElement>('button:not([disabled]), [href], summary, [tabindex]:not([tabindex="-1"])')].filter((el) => el.offsetParent !== null);
+      if (items.length === 0) return;
+      const first = items[0]!;
+      const last = items[items.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onTab);
+    return () => {
+      window.removeEventListener("keydown", onTab);
+      previous?.focus?.();
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open || !projectId) return;
@@ -126,13 +154,16 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
   return (
     <div className="fixed inset-0 z-40" onMouseDown={onClose}>
       <aside
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
         aria-label={t.jobs.title}
         className="absolute top-0 right-0 flex h-full w-96 flex-col border-l border-neutral-800 bg-neutral-900 shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
           <h2 className="text-sm font-semibold text-neutral-100">{t.jobs.title}</h2>
-          <IconButton icon={X} label={t.common.close} onClick={onClose} />
+          <IconButton icon={X} label={t.common.close} onClick={onClose} data-drawer-close />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <h3 className="mb-2 text-xs font-semibold text-neutral-400">{t.jobs.active}</h3>
@@ -191,6 +222,12 @@ function isSuperseded(job: Job, recent: Job[]): boolean {
 
 function RecentJob({ job, latestVideoJobId, superseded }: { job: Job; latestVideoJobId?: string; superseded: boolean }) {
   const when = job.finishedAt ?? job.createdAt;
+  // Same rule as the export menu: the newest export can still be out of date.
+  const outdated = useEditor((s) => {
+    const id = (job.result as { videoAssetId?: string } | undefined)?.videoAssetId;
+    const d = s.detail;
+    return !!d && !!id && !!d.assets[id] && !isVideoCurrent(d.currentRenderHashes, d.assets[id]);
+  });
   const Icon = job.status === "succeeded" ? CircleCheck : job.status === "failed" ? CircleX : CircleSlash;
   const color = job.status === "succeeded" ? "text-emerald-400" : job.status === "failed" ? "text-rose-400" : "text-neutral-400";
   return (
@@ -212,7 +249,7 @@ function RecentJob({ job, latestVideoJobId, superseded }: { job: Job; latestVide
             {job.type === "render_video" && job.status === "succeeded" && (
               <span className="ml-1 text-neutral-400">
                 ・{job.payload.type === "render_video" && job.payload.preset === "preview_540p" ? "540p" : "1080p"}・
-                {job.id === latestVideoJobId ? t.jobs.latestVideo : t.jobs.olderVideo}
+                {job.id === latestVideoJobId ? (outdated ? t.jobs.latestOutdated : t.jobs.latestVideo) : t.jobs.olderVideo}
               </span>
             )}
             {superseded && <span className="ml-1 text-neutral-400">{t.jobs.supersededShort}</span>}

@@ -9,6 +9,7 @@ import { currentScript, useEditor, type SaveState } from "../../store/editorStor
 import { toast } from "../../store/toastStore";
 import { Button, IconButton } from "../ui/Button";
 import { Spinner } from "../ui/Misc";
+import { usePendingEstimate } from "../../hooks/usePendingEstimate";
 import { RewriteDialog } from "./RewriteDialog";
 import { ScriptHistory } from "./ScriptHistory";
 import { openEditorTab } from "./RightPanel";
@@ -34,6 +35,11 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const [rewriteOpen, setRewriteOpen] = useState(false);
 
   const scene = useMemo(() => detail?.scenes.find((s) => s.id === sceneId), [detail, sceneId]);
+  // The server's price for redoing this page's avatar, so every screen shows the same number
+  // (the local table is only a fallback while it loads). Hooks first, before the early return.
+  const av = detail?.project.settings.avatar;
+  const paidAvatarReady = !!scene && !!av && av.enabled && !!av.avatarId && av.providerId !== "local" && !scene.muted && scene.avatar.status === "ready";
+  const serverRedo = usePendingEstimate(paidAvatarReady ? detail?.project.id : undefined, "generate_avatar", `${av?.avatarId}:${scene?.durationSec}`, "all", scene ? [scene.id] : undefined);
   if (!detail || !scene) {
     return <p className="p-4 text-sm text-neutral-400">{t.editor.selectPage}</p>;
   }
@@ -51,9 +57,11 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const avatarOn = settings.avatar.enabled && !!settings.avatar.avatarId;
   const avatarNeeds = !hidden && avatarOn && !scene.muted && !!revision && (needs(scene.avatar) || scene.avatar.status === "missing");
   const busy = (type: string) => detail.activeJobs.some((j) => j.type === type);
-  // A finished paid avatar is lip-synced to this exact text: say so before the first keystroke.
-  const paidAvatarReady = avatarOn && settings.avatar.providerId !== "local" && !scene.muted && scene.avatar.status === "ready";
-  const redoCost = twdShort((scene.durationSec ?? seconds) * HEYGEN_USD_PER_SEC[settings.avatar.avatarSource === "video" ? "video" : "photo"]);
+  // A finished paid avatar is lip-synced to this exact text: say so before the first keystroke
+  // (paidAvatarReady above).
+  const redoCost = serverRedo
+    ? twdShort(serverRedo.total, serverRedo.currency)
+    : twdShort((scene.durationSec ?? seconds) * HEYGEN_USD_PER_SEC[settings.avatar.avatarSource === "video" ? "video" : "photo"]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!(e.ctrlKey || e.metaKey)) return;
@@ -163,7 +171,8 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
         <span className={countChars(text) > SCRIPT_MAX_CHARS * 0.95 ? "text-amber-300" : ""}>
           {fmt(t.script.chars, { n: countChars(text), max: SCRIPT_MAX_CHARS })}
         </span>
-        <span>{fmt(t.script.estSeconds, { n: seconds })}</span>
+        {/* Once there is narration, its real length; before that, the estimate from the text. */}
+        <span>{scene.durationSec && scene.audio.status === "ready" && !hasDraft ? fmt(t.script.audioSeconds, { n: Math.round(scene.durationSec) }) : fmt(t.script.estSeconds, { n: seconds })}</span>
       </div>
 
       {(audioNeeds || avatarNeeds) && !hasDraft && (

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core";
 import type { Scene, Slide } from "@lvs/shared";
 import { Eye, EyeOff, GripVertical, ImageOff, MoreHorizontal, Volume2, VolumeX } from "lucide-react";
 import { fmt, t } from "../../i18n";
 import { firstLine } from "../../lib/scenes";
+import { useMenuFocus } from "../../hooks/useMenuFocus";
 import { StatusDots, StatusSummary } from "./StatusDots";
 
 export interface PageListItemProps {
@@ -28,6 +29,7 @@ export interface PageListItemProps {
 export function PageListItem(props: PageListItemProps) {
   const { slide, scene, position, scriptText, thumbnailUrl, selected, dragging = false } = props;
   const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
   const line = firstLine(scriptText);
   const muted = scene?.muted ?? false;
 
@@ -114,7 +116,7 @@ export function PageListItem(props: PageListItemProps) {
           hidden={slide.hidden}
           muted={muted}
           canMute={scene !== undefined}
-          onClose={() => setMenuOpen(false)}
+          onClose={closeMenu}
           onToggleHidden={props.onToggleHidden}
           onToggleMuted={props.onToggleMuted}
         />
@@ -134,6 +136,7 @@ interface PageMenuProps {
 
 function PageMenu({ hidden, muted, canMute, onClose, onToggleHidden, onToggleMuted }: PageMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+  useMenuFocus(true, ref, onClose);
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();

@@ -74,6 +74,10 @@ export const ProjectSummary = Project.extend({
   pageCount: z.number().int().nonnegative().optional(),
   /** Pages not hidden; less than `pageCount` when some are switched off. */
   activePageCount: z.number().int().nonnegative().optional(),
+  /** Narration length of the visible pages (0 before any audio). */
+  totalDurationSec: z.number().nonnegative().optional(),
+  /** Latest exported video: none yet, current, or made before later changes. */
+  videoStatus: z.enum(["none", "current", "outdated"]).optional(),
 });
 export type ProjectSummary = z.infer<typeof ProjectSummary>;
 

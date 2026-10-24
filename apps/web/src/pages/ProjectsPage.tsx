@@ -11,7 +11,7 @@ import { Spinner } from "../components/ui/Misc";
 import { Modal } from "../components/ui/Modal";
 import { fmt, t } from "../i18n";
 import { targetLanguageName, useTranslateProject } from "../hooks/useTranslateProject";
-import { formatRelativeTime } from "../lib/format";
+import { formatDuration, formatRelativeTime } from "../lib/format";
 import { setPendingUpload } from "../lib/pendingUpload";
 import { toast } from "../store/toastStore";
 
@@ -224,12 +224,22 @@ function ProjectCard({
             </span>
             <span>{fmt(t.projects.updated, { time: formatRelativeTime(project.updatedAt) })}</span>
           </p>
+          {(project.totalDurationSec || project.videoStatus) && (
+            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs whitespace-nowrap text-neutral-400" data-testid="card-progress">
+              {!!project.totalDurationSec && <span>{fmt(t.projects.length, { time: formatDuration(project.totalDurationSec) })}</span>}
+              {project.videoStatus && (
+                <span className={project.videoStatus === "current" ? "text-emerald-300" : project.videoStatus === "outdated" ? "text-amber-300" : ""}>
+                  {t.projects.video[project.videoStatus]}
+                </span>
+              )}
+            </p>
+          )}
         </div>
       </Link>
       <div ref={menuRef} className="absolute right-3 bottom-3">
         <IconButton
           icon={MoreHorizontal}
-          label={t.projects.menu}
+          label={fmt(t.projects.menuFor, { name: project.name })}
           active={menuOpen}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
