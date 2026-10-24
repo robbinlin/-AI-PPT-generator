@@ -42,6 +42,9 @@ export function validateUpload(file: File): string | null {
 }
 
 /** Editor commands: call the API, apply the result to the store, report failures as toasts. */
+/** Job types whose start is in progress in this tab (see enqueue). */
+const inFlight = new Set<string>();
+
 export function useEditorActions() {
   const api = useApi();
 
@@ -81,7 +84,19 @@ export function useEditorActions() {
       return { pages: hit.length, ...(redo ? { redo } : {}) };
     };
 
+    // A double click must not start the same job twice: while one request of a type is being
+    // estimated, confirmed or sent, further clicks are ignored (the server refuses overlaps too).
     const enqueue = async (req: EnqueueJobRequest, options: EnqueueOptions = {}): Promise<Job | null> => {
+      if (inFlight.has(req.type)) return null;
+      inFlight.add(req.type);
+      try {
+        return await enqueueOnce(req, options);
+      } finally {
+        inFlight.delete(req.type);
+      }
+    };
+
+    const enqueueOnce = async (req: EnqueueJobRequest, options: EnqueueOptions): Promise<Job | null> => {
       if (ESTIMATED_TYPES.has(req.type) && options.confirm !== false) {
         const type = req.type as EstimateType;
         let estimate: CostEstimate | null = null;
@@ -112,8 +127,10 @@ export function useEditorActions() {
         store().upsertJob(job);
         return job;
       } catch (err) {
+        // Already running (another click, another tab): say so plainly, it's not a failure.
+        if ((err as { status?: number }).status === 409) toast(errorMessage(err), "info");
         // 「產生語音失敗：…」 rather than the technical 「無法建立工作」.
-        failed(t.jobs.types[req.type], err);
+        else failed(t.jobs.types[req.type], err);
         return null;
       }
     };
@@ -266,9 +283,14 @@ export function useEditorActions() {
       async upload(file: File): Promise<void> {
         // One upload at a time (a second click while a big deck is still going would race it).
         if (store().upload.progress !== null) return;
+        // With a deck already shown, the drop zone (where upload.error appears) is hidden: also toast.
+        const report = (message: string, retry?: () => void) => {
+          store().setUpload({ progress: null, error: message });
+          if (store().detail?.slides.length) toast(message, "error", retry ? { label: t.app.retry, run: retry } : undefined);
+        };
         const invalid = validateUpload(file);
         if (invalid) {
-          store().setUpload({ progress: null, error: invalid });
+          report(invalid);
           return;
         }
         store().setUpload({ progress: 0, error: null });
@@ -280,7 +302,7 @@ export function useEditorActions() {
           store().upsertJob(job);
           store().setUpload({ progress: null, error: null });
         } catch (err) {
-          store().setUpload({ progress: null, error: fmt(t.upload.failed, { message: errorMessage(err) }) });
+          report(fmt(t.upload.failed, { message: errorMessage(err) }), () => void this.upload(file));
         }
       },
     };

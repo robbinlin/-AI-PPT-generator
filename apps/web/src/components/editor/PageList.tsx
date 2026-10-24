@@ -22,7 +22,7 @@ import type { EditorActions } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
 import { pageDragAnnouncements, pageDragInstructions } from "../../lib/dndA11y";
 import { sortByIndex } from "../../lib/scenes";
-import { currentScript, useEditor } from "../../store/editorStore";
+import { useEditor } from "../../store/editorStore";
 import { PageListItem } from "./PageListItem";
 import { openEditorTab } from "./RightPanel";
 import { StatusLegend } from "./StatusDots";
@@ -33,7 +33,6 @@ export interface PageListProps {
 
 export function PageList({ actions }: PageListProps) {
   const detail = useEditor((s) => s.detail);
-  const drafts = useEditor((s) => s.drafts);
   const selectedSceneId = useEditor((s) => s.selectedSceneId);
   const select = useEditor((s) => s.select);
 
@@ -106,7 +105,7 @@ export function PageList({ actions }: PageListProps) {
                       slide={slide}
                       scene={scene}
                       position={i + 1}
-                      scriptText={scene ? currentScript({ detail, drafts }, scene.id) : ""}
+                      scriptText={scene ? (detail?.scripts[scene.id]?.script ?? "") : ""}
                       selected={scene !== undefined && scene.id === selectedSceneId}
                       onSelect={() => scene && select(scene.id)}
                       onToggleHidden={() => void actions.setHidden(slide.id, !slide.hidden)}

@@ -23,7 +23,7 @@ import { z } from "zod";
 import type { AppContext } from "../context.js";
 import { toJob, toProject, toScene, toScriptRevision, toSlide, toSourceDocument } from "../db/mappers.js";
 import { jobs, projects, scenes, scriptRevisions, slides, sourceDocuments } from "../db/schema.js";
-import { badRequest, notFound } from "../errors.js";
+import { badRequest, conflict, notFound } from "../errors.js";
 import { renderScriptDocument } from "../jobs/handlers/export-script.js";
 import { estimateJob } from "../services/estimate.js";
 import { getProjectDetail, latestOutline, latestSourceDocument, projectListExtras, requireProject } from "../services/projects.js";
@@ -54,6 +54,10 @@ function deepMerge<T extends Record<string, unknown>>(base: T, patch: Record<str
   }
   return out as T;
 }
+
+/** Job types that work page by page and cost money: at most one at a time per page. */
+const PAGE_JOBS = new Set(["generate_script", "synthesize_speech", "generate_avatar", "translate_script"]);
+const JOB_LABEL: Record<string, string> = { generate_script: "產生講稿", synthesize_speech: "產生語音", generate_avatar: "產生人像", translate_script: "翻譯講稿" };
 
 export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   const { db } = ctx;
@@ -332,6 +336,20 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const project = await requireProject(db, ownerId, req.params.id);
     const payload = parse(EnqueueJobRequest, req.body);
     const dedupeKey = payload.type === "generate_outline" || payload.type === "render_video" ? `${payload.type}:${JSON.stringify(payload)}` : undefined;
+    // A double click or a second tab must not start the same paid work twice: refuse a job of the
+    // same kind while one is queued or running for any of the same pages.
+    if (PAGE_JOBS.has(payload.type)) {
+      const mine = (payload as { sceneIds?: string[] }).sceneIds;
+      const active = await db
+        .select()
+        .from(jobs)
+        .where(and(eq(jobs.projectId, project.id), eq(jobs.type, payload.type), inArray(jobs.status, ["queued", "running"])));
+      const clash = active.find((j) => {
+        const other = (j.payload as { sceneIds?: string[] }).sceneIds;
+        return !mine?.length || !other?.length || other.some((id) => mine.includes(id));
+      });
+      if (clash) throw conflict(`「${JOB_LABEL[payload.type] ?? payload.type}」已經在進行中，請等它完成（可按「工作」查看進度）。`);
+    }
     // Estimate before enqueueing (the runner may start the job right away) with the job's own
     // selection: force → everything, sceneIds respected.
     let estimate;

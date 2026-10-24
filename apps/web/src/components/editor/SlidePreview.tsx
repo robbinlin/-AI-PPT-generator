@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { SUBTITLE_SIDE_MARGIN, subtitleSideMargins, type Asset, type AvatarLayout, type DerivedStatus, type Project, type Scene, type Slide } from "@lvs/shared";
 import { EyeOff, ImageOff, Move, UserRound } from "lucide-react";
 import { useAssetUrl } from "../../api/context";
@@ -29,7 +29,7 @@ const pct = (v: number) => `${v * 100}%`;
 const boxStyle = (b: Box): CSSProperties => ({ left: pct(b.left), top: pct(b.top), width: pct(b.width), height: pct(b.height) });
 
 /** The video frame: slide (optionally scaled beside the avatar), avatar and subtitle, as the renderer composes them. */
-export function SlidePreview({
+function SlidePreviewView({
   project,
   slide,
   scene,
@@ -345,3 +345,6 @@ function SubtitleOverlay({
     </div>
   );
 }
+
+/** Memoised: re-renders only when its own props change (not on every keystroke elsewhere). */
+export const SlidePreview = memo(SlidePreviewView);

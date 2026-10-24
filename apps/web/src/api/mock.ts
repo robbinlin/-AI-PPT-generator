@@ -355,6 +355,8 @@ export class MockApiClient implements ApiClient {
 
     // A second, empty project to demo the upload drop zone.
     const empty = this.makeProject("未命名的專案", { language: "zh-TW" });
+    // Older than the guided demo, so the demo project is first in 「最近更新」 order.
+    empty.createdAt = empty.updatedAt = new Date(Date.now() - 60_000).toISOString();
     this.projects.set(empty.id, this.newProjectState(empty));
   }
 

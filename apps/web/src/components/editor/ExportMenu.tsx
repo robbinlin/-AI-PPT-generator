@@ -7,8 +7,8 @@ import type { EditorActions } from "../../hooks/useEditorActions";
 import { usePendingEstimate } from "../../hooks/usePendingEstimate";
 import { fmt, t } from "../../i18n";
 import { DOWNLOADED_EVENT, markDownloaded, wasDownloaded } from "../../lib/autoExport";
-import { canChooseSaveLocation, formatBytes, formatRelativeTime, type saveFileAs } from "../../lib/format";
-import { twdShort } from "../../lib/paidJobs";
+import { canChooseSaveLocation, formatBytes, formatRelativeTime, formatWait, type saveFileAs } from "../../lib/format";
+import { estimateWaitSec, twdShort } from "../../lib/paidJobs";
 import { saveWithToasts, VIDEO_FILE_TYPE, videoFileName } from "../../lib/saveFiles";
 import { isVideoCurrent, latestProjectAsset } from "../../lib/scenes";
 import { pageRanges, visibleScenes } from "../../lib/settingsImpact";
@@ -335,9 +335,15 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
           </div>
         ) : (
           // A current video is done: downloading it is the main action, exporting again the side one.
-          <Button variant={video && !videoOutdated ? "secondary" : "primary"} size="sm" className="w-full" onClick={() => void render()} data-testid="start-export">
-            {video && !videoOutdated ? t.export.reexport : t.export.start}
-          </Button>
+          <>
+            <Button variant={video && !videoOutdated ? "secondary" : "primary"} size="sm" className="w-full" onClick={() => void render()} data-testid="start-export">
+              {video && !videoOutdated ? t.export.reexport : t.export.start}
+            </Button>
+            {/* How long the free local export takes, before it starts. */}
+            <p className="mt-1 text-center text-xs text-neutral-400" data-testid="export-wait">
+              {fmt(t.export.waitEstimate, { wait: formatWait(estimateWaitSec("render_video", { seconds: detail.totalDurationSec, sceneCount: visibleScenes(detail).length } as CostEstimate) * (preset === "preview_540p" ? 0.5 : 1)) })}
+            </p>
+          </>
         )}
       </div>
       <div className="mt-1 flex flex-col">

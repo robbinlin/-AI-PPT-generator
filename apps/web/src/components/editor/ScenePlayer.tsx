@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { Scene } from "@lvs/shared";
 import { ListVideo, Pause, Play, Square } from "lucide-react";
 import { useAssetUrl } from "../../api/context";
@@ -19,7 +19,7 @@ function isPlayable(scene: Scene | undefined, hidden: boolean): boolean {
 }
 
 /** Per-scene narration player plus 「播放全部」, which walks through scenes in order. */
-export function ScenePlayer({ projectId, scene, hidden }: ScenePlayerProps) {
+function ScenePlayerView({ projectId, scene, hidden }: ScenePlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const playback = useEditor((s) => s.playback);
   const url = useAssetUrl(projectId, scene?.audio.assetId);
@@ -155,3 +155,6 @@ export function ScenePlayer({ projectId, scene, hidden }: ScenePlayerProps) {
     </div>
   );
 }
+
+/** Memoised: re-renders only when its own props change (not on every keystroke elsewhere). */
+export const ScenePlayer = memo(ScenePlayerView);

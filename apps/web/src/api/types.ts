@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { t } from "../i18n";
+import { friendlyJobError } from "../lib/jobErrors";
 import {
   Job,
   Project,
@@ -161,7 +163,20 @@ export class ApiRequestError extends Error {
   }
 }
 
+/**
+ * What to tell the user. Chinese messages from the server pass through; English ones
+ * (「scene … not found」, 「invalid body」, 「Network error」, a vendor's 「HTTP 401 …」) become a
+ * plain zh-TW sentence by error code, so no raw technical text reaches a toast.
+ */
 export function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
+  const message = err instanceof Error ? err.message : String(err);
+  if (/[\u3400-\u9fff]/.test(message)) return message;
+  const code = err instanceof ApiRequestError ? err.code : undefined;
+  const status = err instanceof ApiRequestError ? err.status : undefined;
+  if (code === "network_error" || /failed to fetch|network ?error|load failed/i.test(message)) return t.apiErrors.network;
+  if (code === "not_found" || status === 404) return t.apiErrors.notFound;
+  if (code === "bad_request" || code === "validation_error" || status === 400 || status === 413) return t.apiErrors.badRequest;
+  if (code === "upstream" || status === 502) return friendlyJobError(message) ?? t.apiErrors.upstream;
+  if (status !== undefined && status >= 500) return t.apiErrors.internal;
+  return friendlyJobError(message) ?? message;
 }

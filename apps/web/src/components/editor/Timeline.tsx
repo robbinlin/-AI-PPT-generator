@@ -1,5 +1,5 @@
 import { avatarInVideo } from "@lvs/shared";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, horizontalListSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -21,7 +21,7 @@ const TRACK_H = { slides: 44, narration: 40, avatar: 14, subtitles: 22 } as cons
  * avatar / subtitle tracks, sized by narration + tail pause. Click to select a page, drag a
  * slide block to reorder, and use the page menu for tail pause, mute and transition.
  */
-export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" | "updateScene"> }) {
+function TimelineView({ actions }: { actions: Pick<EditorActions, "reorder" | "updateScene"> }) {
   const detail = useEditor((s) => s.detail);
   const selectedSceneId = useEditor((s) => s.selectedSceneId);
   const currentTime = useEditor((s) => s.playback.currentTime);
@@ -248,6 +248,9 @@ export function Timeline({ actions }: { actions: Pick<EditorActions, "reorder" |
     </div>
   );
 }
+
+/** Memoised: typing a script re-renders the preview above, not the whole timeline. */
+export const Timeline = memo(TimelineView);
 
 const COLLAPSE_KEY = "lvs:timeline-collapsed";
 

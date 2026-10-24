@@ -15,10 +15,15 @@ export function friendlyJobError(message: string | undefined): string | undefine
     [/insufficient|not enough credits|balance|payment required|\b402\b/i, t.jobErrors.credits],
     [/api.?key|unauthori[sz]ed|forbidden|invalid key|\b401\b|\b403\b/i, t.jobErrors.key],
     [/timed? ?out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|fetch failed|network/i, t.jobErrors.network],
+    [/refused|safety|content polic|blocked/i, t.jobErrors.refused],
+    [/returned (no|an empty)|empty response|no audio|no video_id|no output/i, t.jobErrors.empty],
   ];
   for (const [re, text] of rules) if (re.test(message)) return text;
   // Mostly-English messages without a known cause still get a short Chinese lead-in.
-  const latin = (message.match(/[A-Za-z]/g) ?? []).length;
-  const cjk = (message.match(/[㐀-鿿]/g) ?? []).length;
+  // The server puts a Chinese label in front (「產生講稿失敗：…：anthropic: …」): judge the vendor's
+  // part, after the last 「：」.
+  const tail = message.slice(message.lastIndexOf("：") + 1);
+  const latin = (tail.match(/[A-Za-z]/g) ?? []).length;
+  const cjk = (tail.match(/[㐀-鿿]/g) ?? []).length;
   return latin > 20 && cjk === 0 ? t.jobErrors.generic : undefined;
 }

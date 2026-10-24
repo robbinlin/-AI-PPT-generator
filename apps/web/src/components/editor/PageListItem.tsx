@@ -5,6 +5,7 @@ import { Eye, EyeOff, GripVertical, ImageOff, MoreHorizontal, Volume2, VolumeX }
 import { fmt, t } from "../../i18n";
 import { firstLine } from "../../lib/scenes";
 import { useMenuFocus } from "../../hooks/useMenuFocus";
+import { useEditor } from "../../store/editorStore";
 import { StatusDots, StatusSummary } from "./StatusDots";
 
 export interface PageListItemProps {
@@ -31,7 +32,9 @@ export function PageListItem(props: PageListItemProps) {
   const { slide, scene, position, scriptText, thumbnailUrl, selected, dragging = false } = props;
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
-  const line = firstLine(scriptText);
+  // Only this page re-renders while its script is typed (the list itself doesn't follow drafts).
+  const draft = useEditor((s) => (scene ? s.drafts[scene.id] : undefined));
+  const line = firstLine(draft ?? scriptText);
   const muted = scene?.muted ?? false;
 
   return (

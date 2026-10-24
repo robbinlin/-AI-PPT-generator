@@ -18,7 +18,12 @@ interface ConfirmState {
 }
 
 /** One app-wide confirmation dialog (rendered by ConfirmHost); `ask` resolves with the choice. */
-export const useConfirm = create<ConfirmState>()((set, get) => ({
+// One confirmation dialog per page even if this module is loaded twice (see editorStore).
+const shared = globalThis as typeof globalThis & { __lvsConfirm?: ReturnType<typeof makeConfirm> };
+export const useConfirm = (shared.__lvsConfirm ??= makeConfirm());
+
+function makeConfirm() {
+  return create<ConfirmState>()((set, get) => ({
   request: null,
   resolve: null,
   ask(request) {
@@ -29,7 +34,8 @@ export const useConfirm = create<ConfirmState>()((set, get) => ({
     get().resolve?.(ok);
     set({ request: null, resolve: null });
   },
-}));
+  }));
+}
 
 export function confirmAction(request: ConfirmRequest): Promise<boolean> {
   return useConfirm.getState().ask(request);

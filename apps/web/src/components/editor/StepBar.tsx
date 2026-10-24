@@ -12,6 +12,7 @@ import { confirmReplaceSource } from "../../lib/replaceSource";
 import { isVideoCurrent, latestProjectAsset } from "../../lib/scenes";
 import { visibleScenes } from "../../lib/settingsImpact";
 import { useEditor } from "../../store/editorStore";
+import { toast } from "../../store/toastStore";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Misc";
 import { useFreshUndownloadedVideo } from "./ExportMenu";
@@ -104,6 +105,9 @@ export function StepBar({ actions }: { actions: EditorActions }) {
     fileInput.current?.click();
   };
 
+  const lastPaid: StepId = steps.find((s) => s.id === "avatar")?.skipped ? "voice" : "avatar";
+  const subs = detail.project.settings.subtitles;
+  const thenRender = { preset: "hd_1080p" as const, burnSubtitles: subs.enabled && subs.burnIn };
   const runNext = () => {
     if (!next) return;
     switch (next.id) {
@@ -117,11 +121,13 @@ export function StepBar({ actions }: { actions: EditorActions }) {
         if (ids.length) void actions.enqueue({ type: "generate_script", force: false, sceneIds: ids });
         return;
       }
+      // The last paid step exports by itself when it finishes (rendering is free), so a presenter
+      // video is one wait, not three; the confirmation and a toast say so.
       case "voice":
-        void actions.enqueue({ type: "synthesize_speech", force: false });
+        void actions.enqueue({ type: "synthesize_speech", force: false, ...(lastPaid === "voice" ? { thenRender } : {}) }).then((job) => job && lastPaid === "voice" && toast(t.export.autoExportArmed));
         return;
       case "avatar":
-        void actions.enqueue({ type: "generate_avatar", force: false });
+        void actions.enqueue({ type: "generate_avatar", force: false, thenRender }).then((job) => job && toast(t.export.autoExportArmed));
         return;
       case "export":
         window.dispatchEvent(new Event(OPEN_EXPORT_EVENT));
@@ -142,8 +148,8 @@ export function StepBar({ actions }: { actions: EditorActions }) {
   const nextLabel: Record<StepId, string> = {
     upload: t.editor.upload,
     script: fmt(t.steps.fillScript, { n: left(steps.find((s) => s.id === "script")) }),
-    voice: fmt(t.steps.fillSpeech, { n: left(steps.find((s) => s.id === "voice")) }),
-    avatar: fmt(t.steps.fillAvatar, { n: left(steps.find((s) => s.id === "avatar")) }),
+    voice: fmt(t.steps.fillSpeech, { n: left(steps.find((s) => s.id === "voice")) }) + (lastPaid === "voice" ? t.steps.andExport : ""),
+    avatar: fmt(t.steps.fillAvatar, { n: left(steps.find((s) => s.id === "avatar")) }) + t.steps.andExport,
     export: t.editor.export,
   };
 
@@ -161,7 +167,11 @@ export function StepBar({ actions }: { actions: EditorActions }) {
                   // Every step does something: open its tab, the upload dialog, or the export menu.
                   if (step.id === "export") window.dispatchEvent(new Event(OPEN_EXPORT_EVENT));
                   else if (step.id === "upload") void pickFile();
-                  else if (step.tab) openEditorTab(step.tab);
+                  else if (step.tab) {
+                    openEditorTab(step.tab);
+                    // 語音 and 人像 share a tab (presenter first): land on the voice picker for step 3.
+                    if (step.id === "voice") scrollToVoice();
+                  }
                 }}
                 title={stepTitle[step.id]}
                 aria-current={current ? "step" : undefined}
@@ -232,4 +242,14 @@ export function StepBar({ actions }: { actions: EditorActions }) {
       />
     </nav>
   );
+}
+
+/** The voice list may still be loading when the tab opens: try for a moment. */
+function scrollToVoice(tries = 15): void {
+  setTimeout(() => {
+    const list = document.querySelector<HTMLElement>("[data-testid=voice-list]");
+    if (!list) return void (tries > 0 && scrollToVoice(tries - 1));
+    (list.closest("section") ?? list).scrollIntoView({ block: "start" });
+    list.querySelector<HTMLElement>("[aria-pressed=true]")?.focus({ preventScroll: true });
+  }, 100);
 }

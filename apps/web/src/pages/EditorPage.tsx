@@ -35,7 +35,6 @@ export function EditorPage() {
   actionsRef.current = actions;
   const loaded = useEditor((s) => s.detail?.project.id === projectId);
   const projectName = useEditor((s) => (s.detail && s.detail.project.id === projectId ? s.detail.project.name : undefined));
-  const drafts = useEditor((s) => s.drafts);
   const dirty = useEditor((s) => s.dirty);
   const [error, setError] = useState<string | null>(null);
   // The tab title shows a running job's progress, and 「✓」 once something finished while the tab was
@@ -153,7 +152,6 @@ export function EditorPage() {
     };
   }, [api, assetUrls, projectId]);
 
-  useScriptAutosave(drafts, actions.saveScript);
 
   // Unsaved edits (glossary, or script text not saved yet): any navigation away (a link, the gear,
   // the browser's back) first saves the scripts; whatever still could not be saved is asked about.
@@ -224,6 +222,7 @@ export function EditorPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <ScriptAutosave save={actions.saveScript} />
       <EditorHeader actions={actions} onOpenJobs={() => setJobsOpen(true)} />
       {offline && (
         <div role="alert" className="border-b border-rose-500/40 bg-rose-500/15 px-4 py-1.5 text-xs text-rose-200" data-testid="offline-banner">
@@ -240,4 +239,14 @@ export function EditorPage() {
       <ConfirmHost />
     </div>
   );
+}
+
+/**
+ * Autosave lives in its own component: it follows every keystroke (all drafts), and only this
+ * empty component re-renders for it, not the whole editor.
+ */
+function ScriptAutosave({ save }: { save: (sceneId: string, text: string) => Promise<void> }) {
+  const drafts = useEditor((s) => s.drafts);
+  useScriptAutosave(drafts, save);
+  return null;
 }

@@ -40,7 +40,7 @@ describe("StatusDots", () => {
     expect(dots.map((d) => d.getAttribute("data-field"))).toEqual(["script", "audio", "avatar", "subtitle"]);
     expect(screen.getByLabelText("講稿：就緒")).toHaveClass("bg-emerald-500/20");
     expect(screen.getByLabelText("人像：產生中")).toHaveClass("animate-pulse");
-    expect(screen.getByLabelText("字幕：失敗 (boom)")).toHaveClass("bg-rose-500/30");
+    expect(screen.getByLabelText("字幕：失敗（boom）")).toHaveClass("bg-rose-500/30");
     // Each chip carries its field's first character, so state is not conveyed by colour alone.
     expect(screen.getByLabelText("語音：就緒")).toHaveTextContent("語");
   });

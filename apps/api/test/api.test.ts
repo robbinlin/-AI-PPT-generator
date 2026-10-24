@@ -203,7 +203,7 @@ describe("project lifecycle", () => {
     await t.ctx.runner.drain();
     const [row] = await t.ctx.db.select().from(jobs).where(eq(jobs.id, jobId));
     expect(row?.status).toBe("failed");
-    expect(row?.error).toMatch(/^第 1、2 頁的語音不是最新的，請先按「產生全部語音」$/);
+    expect(row?.error).toMatch(/^第 1、2 頁的語音不是最新的，請先按上方的「補齊語音」，或在「匯出影片」裡按「產生語音並匯出」$/);
   });
 
   it("estimate endpoint", async () => {
@@ -332,6 +332,25 @@ describe("providers", () => {
     expect((await t.app.inject({ method: "DELETE", url: `/providers/mock/voices/${voice.json().id}` })).statusCode).toBe(204);
     const mockAvatars = await t.app.inject({ method: "GET", url: "/providers/mock/avatars" });
     expect(mockAvatars.json()[0].id).toBe("mock-teacher");
+  });
+});
+
+describe("duplicate jobs", () => {
+  it("refuses a second job of the same kind for the same pages while one is queued (double click, two tabs)", async () => {
+    const t = await createTestServer();
+    try {
+      const id = (await t.app.inject({ method: "POST", url: "/projects", payload: { name: "dup" } })).json().id as string;
+      const first = await t.app.inject({ method: "POST", url: `/projects/${id}/jobs`, payload: { type: "synthesize_speech", force: false } });
+      expect(first.statusCode).toBe(202);
+      const again = await t.app.inject({ method: "POST", url: `/projects/${id}/jobs`, payload: { type: "synthesize_speech", force: false } });
+      expect(again.statusCode).toBe(409);
+      expect(again.json().error.message).toContain("已經在進行中");
+      // Another kind of job is fine.
+      const other = await t.app.inject({ method: "POST", url: `/projects/${id}/jobs`, payload: { type: "generate_script", force: false } });
+      expect(other.statusCode).toBe(202);
+    } finally {
+      await t.close();
+    }
   });
 });
 

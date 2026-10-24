@@ -26,7 +26,12 @@ interface ToastState {
 let nextId = 1;
 const timers = new Map<number, { handle: ReturnType<typeof setTimeout> | null; remaining: number; startedAt: number }>();
 
-export const useToasts = create<ToastState>()((set, get) => ({
+// One toast list per page even if this module is loaded twice (see editorStore).
+const shared = globalThis as typeof globalThis & { __lvsToasts?: ReturnType<typeof makeToasts> };
+export const useToasts = (shared.__lvsToasts ??= makeToasts());
+
+function makeToasts() {
+  return create<ToastState>()((set, get) => ({
   toasts: [],
   push(text, tone = "info", action, durationMs) {
     const id = nextId++;
@@ -54,6 +59,7 @@ export const useToasts = create<ToastState>()((set, get) => ({
     timers.set(id, { handle: setTimeout(() => get().dismiss(id), timer.remaining), remaining: timer.remaining, startedAt: Date.now() });
   },
 }));
+}
 
 export function toast(text: string, tone: ToastTone = "info", action?: ToastAction, durationMs?: number): void {
   useToasts.getState().push(text, tone, action, durationMs);

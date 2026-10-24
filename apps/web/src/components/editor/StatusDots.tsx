@@ -1,6 +1,7 @@
 import { avatarInVideo } from "@lvs/shared";
 import type { DerivedStatus, ProjectSettings, Scene } from "@lvs/shared";
 import { fmt, t } from "../../i18n";
+import { friendlyJobError } from "../../lib/jobErrors";
 import { useEditor } from "../../store/editorStore";
 
 export const STATUS_FIELDS = ["script", "audio", "avatar", "subtitle"] as const;
@@ -64,7 +65,7 @@ export function StatusDots({ scene }: { scene: Scene }) {
             </li>
           );
         }
-        const label = statusLabel(field, state.status) + (state.error ? ` (${state.error})` : "");
+        const label = statusLabel(field, state.status) + (state.error ? `（${friendlyJobError(state.error) ?? state.error}）` : "");
         return (
           <li
             key={field}

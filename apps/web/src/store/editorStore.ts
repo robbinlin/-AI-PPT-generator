@@ -1,7 +1,9 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { useStore } from "zustand";
 import type { Job, Project, ProjectDetail, ProjectEvent, Scene, ScriptRevision, Slide, SourceDocument } from "@lvs/shared";
+import { fmt, t } from "../i18n";
 import { sortByIndex } from "../lib/scenes";
+import { toast } from "./toastStore";
 import { applyJob, applyProjectEvent, applyScene, applySlides, isActiveJob } from "./reducer";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -189,6 +191,23 @@ export function createEditorStore(): StoreApi<EditorState> {
           if (patch.drafts) patch.dirty = Object.keys(patch.drafts).length > 0;
         }
 
+        // The deck was replaced elsewhere (another tab): drafts of pages that no longer exist can
+        // never be saved. Drop them (so leaving doesn't keep asking) but offer their text.
+        if (event.kind === "slides") {
+          const alive = new Set(detail.scenes.map((s) => s.id));
+          const orphans = Object.entries(state.drafts).filter(([id]) => !alive.has(id));
+          if (orphans.length) {
+            patch.drafts = Object.fromEntries(Object.entries(state.drafts).filter(([id]) => alive.has(id)));
+            patch.saveState = Object.fromEntries(Object.entries(state.saveState).filter(([id]) => alive.has(id)));
+            patch.dirty = Object.keys(patch.drafts).length > 0;
+            const text = orphans.map(([, v]) => v).join("\n\n");
+            toast(fmt(t.editor.orphanDrafts, { n: orphans.length }), "info", {
+              label: t.editor.copyText,
+              run: () => void navigator.clipboard?.writeText(text).catch(() => undefined),
+            }, 60_000);
+          }
+        }
+
         if (event.kind === "slides" && state.selectedSceneId) {
           if (!detail.scenes.some((s) => s.id === state.selectedSceneId)) {
             patch.selectedSceneId = sortByIndex(detail.scenes)[0]?.id ?? null;
@@ -365,7 +384,10 @@ export function createEditorStore(): StoreApi<EditorState> {
 }
 
 /** The editor's singleton store. */
-export const editorStore = createEditorStore();
+// One store per page even if the module is loaded twice (a dev-server reload can serve it under two
+// URLs; half the editor then read an empty copy). Like lib/unsavedGuard.
+const shared = globalThis as typeof globalThis & { __lvsEditorStore?: StoreApi<EditorState> };
+export const editorStore = (shared.__lvsEditorStore ??= createEditorStore());
 
 export function useEditor<T>(selector: (state: EditorState) => T): T {
   return useStore(editorStore, selector);

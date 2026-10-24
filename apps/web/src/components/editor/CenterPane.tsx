@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { SubtitleCue } from "@lvs/shared";
 import type { AvatarLayout } from "@lvs/shared";
 import { useApi, useAssetUrl } from "../../api/context";
@@ -23,7 +23,11 @@ export function CenterPane({
   const api = useApi();
   const detail = useEditor((s) => s.detail);
   const selectedSceneId = useEditor((s) => s.selectedSceneId);
-  const drafts = useEditor((s) => s.drafts);
+  // The preview's subtitle follows typing at low priority: keystrokes stay urgent, the (memoised)
+  // preview catches up in between.
+  const selectedDraft = useDeferredValue(useEditor((s) => (s.selectedSceneId ? s.drafts[s.selectedSceneId] : undefined)));
+  const commitRef = useRef<((layout: AvatarLayout) => Promise<boolean>) | undefined>(undefined);
+  const stableCommit = useCallback((layout: AvatarLayout) => commitRef.current?.(layout) ?? Promise.resolve(false), []);
   const recentJobs = useEditor((s) => s.recentJobs);
   const currentTime = useEditor((s) => s.playback.currentTime);
 
@@ -50,6 +54,7 @@ export function CenterPane({
         return ok;
       }
     : undefined;
+  commitRef.current = commitLayout;
 
   const source = detail.sourceDocument;
   if (
@@ -85,7 +90,7 @@ export function CenterPane({
   const script = scene ? detail.scripts[scene.id] : undefined;
   // While the user is typing, preview the draft's first sentence. Otherwise follow the narration:
   // the cue at the playhead from the generated SRT, or the first sentence before any audio exists.
-  const draft = scene ? drafts[scene.id] : undefined;
+  const draft = scene ? selectedDraft : undefined;
   const timedCue = draft === undefined && cues ? cueAt(cues, currentTime) : undefined;
   const subtitleText = draft !== undefined ? draft : cues ? (timedCue?.text ?? "") : script?.subtitleText;
 
@@ -101,7 +106,7 @@ export function CenterPane({
             subtitleIsCue={draft === undefined && !!cues}
             assets={detail.assets}
             avatarPreviewUrl={avatarPreviewUrl}
-            onLayoutCommit={commitLayout}
+            onLayoutCommit={commitLayout ? stableCommit : undefined}
           />
         ) : (
           <div className="flex size-full items-center justify-center text-sm text-neutral-400">{t.editor.selectPage}</div>

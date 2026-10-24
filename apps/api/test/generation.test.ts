@@ -208,7 +208,7 @@ describe("generation handlers", () => {
     }
     const { row } = await run({ type: "render_video", preset: "preview_540p" });
     expect(row.status).toBe("failed");
-    expect(row.error).toBe("第 1、3 頁的語音不是最新的，請先按「產生全部語音」");
+    expect(row.error).toBe("第 1、3 頁的語音不是最新的，請先按上方的「補齊語音」，或在「匯出影片」裡按「產生語音並匯出」");
   });
 
   it("typing a script back to what the audio was made from makes audio, subtitles and avatar ready again", async () => {

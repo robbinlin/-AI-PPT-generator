@@ -230,6 +230,7 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
                   value={g.term}
                   placeholder={t.outline.term}
                   aria-label={t.outline.term}
+                  maxLength={100}
                   onChange={(e) => set(i, { term: e.target.value })}
                 />
                 <span className="text-neutral-400" aria-hidden>
@@ -241,6 +242,7 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
                   value={g.reading ?? ""}
                   placeholder={t.outline.readingPlaceholder}
                   aria-label={`${g.term} ${t.outline.reading}`}
+                  maxLength={200}
                   onChange={(e) => set(i, { reading: e.target.value })}
                 />
               </div>
@@ -250,6 +252,7 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
                   value={g.definition ?? ""}
                   placeholder={t.outline.definition}
                   aria-label={`${g.term} ${t.outline.definition}`}
+                  maxLength={500}
                   onChange={(e) => set(i, { definition: e.target.value })}
                 />
                 <IconButton icon={Trash2} label={fmt(t.outline.removeTerm, { term: g.term })} onClick={() => remove(i)} />
