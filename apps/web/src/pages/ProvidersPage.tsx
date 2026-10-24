@@ -7,10 +7,12 @@ import { Button } from "../components/ui/Button";
 import { inputClass } from "../components/ui/Field";
 import { Badge, Spinner } from "../components/ui/Misc";
 import { ConfirmHost } from "../components/ConfirmHost";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { fmt, t } from "../i18n";
 import { confirmAction } from "../store/confirmStore";
 
 export function ProvidersPage() {
+  useDocumentTitle(t.app.navProviders);
   const api = useApi();
   const [providers, setProviders] = useState<ProviderInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);

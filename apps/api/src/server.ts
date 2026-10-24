@@ -7,7 +7,7 @@ import { loadConfig, type Config } from "./config.js";
 import type { AppContext } from "./context.js";
 import { runBackfills } from "./db/backfill.js";
 import { createDb, type DbHandle } from "./db/client.js";
-import { ApiHttpError } from "./errors.js";
+import { ApiHttpError, notFound } from "./errors.js";
 import { EventBus } from "./events/bus.js";
 import { buildHandlers, type GenerationSeams } from "./jobs/handlers/index.js";
 import { PythonParserRunner, type ParserRunner } from "./jobs/parser-runner.js";
@@ -110,6 +110,17 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<BuiltS
     }
     app.log.error(err);
     return reply.code(500).send({ error: { code: "internal", message: "internal error" } });
+  });
+  // Ids in the URL are UUIDs: a truncated link (e.g. pasted from LINE) is "not found", not a
+  // database error answered with 500 "internal error".
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const UUID_PARAMS = ["id", "projectId", "sceneId", "slideId", "jobId", "assetId"];
+  app.addHook("preValidation", async (req) => {
+    const params = (req.params ?? {}) as Record<string, string>;
+    for (const key of UUID_PARAMS) {
+      const value = params[key];
+      if (value !== undefined && !UUID.test(value)) throw notFound(key === "id" ? "project" : key.replace(/Id$/, ""), value);
+    }
   });
   app.setNotFoundHandler((req, reply) =>
     reply.code(404).send({ error: { code: "not_found", message: `route ${req.method} ${req.url} not found` } }),

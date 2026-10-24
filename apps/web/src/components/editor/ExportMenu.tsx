@@ -26,7 +26,16 @@ function RenderProgress({ job }: { job: Job }) {
   const eta = etaText(job, now);
   const pct = Math.round((job.progress ?? 0) * 100);
   return (
-    <div className="flex flex-col gap-1.5 rounded-md border border-accent-500/40 bg-accent-500/10 px-2 py-2 text-xs text-accent-100" role="status" data-testid="render-progress">
+    <div
+      ref={(el) => {
+        // 開始匯出 is replaced by this block: keep keyboard focus here instead of losing it.
+        if (el && (!document.activeElement || document.activeElement === document.body)) el.focus();
+      }}
+      tabIndex={-1}
+      className="flex flex-col gap-1.5 rounded-md border border-accent-500/40 bg-accent-500/10 px-2 py-2 text-xs text-accent-100 focus:outline-none"
+      role="status"
+      data-testid="render-progress"
+    >
       <span className="flex items-center gap-1.5 font-medium">
         <Spinner className="size-3.5" />
         {fmt(t.export.rendering, { pct })}
@@ -95,7 +104,16 @@ export function ExportMenu({ actions, disabled }: { actions: Pick<EditorActions,
   }, [open]);
 
   return (
-    <div ref={ref} className="relative">
+    <div
+      ref={ref}
+      className="relative"
+      // Tabbing out of the panel closes it, so it never covers the control that now has focus.
+      onBlur={(e) => {
+        const next = e.relatedTarget as Node | null;
+        if (!open || !next || ref.current?.contains(next) || document.querySelector("[role=dialog][aria-modal=true]")) return;
+        setOpen(false);
+      }}
+    >
       <Button
         variant="primary"
         icon={Film}
@@ -135,6 +153,17 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
   const video = useMemo(() => (detail ? latestProjectAsset(detail.assets, detail.scenes, "video") : undefined), [detail]);
   const srt = useMemo(() => (detail ? latestProjectAsset(detail.assets, detail.scenes, "subtitle") : undefined), [detail]);
   const videoUrl = useAssetUrl(detail?.project.id, video?.id);
+  // A finished export replaces the progress block: hand keyboard focus to 下載影片.
+  const lastVideoId = useRef(video?.id);
+  useEffect(() => {
+    if (!video || video.id === lastVideoId.current || !videoUrl) return;
+    lastVideoId.current = video.id;
+    const active = document.activeElement;
+    const panel = document.querySelector("[data-export-panel]");
+    if (!active || active === document.body || panel?.contains(active)) {
+      document.querySelector<HTMLElement>("[data-testid=download-video]")?.focus();
+    }
+  }, [video, videoUrl]);
   const srtUrl = useAssetUrl(detail?.project.id, srt?.id);
 
   const scenes = detail ? visibleScenes(detail).filter((s) => !s.muted) : [];

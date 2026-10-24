@@ -90,8 +90,10 @@ export function statusSummary(
   const fields = (status: DerivedStatus) => active.filter((f) => scene[f].status === status).map((f) => t.status[f]);
   const failed = fields("failed");
   if (failed.length) return { text: fmt(t.pageList.failed, { list: failed.join("、") }), tone: "error" };
-  const stale = fields("stale");
+  // A script from an older outline is optional to redo: say so calmly, not as 「需更新」.
+  const stale = active.filter((f) => f !== "script" && scene[f].status === "stale").map((f) => t.status[f]);
   if (stale.length) return { text: fmt(t.pageList.needsWork, { list: stale.join("、") }), tone: "warn" };
+  if (active.includes("script") && scene.script.status === "stale") return { text: t.pageList.scriptOldOutline, tone: "muted" };
   const missing = fields("missing");
   if (missing.length && missing.length < active.length) return { text: fmt(t.pageList.notMade, { list: missing.join("、") }), tone: "muted" };
   return null;

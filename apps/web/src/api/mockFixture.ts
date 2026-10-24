@@ -65,6 +65,8 @@ export const MOCK_PROVIDERS: ProviderInfo[] = [
 
 export const MOCK_VOICES: Record<string, VoiceOption[]> = {
   gemini: [
+    // The schema's default voice: the demo project must not find its own voice missing.
+    { id: "Orus", name: "Orus（穩重男聲）", languages: ["zh-TW", "en", "mixed"], gender: "male" },
     { id: "Kore", name: "Kore（沉穩女聲）", languages: ["zh-TW", "en", "mixed"], gender: "female" },
     { id: "Puck", name: "Puck（明亮男聲）", languages: ["zh-TW", "en", "mixed"], gender: "male" },
     { id: "Charon", name: "Charon（低沉男聲）", languages: ["zh-TW", "en"], gender: "male" },

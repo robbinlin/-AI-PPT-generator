@@ -70,7 +70,9 @@ export function BatchMenu({ actions, onReplace }: { actions: Pick<EditorActions,
 
   if (!detail) return null;
   const all = visibleScenes(detail);
-  const spoken = all.filter((s) => !s.muted);
+  // Speech and avatars need a script first: pages without one are not 補齊-able here.
+  const spoken = all.filter((s) => !s.muted && s.script.status !== "missing" && !!detail.scripts[s.id]?.script.trim());
+  const noScript = all.filter((s) => !s.muted).length - spoken.length;
   const avatarOn = detail.project.settings.avatar.enabled && !!detail.project.settings.avatar.avatarId;
   const busy = (type: Kind) => detail.activeJobs.some((j) => j.type === type);
   const hasSlides = detail.slides.length > 0;
@@ -119,6 +121,7 @@ export function BatchMenu({ actions, onReplace }: { actions: Pick<EditorActions,
                   <p className="px-2 py-1 text-xs text-neutral-400">{r.off}</p>
                 ) : (
                   <>
+                    {r.kind !== "generate_script" && noScript > 0 && <p className="px-2 text-xs text-neutral-400">{fmt(t.batch.needsScript, { n: noScript })}</p>}
                     <button type="button" role="menuitem" data-safe className={item} disabled={disabled || pending === 0} onClick={() => run(r.kind, false)}>
                       {pending > 0 ? fmt(t.batch.fill, { n: pending }) : t.batch.fillNone}
                       {pending > 0 && cost[r.kind] && <span className="ml-1 text-xs text-neutral-400">（{twdShort(cost[r.kind]!.total, cost[r.kind]!.currency)}）</span>}

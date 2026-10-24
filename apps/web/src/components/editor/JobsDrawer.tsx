@@ -62,6 +62,34 @@ export function etaText(job: Job, now: number): string | null {
   return sec === null ? null : fmt(t.jobs.eta, { wait: formatWait(sec) });
 }
 
+/**
+ * Screen readers hear when a job starts, at every quarter of its progress, and when it ends
+ * (the toast covers success/failure): long HeyGen runs are otherwise silent for minutes.
+ */
+function JobAnnouncer() {
+  const jobs = useEditor((s) => s.detail?.activeJobs);
+  const [message, setMessage] = useState("");
+  const seen = useRef(new Map<string, number>());
+  useEffect(() => {
+    for (const job of jobs ?? []) {
+      const quarter = Math.floor((job.progress ?? 0) * 4);
+      const last = seen.current.get(job.id);
+      if (last === undefined) {
+        seen.current.set(job.id, quarter);
+        setMessage(fmt(t.jobs.announceStart, { type: t.jobs.types[job.type] }));
+      } else if (quarter > last && quarter < 4) {
+        seen.current.set(job.id, quarter);
+        setMessage(fmt(t.jobs.announceProgress, { type: t.jobs.types[job.type], pct: quarter * 25 }));
+      }
+    }
+  }, [jobs]);
+  return (
+    <span className="sr-only" aria-live="polite" data-testid="job-announcer">
+      {message}
+    </span>
+  );
+}
+
 export function JobsIndicator({ onOpen }: { onOpen: () => void }) {
   const jobs = useEditor((s) => s.detail?.activeJobs);
   const active = jobs ?? [];
@@ -69,10 +97,12 @@ export function JobsIndicator({ onOpen }: { onOpen: () => void }) {
   const now = useTick(5000, !!lead);
   const eta = lead ? etaText(lead, now) : null;
   return (
+    <>
+      <JobAnnouncer />
     <button
       type="button"
       onClick={onOpen}
-      aria-label={t.jobs.title}
+      // No aria-label: the visible text (「產生講稿 10%」／「工作」) is the name (WCAG 2.5.3).
       title={lead ? undefined : t.jobs.idle}
       className="flex h-8 max-w-64 items-center gap-2 rounded-md border border-neutral-800 px-2.5 text-xs text-neutral-300 hover:bg-neutral-800"
     >
@@ -92,6 +122,7 @@ export function JobsIndicator({ onOpen }: { onOpen: () => void }) {
         </>
       )}
     </button>
+    </>
   );
 }
 

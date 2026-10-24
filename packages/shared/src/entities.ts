@@ -27,7 +27,8 @@ export type AvatarAnchor = z.infer<typeof AvatarAnchor>;
 export const AvatarLayout = z.object({
   shape: z.enum(["circle", "rect"]).default("circle"),
   anchor: AvatarAnchor.default("bottom-right"),
-  size: z.number().min(0.05).max(1).default(0.28),
+  // 0.35: the smallest round presenter whose mouth students can still read (the studio warns below it).
+  size: z.number().min(0.05).max(1).default(0.35),
   margin: z.number().min(0).max(0.5).default(0.03),
   visible: z.boolean().default(true),
   /**

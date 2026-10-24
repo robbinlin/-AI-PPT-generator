@@ -105,11 +105,11 @@ describe("PageList", () => {
 
     const item = screen.getAllByRole("listitem").find((li) => li.getAttribute("data-scene-id") === second?.id);
     if (!item) throw new Error("missing item");
-    await user.click(within(item).getByRole("button", { name: "頁面動作" }));
+    await user.click(within(item).getByRole("button", { name: "第 2 頁的動作" }));
     await user.click(screen.getByRole("menuitem", { name: "取消靜音" }));
     expect(actions.updateScene).toHaveBeenCalledWith(second?.id, { muted: false });
 
-    await user.click(within(item).getByRole("button", { name: "頁面動作" }));
+    await user.click(within(item).getByRole("button", { name: "第 2 頁的動作" }));
     await user.click(screen.getByRole("menuitem", { name: "隱藏此頁" }));
     expect(actions.setHidden).toHaveBeenCalledWith(second?.slideId, true);
   });

@@ -220,6 +220,8 @@ export function useEditorActions() {
       reorder,
 
       async upload(file: File): Promise<void> {
+        // One upload at a time (a second click while a big deck is still going would race it).
+        if (store().upload.progress !== null) return;
         const invalid = validateUpload(file);
         if (invalid) {
           store().setUpload({ progress: null, error: invalid });

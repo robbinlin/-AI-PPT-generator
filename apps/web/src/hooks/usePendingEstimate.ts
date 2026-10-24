@@ -17,19 +17,23 @@ export function usePendingEstimate(
   sceneIds?: string[],
 ): CostEstimate | undefined {
   const api = useApi();
-  const [estimate, setEstimate] = useState<{ key: string; value: CostEstimate }>();
+  const [estimate, setEstimate] = useState<{ key: string; base: string; value: CostEstimate }>();
   const ids = sceneIds?.join(",") ?? "";
-  const key = `${projectId}:${type}:${scope}:${ids}:${revision}`;
+  // Same question (project, job, scope) with newer inputs: keep showing the last answer until the
+  // new one arrives, so a price on a button does not blink out every time a page finishes.
+  // (Page-specific questions — e.g. one page's redo price — include the pages in the question.)
+  const base = `${projectId}:${type}:${scope}:${ids}`;
+  const key = `${base}:${revision}`;
   useEffect(() => {
     if (!projectId || !type) return;
     let alive = true;
     api.getEstimate(projectId, type, { scope, ...(ids ? { sceneIds: ids.split(",") } : {}) }).then(
-      (value) => alive && setEstimate({ key, value }),
+      (value) => alive && setEstimate({ key, base, value }),
       () => alive && setEstimate(undefined),
     );
     return () => {
       alive = false;
     };
-  }, [api, projectId, type, scope, ids, key]);
-  return estimate?.key === key ? estimate.value : undefined;
+  }, [api, projectId, type, scope, ids, key, base]);
+  return estimate?.key === key || estimate?.base === base ? estimate.value : undefined;
 }

@@ -24,7 +24,7 @@ const VOICE_AUDIO_KEYS: (keyof VoiceSettings)[] = ["providerId", "voiceId", "spe
 
 export function StudioPanel({ actions }: { actions: Pick<EditorActions, "updateProject" | "changeSettings"> }) {
   const project = useEditor((s) => s.detail?.project);
-  const { providers, voices, setVoices, avatars, setAvatars, avatarsLoading } = useStudioLists(project, actions);
+  const { providers, voices, setVoices, avatars, setAvatars, avatarsLoading, missingVoice, missingAvatar } = useStudioLists(project, actions);
   if (!project) return null;
   const s = project.settings;
   const patch = (settings: SettingsPatch) => void actions.updateProject({ settings });
@@ -44,6 +44,13 @@ export function StudioPanel({ actions }: { actions: Pick<EditorActions, "updateP
 
   return (
     <div className="pb-8">
+      {/* The stored voice/presenter is no longer offered; finished work still uses it, so the user chooses. */}
+      {(missingVoice || missingAvatar) && (
+        <div className="mx-4 mt-4 flex flex-col gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-100" role="alert" data-testid="missing-choice">
+          {missingAvatar && <span>{t.studio.missingAvatar}</span>}
+          {missingVoice && <span>{fmt(t.studio.missingVoice, { id: missingVoice })}</span>}
+        </div>
+      )}
       <AvatarSection project={project} providers={providers} avatars={avatars} loading={avatarsLoading} setAvatars={setAvatars} setAvatar={setAvatar} />
       <LayoutSection project={project} setLayout={setLayout} setAvatar={setAvatar} patch={patch} />
       <VoiceSection project={project} providers={providers} voices={voices} setVoices={setVoices} setVoice={setVoice} />

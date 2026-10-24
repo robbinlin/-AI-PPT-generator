@@ -4,6 +4,7 @@ import { VoiceSettings } from "@lvs/shared";
 import { useApi } from "../api/context";
 import { errorMessage, type AvatarOption, type VoiceOption } from "../api/types";
 import { t } from "../i18n";
+import { useEditor } from "../store/editorStore";
 import { toast } from "../store/toastStore";
 import type { EditorActions } from "./useEditorActions";
 
@@ -71,6 +72,10 @@ export function useStudioLists(project: Project | undefined, actions: Pick<Edito
   const voiceProvider = project?.settings.voice.providerId;
   const avatarProvider = project?.settings.avatar.providerId;
   const [avatars, setAvatars, avatarsLoading] = useAvatarList(avatarProvider);
+  // Self-healing must never silently throw away finished work: once narration (or a paid
+  // avatar) exists, a vanished voice/presenter is reported instead and the user picks a new one.
+  const audioReady = useEditor((s) => !!s.detail?.scenes.some((sc) => sc.audio.status === "ready"));
+  const avatarReady = useEditor((s) => !!s.detail?.scenes.some((sc) => sc.avatar.status === "ready"));
 
   useEffect(() => {
     api.listProviders().then(setProviders, () => setProviders([]));
@@ -102,8 +107,8 @@ export function useStudioLists(project: Project | undefined, actions: Pick<Edito
     };
     const s0 = project.settings;
     const llm = pick("llm", s0.llmProviderId);
-    const tts = pick("tts", s0.voice.providerId);
-    const av = s0.avatar.enabled ? pick("avatar", s0.avatar.providerId) : undefined;
+    const tts = audioReady ? undefined : pick("tts", s0.voice.providerId);
+    const av = s0.avatar.enabled && !avatarReady ? pick("avatar", s0.avatar.providerId) : undefined;
     if (!llm && !tts && !av) return;
     void actions.updateProject({
       settings: {
@@ -117,20 +122,24 @@ export function useStudioLists(project: Project | undefined, actions: Pick<Edito
 
   const currentAvatarId = project?.settings.avatar.avatarId;
   useEffect(() => {
-    if (!project || avatars.length === 0 || avatars.some((a) => a.id === currentAvatarId)) return;
+    if (!project || avatars.length === 0 || avatars.some((a) => a.id === currentAvatarId) || avatarReady) return;
     void actions.updateProject({ settings: { avatar: { ...project.settings.avatar, avatarId: avatars[0]!.id } } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [avatars, currentAvatarId]);
 
   const currentVoiceId = project?.settings.voice.voiceId;
   useEffect(() => {
-    if (!project || voices.length === 0 || voices.some((v) => v.id === currentVoiceId)) return;
+    if (!project || voices.length === 0 || voices.some((v) => v.id === currentVoiceId) || audioReady) return;
     const fallback = voices.find((v) => v.id === DEFAULT_VOICE_ID) ?? voices[0]!;
     void actions.updateProject({ settings: { voice: { ...project.settings.voice, voiceId: fallback.id } } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voices, currentVoiceId]);
 
-  return { providers, voices, setVoices, avatars, setAvatars, avatarsLoading };
+  // Shown in the panel when the stored choice is gone but finished work still depends on it.
+  const missingVoice = voices.length > 0 && !!currentVoiceId && !voices.some((v) => v.id === currentVoiceId) ? currentVoiceId : undefined;
+  const missingAvatar =
+    !!project?.settings.avatar.enabled && avatars.length > 0 && !!currentAvatarId && !avatars.some((a) => a.id === currentAvatarId) ? currentAvatarId : undefined;
+  return { providers, voices, setVoices, avatars, setAvatars, avatarsLoading, missingVoice, missingAvatar };
 }
 
 /** Image to show for an avatar character: local characters are proxied through the API. */

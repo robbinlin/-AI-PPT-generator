@@ -49,16 +49,21 @@ export function needsConfirm(req: EnqueueJobRequest, estimate: CostEstimate): bo
 /** Breakdown lines such as "語音 1,234 字：US$0.004" for the confirm dialog and the header tooltip. */
 export function estimateLines(estimate: CostEstimate): string[] {
   const out: string[] = [];
+  // Input and output tokens are one thing to a lecturer (writing the scripts): one line, one price.
+  const tokens = estimate.lines.filter((l) => l.unit === "tokens_in" || l.unit === "tokens_out");
+  if (tokens.length) {
+    const cost = tokens.reduce((n, l) => n + l.estimatedCost, 0);
+    out.push(`${estimate.sceneCount ? fmt(t.paid.lineScriptPages, { n: estimate.sceneCount }) : t.paid.lineScript}：${formatTwdFirst(cost)}`);
+  }
   for (const line of estimate.lines) {
+    if (line.unit === "tokens_in" || line.unit === "tokens_out") continue;
     const q = Math.round(line.quantity).toLocaleString("zh-TW");
     const what =
       line.unit === "chars"
         ? fmt(t.paid.lineSpeech, { n: q })
         : line.unit === "avatar_seconds"
           ? fmt(t.paid.lineAvatar, { n: q })
-          : line.unit === "tokens_in" || line.unit === "tokens_out"
-            ? t.paid.lineScript
-            : null;
+          : null;
     if (what) out.push(`${what}：${formatTwdFirst(line.estimatedCost)}`);
   }
   return out;

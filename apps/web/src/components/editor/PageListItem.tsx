@@ -90,7 +90,8 @@ export function PageListItem(props: PageListItemProps) {
         <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100">
           <button
             type="button"
-            aria-label={t.pageList.actions}
+            // 「第 2 頁的動作」: with one per page, a screen reader must hear which page.
+            aria-label={fmt(t.pageList.actionsFor, { n: position })}
             title={t.pageList.actions}
             tabIndex={selected ? 0 : -1}
             className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100"
@@ -100,7 +101,7 @@ export function PageListItem(props: PageListItemProps) {
           </button>
           <button
             type="button"
-            aria-label={t.pageList.dragHandle}
+            aria-label={fmt(t.pageList.dragFor, { n: position })}
             title={t.pageList.dragHandle}
             className="cursor-grab touch-none rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 active:cursor-grabbing"
             {...props.dragAttributes}

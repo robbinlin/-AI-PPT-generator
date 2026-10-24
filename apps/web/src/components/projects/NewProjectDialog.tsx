@@ -41,6 +41,8 @@ export function NewProjectDialog({ open, initialFile, onClose, onCreate }: NewPr
     }
     setError(null);
     setFile(f);
+    // The 選擇檔案 button is replaced by the file row: move focus on to 建立並上傳.
+    setTimeout(() => document.querySelector<HTMLElement>("[data-testid=create-project]")?.focus(), 0);
   };
 
   useEffect(() => {

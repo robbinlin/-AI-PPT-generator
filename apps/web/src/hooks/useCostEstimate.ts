@@ -18,6 +18,8 @@ export function useCostEstimate(
   projectId: string | undefined,
   avatarEnabled: boolean,
   revision: string,
+  /** Pages without a script: the only script work counted (outdated scripts are optional). */
+  missingScriptIds: string[] = [],
 ): CombinedEstimate | null {
   const api = useApi();
   const [estimate, setEstimate] = useState<CombinedEstimate | null>(null);
@@ -26,8 +28,12 @@ export function useCostEstimate(
     if (!projectId) return;
     let alive = true;
     const timer = setTimeout(() => {
-      const types: EstimateType[] = ["generate_script", avatarEnabled ? "generate_avatar" : "synthesize_speech"];
-      Promise.all(types.map((type) => api.getEstimate(projectId, type, { scope: "pending" }).then((e) => [type, e] as const)))
+      const types: EstimateType[] = [...(missingScriptIds.length ? (["generate_script"] as const) : []), avatarEnabled ? "generate_avatar" : "synthesize_speech"];
+      Promise.all(
+        types.map((type) =>
+          api.getEstimate(projectId, type, { scope: "pending", ...(type === "generate_script" ? { sceneIds: missingScriptIds } : {}) }).then((e) => [type, e] as const),
+        ),
+      )
         .then((results) => {
           if (!alive) return;
           const parts: CombinedEstimate["parts"] = {};
@@ -45,7 +51,8 @@ export function useCostEstimate(
       alive = false;
       clearTimeout(timer);
     };
-  }, [api, projectId, avatarEnabled, revision]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, projectId, avatarEnabled, revision, missingScriptIds.join(",")]);
 
   return estimate;
 }

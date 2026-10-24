@@ -38,6 +38,14 @@ describe("project lifecycle", () => {
     expect(res.json().error.code).toBe("bad_request");
   });
 
+  it("answers a truncated or malformed project link with 404, not 500", async () => {
+    for (const url of ["/projects/7684974e-b946a185", "/projects/abc", "/projects/00000000-0000-4000-8000-000000000000/jobs"]) {
+      const res = await t.app.inject({ method: "GET", url });
+      expect(res.statusCode).toBe(404);
+      expect(res.json().error.code).toBe("not_found");
+    }
+  });
+
   it("rejects an unsupported upload", async () => {
     const res = await t.app.inject({ method: "POST", url: `/projects/${projectId}/source`, ...multipart("x.docx", Buffer.from("PK\x03\x04word/document.xml")) });
     expect(res.statusCode).toBe(400);
@@ -169,7 +177,7 @@ describe("project lifecycle", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().muted).toBe(true);
     expect(res.json().avatarLayout.anchor).toBe("top-left");
-    expect(res.json().avatarLayout.size).toBe(0.28);
+    expect(res.json().avatarLayout.size).toBe(0.35);
     const reset = await t.app.inject({ method: "PATCH", url: `/projects/${projectId}/scenes/${scene.id}`, payload: { muted: false, avatarLayout: null } });
     expect(reset.json().avatarLayout).toBeUndefined();
   });

@@ -36,7 +36,7 @@ const COST_TYPE: Partial<Record<StepId, EstimateType>> = {
   avatar: "generate_avatar",
 };
 
-export function buildSteps(detail: ProjectDetail): { steps: Step[]; next: Step | undefined } {
+export function buildSteps(detail: ProjectDetail, uploading = false): { steps: Step[]; next: Step | undefined } {
   const busy = (type: string) => detail.activeJobs.some((j) => j.type === type);
   const scenes = visibleScenes(detail);
   const spoken = scenes.filter((s) => !s.muted);
@@ -59,7 +59,7 @@ export function buildSteps(detail: ProjectDetail): { steps: Step[]; next: Step |
   const hasSlides = detail.slides.length > 0;
 
   const steps: Step[] = [
-    { id: "upload", done: hasSlides, busy: busy("parse_document") || detail.sourceDocument?.parseStatus === "running" },
+    { id: "upload", done: hasSlides, busy: uploading || busy("parse_document") || detail.sourceDocument?.parseStatus === "running" },
     { id: "script", done: hasSlides && scriptCount.done === scriptCount.total, busy: busy("generate_script") || busy("translate_script"), count: scriptCount, tab: "script" },
     { id: "voice", done: hasSlides && audioCount.done === audioCount.total, busy: busy("synthesize_speech"), count: audioCount, tab: "studio" },
     {
@@ -82,7 +82,8 @@ export function buildSteps(detail: ProjectDetail): { steps: Step[]; next: Step |
 export function StepBar({ actions }: { actions: EditorActions }) {
   const detail = useEditor((s) => s.detail);
   const fileInput = useRef<HTMLInputElement>(null);
-  const plan = detail ? buildSteps(detail) : undefined;
+  const uploadPct = useEditor((s) => s.upload.progress);
+  const plan = detail ? buildSteps(detail, uploadPct !== null) : undefined;
   const costType = plan?.next ? COST_TYPE[plan.next.id] : undefined;
   // The price follows every status or settings change.
   const revision = detail
@@ -175,6 +176,7 @@ export function StepBar({ actions }: { actions: EditorActions }) {
                   {step.done ? <Check className="size-3" /> : i + 1}
                 </span>
                 {t.steps[step.id]}
+                {step.done && <span className="sr-only">{t.steps.doneSr}</span>}
                 {step.busy ? (
                   <Spinner className="size-3" />
                 ) : step.skipped ? (
@@ -191,8 +193,20 @@ export function StepBar({ actions }: { actions: EditorActions }) {
         {next ? (
           <>
             <span className="hidden text-neutral-400 min-[1200px]:inline">{t.steps.next}</span>
-            <Button size="sm" variant="primary" disabled={next.busy} onClick={runNext} data-testid="step-next">
-              {next.id === "upload" && next.busy ? t.steps.parsing : nextLabel[next.id]}
+            <Button
+              size="sm"
+              variant="primary"
+              // aria-disabled, not disabled: a disabled button drops keyboard focus to the page.
+              aria-disabled={next.busy || undefined}
+              className={next.busy ? "cursor-default opacity-60" : ""}
+              onClick={() => !next.busy && runNext()}
+              data-testid="step-next"
+            >
+              {next.id === "upload" && next.busy
+                ? uploadPct !== null
+                  ? fmt(t.upload.uploading, { pct: Math.round(uploadPct * 100) })
+                  : t.steps.parsing
+                : nextLabel[next.id]}
               {nextCost && nextCost.sceneCount !== 0 && <span className="font-normal">（{twdShort(nextCost.total, nextCost.currency)}）</span>}
             </Button>
           </>

@@ -10,6 +10,7 @@ import { Field, TextInput } from "../components/ui/Field";
 import { Spinner } from "../components/ui/Misc";
 import { Modal } from "../components/ui/Modal";
 import { fmt, t } from "../i18n";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { targetLanguageName, useTranslateProject } from "../hooks/useTranslateProject";
 import { formatDuration, formatRelativeTime } from "../lib/format";
 import { setPendingUpload } from "../lib/pendingUpload";
@@ -18,6 +19,7 @@ import { toast } from "../store/toastStore";
 type PendingAction = { kind: "rename" | "delete"; project: ProjectSummary };
 
 export function ProjectsPage() {
+  useDocumentTitle(t.projects.title);
   const api = useApi();
   const navigate = useNavigate();
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);

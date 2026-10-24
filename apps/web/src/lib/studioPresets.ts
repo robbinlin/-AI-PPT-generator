@@ -14,12 +14,12 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
   {
     id: "corner-br",
     label: "右下圓框",
-    layout: { visible: true, shape: "circle", anchor: "bottom-right", size: 0.28, margin: 0.03, slideScale: 1, slideAlign: "center", x: undefined, y: undefined },
+    layout: { visible: true, shape: "circle", anchor: "bottom-right", size: 0.35, margin: 0.03, slideScale: 1, slideAlign: "center", x: undefined, y: undefined },
   },
   {
     id: "corner-tl",
     label: "左上圓框",
-    layout: { visible: true, shape: "circle", anchor: "top-left", size: 0.28, margin: 0.03, slideScale: 1, slideAlign: "center", x: undefined, y: undefined },
+    layout: { visible: true, shape: "circle", anchor: "top-left", size: 0.35, margin: 0.03, slideScale: 1, slideAlign: "center", x: undefined, y: undefined },
   },
   {
     id: "presenter-right",

@@ -15,6 +15,7 @@ import { RightPanel } from "../components/editor/RightPanel";
 import { StepBar } from "../components/editor/StepBar";
 import { Spinner } from "../components/ui/Misc";
 import { useEditorActions } from "../hooks/useEditorActions";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useEditorKeyboard } from "../hooks/useEditorKeyboard";
 import { useScriptAutosave } from "../hooks/useScriptAutosave";
 import { fmt, t } from "../i18n";
@@ -33,9 +34,11 @@ export function EditorPage() {
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
   const loaded = useEditor((s) => s.detail?.project.id === projectId);
+  const projectName = useEditor((s) => (s.detail && s.detail.project.id === projectId ? s.detail.project.name : undefined));
   const drafts = useEditor((s) => s.drafts);
   const dirty = useEditor((s) => s.dirty);
   const [error, setError] = useState<string | null>(null);
+  useDocumentTitle(projectName ?? (error ? t.editor.errorTitle : undefined));
   const [jobsOpen, setJobsOpen] = useState(false);
 
   // Load the project and follow its event stream. Events that arrive before the snapshot are
@@ -104,7 +107,7 @@ export function EditorPage() {
       .catch((err: unknown) => {
         if (!alive) return;
         // A wrong or deleted project gets a plain explanation, not the API's English text.
-        setError(err instanceof ApiRequestError && err.status === 404 ? t.editor.notFound : fmt(t.editor.loadFailed, { message: errorMessage(err) }));
+        setError(err instanceof ApiRequestError && (err.status === 404 || err.status === 400) ? t.editor.notFound : fmt(t.editor.loadFailed, { message: errorMessage(err) }));
       });
     api.listJobs(projectId).then(
       (jobs) => alive && editorStore.getState().setRecentJobs(jobs),

@@ -38,7 +38,12 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
     [detail],
   );
   const avatarEnabled = detail?.project.settings.avatar.enabled ?? false;
-  const estimate = useCostEstimate(detail?.project.id, avatarEnabled, revision);
+  // Like 下一步 and 補齊: only pages without a script count as work left (an outdated one is optional).
+  const missingScripts = useMemo(
+    () => (detail ? detail.scenes.filter((s) => !detail.slides.find((sl) => sl.id === s.slideId)?.hidden && (s.script.status === "missing" || s.script.status === "failed")).map((s) => s.id) : []),
+    [detail],
+  );
+  const estimate = useCostEstimate(detail?.project.id, avatarEnabled, revision, missingScripts);
 
   if (!detail) return null;
   const { project, sourceDocument } = detail;
