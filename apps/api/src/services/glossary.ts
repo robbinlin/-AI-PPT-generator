@@ -1,3 +1,4 @@
+import { usesGlossaryTerm } from "@lvs/shared";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import type { GlossaryEntry, OutlineRevision, ProjectDetail, ScriptRevision } from "@lvs/shared";
@@ -63,7 +64,7 @@ export async function updateGlossary(
   const outline = toOutline(row!);
   ctx.bus.publish(projectId, { kind: "outline", outline });
 
-  const uses = (rev: ScriptRevision) => changed.some((term) => rev.script.includes(term));
+  const uses = (rev: ScriptRevision) => changed.some((term) => usesGlossaryTerm(rev.script, term));
   const affectedSceneIds: string[] = [];
   for (const scene of detail.scenes) {
     const rev = detail.scripts[scene.id];

@@ -44,7 +44,7 @@ describe("confirmContent", () => {
     expect(c.lines.some((l) => l.includes("語音 1,036 字"))).toBe(true);
     expect(c.lines.some((l) => l.includes("人像 200 秒"))).toBe(true);
     expect(c.lines.at(-1)).toMatch(/^預估時間：約 \d+ 分鐘$/);
-    expect(c.note).toContain("可以關閉視窗");
+    expect(c.note).toContain("關掉視窗也沒關係");
     expect(c.confirmLabel).toContain("確定開始");
   });
   it("warns that a forced rerun does not refund", () => {

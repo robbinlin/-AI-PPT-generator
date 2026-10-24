@@ -35,7 +35,7 @@ def test_cli_rejects_unknown_file(tmp_path: Path) -> None:
     bogus = tmp_path / "notes.txt"
     bogus.write_text("hello")
     proc = run_cli("parse", str(bogus), "--out", str(tmp_path / "out"))
-    assert proc.returncode == 1
+    assert proc.returncode == 2  # bad input: not retried
     err = json.loads(proc.stderr.strip().splitlines()[-1])
     assert err["error"] == "parse_failed"
     assert "unsupported" in err["message"]
@@ -43,6 +43,6 @@ def test_cli_rejects_unknown_file(tmp_path: Path) -> None:
 
 def test_cli_missing_input(tmp_path: Path) -> None:
     proc = run_cli("parse", str(tmp_path / "missing.pdf"), "--out", str(tmp_path / "out"))
-    assert proc.returncode == 1
+    assert proc.returncode == 2  # bad input: not retried
     err = json.loads(proc.stderr.strip().splitlines()[-1])
     assert err["error"] == "parse_failed"

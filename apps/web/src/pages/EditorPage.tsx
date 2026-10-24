@@ -3,7 +3,6 @@ import { Link, useBlocker, useParams } from "react-router";
 import { FileQuestion } from "lucide-react";
 import type { ProjectEvent } from "@lvs/shared";
 import { useApiEnv } from "../api/context";
-import { RECONNECTING_EVENT } from "../api/client";
 import { ApiRequestError, errorMessage } from "../api/types";
 import { ConfirmHost } from "../components/ConfirmHost";
 import { CenterPane } from "../components/editor/CenterPane";
@@ -25,6 +24,7 @@ import { takePendingUpload } from "../lib/pendingUpload";
 import { confirmDiscard, hasUnsaved, setUnsaved } from "../lib/unsavedGuard";
 import { editorStore, useEditor } from "../store/editorStore";
 import { toast } from "../store/toastStore";
+import { useReconnectingToast } from "../hooks/useReconnectingToast";
 
 export function EditorPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -38,7 +38,18 @@ export function EditorPage() {
   const drafts = useEditor((s) => s.drafts);
   const dirty = useEditor((s) => s.dirty);
   const [error, setError] = useState<string | null>(null);
-  useDocumentTitle(projectName ?? (error ? t.editor.errorTitle : undefined));
+  // The tab title shows a running job's progress, and 「✓」 once something finished while the tab was
+  // in the background, so a glance at the tab strip answers 「好了嗎？」.
+  const runningJob = useEditor((s) => s.detail?.activeJobs[0]);
+  const [doneUnseen, setDoneUnseen] = useState(false);
+  const [offline, setOffline] = useState(false);
+  useEffect(() => {
+    const onVisible = () => !document.hidden && setDoneUnseen(false);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+  const titlePrefix = doneUnseen ? "✓ " : runningJob ? `（${Math.round(runningJob.progress * 100)}%）` : "";
+  useDocumentTitle(projectName ? titlePrefix + projectName : error ? t.editor.errorTitle : undefined);
   const [jobsOpen, setJobsOpen] = useState(false);
 
   // Arriving from 建立並上傳 or the project list leaves focus on <body>, so the first Tab landed in
@@ -108,6 +119,14 @@ export function EditorPage() {
           toast(fmt(t.jobs.doneToast, { type }), "success");
         }
         notifyIfHidden(fmt(t.jobs.doneToast, { type }), fmt(t.jobs.notifyBody, { name: editorStore.getState().detail?.project.name ?? "", type }));
+        if (document.hidden) setDoneUnseen(true);
+      }
+    }, (state) => {
+      // Lost: say so (edits can't be saved). Back: reload, so jobs that finished meanwhile show.
+      if (state === "lost") setOffline(true);
+      else {
+        setOffline(false);
+        void refresh().then(() => toast(t.editor.reconnected, "success"), () => undefined);
       }
     });
 
@@ -164,17 +183,7 @@ export function EditorPage() {
   }, [blocker.state]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => setUnsaved("scripts", null), []);
 
-  // A save that got no response is retried for a few seconds: say so instead of staying silent.
-  useEffect(() => {
-    let last = 0;
-    const onReconnecting = () => {
-      if (Date.now() - last < 10_000) return;
-      last = Date.now();
-      toast(t.actionFailed.reconnecting, "info");
-    };
-    window.addEventListener(RECONNECTING_EVENT, onReconnecting);
-    return () => window.removeEventListener(RECONNECTING_EVENT, onReconnecting);
-  }, []);
+  useReconnectingToast();
 
   // Warn before closing the tab with unsaved script edits.
   useEffect(() => {
@@ -216,6 +225,11 @@ export function EditorPage() {
   return (
     <div className="flex h-full flex-col">
       <EditorHeader actions={actions} onOpenJobs={() => setJobsOpen(true)} />
+      {offline && (
+        <div role="alert" className="border-b border-rose-500/40 bg-rose-500/15 px-4 py-1.5 text-xs text-rose-200" data-testid="offline-banner">
+          {t.editor.offline}
+        </div>
+      )}
       <StepBar actions={actions} />
       <div className="grid min-h-0 flex-1 grid-cols-[200px_minmax(0,1fr)_330px] min-[1360px]:grid-cols-[260px_minmax(0,1fr)_380px]">
         <PageList actions={actions} />

@@ -50,23 +50,70 @@ function makeRouter() {
   ]);
 }
 
+const DEMO_KEY = "lvs:demo-ok";
+
+function readDemoChoice(): boolean {
+  try {
+    return sessionStorage.getItem(DEMO_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeDemoChoice(): void {
+  try {
+    sessionStorage.setItem(DEMO_KEY, "1");
+  } catch {
+    // Storage blocked: the choice lasts until reload.
+  }
+}
+
 export function App() {
   const [env, setEnv] = useState<ApiEnv | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  // Demo data is never used silently: with the server unreachable the user chooses (once per tab).
+  const [demoOk, setDemoOk] = useState(() => readDemoChoice());
   const router = useMemo(() => (env ? makeRouter() : null), [env]);
 
   useEffect(() => {
     let alive = true;
+    setEnv(null);
     resolveApiEnv()
       .then((e) => alive && setEnv(e))
       .catch((err: unknown) => alive && setError(errorMessage(err)));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [attempt]);
 
   if (error) {
     return <div className="p-8 text-sm text-rose-300">{fmt(t.app.error, { message: error })}</div>;
+  }
+  if (env?.mockReason === "unreachable" && !demoOk) {
+    return (
+      <div className="flex h-full items-center justify-center bg-neutral-950 p-8">
+        <div role="alert" className="max-w-md rounded-xl border border-neutral-800 bg-neutral-900 p-6 text-sm text-neutral-300">
+          <h1 className="mb-2 text-base font-semibold text-neutral-100">{t.app.offlineTitle}</h1>
+          <p className="mb-4">{fmt(t.app.offlineBody, { url: env.baseUrl })}</p>
+          <div className="flex gap-2">
+            <button type="button" className="rounded-md bg-accent-600 px-3 py-1.5 text-white hover:bg-accent-500" onClick={() => setAttempt((n) => n + 1)} autoFocus>
+              {t.app.retry}
+            </button>
+            <button
+              type="button"
+              className="rounded-md border border-neutral-700 px-3 py-1.5 hover:border-neutral-500"
+              onClick={() => {
+                writeDemoChoice();
+                setDemoOk(true);
+              }}
+            >
+              {t.app.useDemo}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
   if (!env || !router) {
     return (

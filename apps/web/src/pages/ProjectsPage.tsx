@@ -11,6 +11,8 @@ import { Spinner } from "../components/ui/Misc";
 import { Modal } from "../components/ui/Modal";
 import { fmt, t } from "../i18n";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useMenuFocus } from "../hooks/useMenuFocus";
+import { useReconnectingToast } from "../hooks/useReconnectingToast";
 import { targetLanguageName, useTranslateProject } from "../hooks/useTranslateProject";
 import { formatDuration, formatRelativeTime } from "../lib/format";
 import { setPendingUpload } from "../lib/pendingUpload";
@@ -20,6 +22,7 @@ type PendingAction = { kind: "rename" | "delete"; project: ProjectSummary };
 
 export function ProjectsPage() {
   useDocumentTitle(t.projects.title);
+  useReconnectingToast();
   const api = useApi();
   const navigate = useNavigate();
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
@@ -28,7 +31,14 @@ export function ProjectsPage() {
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [droppedFile, setDroppedFile] = useState<File | null>(null);
   const [pageDragging, setPageDragging] = useState(false);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"updated" | "name">("updated");
   const translate = useTranslateProject();
+  // A semester of weekly decks plus their English copies: find one by name, or list them by name.
+  const needle = query.trim().toLowerCase();
+  const shown = projects
+    ?.filter((p) => !needle || p.name.toLowerCase().includes(needle))
+    .sort((a, b) => (sort === "name" ? a.name.localeCompare(b.name, "zh-Hant", { numeric: true }) : b.updatedAt.localeCompare(a.updatedAt)));
 
   const load = useCallback(() => {
     setError(null);
@@ -105,10 +115,51 @@ export function ProjectsPage() {
         <FileUp className="size-5" aria-hidden />
         {pageDragging ? t.projects.pageDropActive : t.projects.pageDrop}
       </button>
-      {projects?.length === 0 && <p className="text-sm text-neutral-400">{t.projects.empty}</p>}
+      {projects && projects.length > 3 && (
+        <div className="mb-4 flex items-center gap-2">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t.projects.search}
+            aria-label={t.projects.search}
+            className="h-8 w-64 rounded-md border border-neutral-700 bg-neutral-950 px-2 text-sm text-neutral-100 outline-none focus:border-accent-400"
+            data-testid="projects-search"
+          />
+          <label className="flex items-center gap-1.5 text-xs text-neutral-400">
+            {t.projects.sortLabel}
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as "updated" | "name")}
+              className="h-8 rounded-md border border-neutral-700 bg-neutral-950 px-1.5 text-sm text-neutral-100"
+            >
+              <option value="updated">{t.projects.sortUpdated}</option>
+              <option value="name">{t.projects.sortName}</option>
+            </select>
+          </label>
+          {needle && shown?.length === 0 && <span className="text-xs text-neutral-400">{t.projects.noMatch}</span>}
+        </div>
+      )}
+      {projects?.length === 0 && (
+        // First visit: what happens after the upload, roughly what it costs, before anything is made.
+        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-300" data-testid="first-run">
+          <p className="mb-3">{t.projects.empty}</p>
+          <ol className="grid gap-2 text-xs sm:grid-cols-5">
+            {t.projects.firstRunSteps.map((step, i) => (
+              <li key={step.title} className="rounded-md border border-neutral-800 bg-neutral-950/50 p-2.5">
+                <div className="font-semibold text-neutral-100">
+                  {i + 1}. {step.title}
+                </div>
+                <div className="mt-1 text-neutral-400">{step.body}</div>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-3 text-xs text-neutral-400">{t.projects.firstRunNote}</p>
+        </div>
+      )}
 
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
-        {projects?.map((p) => (
+        {shown?.map((p) => (
           <li key={p.id}>
             <ProjectCard
               project={p}
@@ -176,20 +227,25 @@ function ProjectCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const thumbUrl = useAssetUrl(project.id, project.thumbnailAssetId);
   const menuRef = useRef<HTMLDivElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  // Menu keyboard pattern: focus to the first item, ↑／↓, Esc back to ⋯, Tab closes.
+  useMenuFocus(menuOpen, popupRef, closeMenu);
 
   useEffect(() => {
     if (!menuOpen) return;
     const onDown = (e: MouseEvent) => {
       if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuOpen(false);
+    // Closes when focus moves out (e.g. a click elsewhere on the page by keyboard).
+    const onFocus = (e: FocusEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
     };
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("focusin", onFocus);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("focusin", onFocus);
     };
   }, [menuOpen]);
 
@@ -252,7 +308,9 @@ function ProjectCard({
         />
         {menuOpen && (
           <div
+            ref={popupRef}
             role="menu"
+            aria-label={fmt(t.projects.menuFor, { name: project.name })}
             className="absolute right-0 bottom-9 z-20 w-52 overflow-hidden rounded-md border border-neutral-700 bg-neutral-800 py-1 shadow-xl"
           >
             <MenuItem icon={Pencil} label={t.projects.rename} onClick={pick(onRename)} />
@@ -326,7 +384,7 @@ function RenameDialog({ project, onClose, onSubmit }: { project: ProjectSummary 
     >
       <form id="rename-project-form" onSubmit={submit} className="flex flex-col gap-3">
         <Field label={t.projects.name}>
-          <TextInput value={name} maxLength={120} onChange={(e) => setName(e.target.value)} />
+          <TextInput value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />
         </Field>
         {error && <p className="text-xs text-rose-300">{error}</p>}
       </form>

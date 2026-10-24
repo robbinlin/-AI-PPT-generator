@@ -145,7 +145,8 @@ export interface ApiClient {
   getAssetUrl(projectId: string, assetId: string): Promise<AssetUrlResponse>;
 
   /** Server-sent project events. Returns an unsubscribe function. */
-  subscribe(projectId: string, listener: ProjectEventListener): () => void;
+  /** `onConnection` reports the live stream dropping ("lost") and coming back ("open"). */
+  subscribe(projectId: string, listener: ProjectEventListener, onConnection?: (state: "open" | "lost") => void): () => void;
 }
 
 export class ApiRequestError extends Error {

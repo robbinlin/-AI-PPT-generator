@@ -5,6 +5,7 @@ import { fmt, t } from "../../i18n";
 import { useEditor } from "../../store/editorStore";
 import { Button } from "../ui/Button";
 import { ProgressBar } from "../ui/Misc";
+import { friendlyJobError } from "../../lib/jobErrors";
 
 export interface UploadDropZoneProps {
   onFile: (file: File) => void;
@@ -82,7 +83,15 @@ export function ParseProgress({ filename, progress, message, failed }: ParseProg
     <div className="flex w-full max-w-md flex-col items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900/60 px-8 py-12 text-center">
       <p className="text-sm font-medium text-neutral-100">{filename}</p>
       {failed ? (
-        <p className="text-sm text-rose-300">{fmt(t.upload.parseFailed, { message: failed })}</p>
+        <div className="text-sm text-rose-300">
+          <p>{friendlyJobError(failed) ?? fmt(t.upload.parseFailed, { message: failed })}</p>
+          {friendlyJobError(failed) && (
+            <details className="mt-1 text-xs text-neutral-400">
+              <summary className="cursor-pointer select-none">{t.jobErrors.details}</summary>
+              <p className="break-words">{failed}</p>
+            </details>
+          )}
+        </div>
       ) : (
         <>
           <div className="w-64">

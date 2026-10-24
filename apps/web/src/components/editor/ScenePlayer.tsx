@@ -61,13 +61,33 @@ export function ScenePlayer({ projectId, scene, hidden }: ScenePlayerProps) {
     }
   };
 
+  // 「從這頁播到最後」: from the start of this page, not from wherever it was paused.
   const startAll = () => {
     const store = editorStore.getState();
+    if (audioRef.current) audioRef.current.currentTime = 0;
     if (playable || store.advanceToNextPlayable()) store.startPlayAll();
   };
 
-  const note = !scene ? null : scene.muted ? t.player.mutedScene : !scene.audio.assetId ? t.player.noAudio : null;
-  const progress = time.duration > 0 ? time.current / time.duration : 0;
+  const seek = (sec: number) => {
+    const el = audioRef.current;
+    if (!el || !Number.isFinite(sec)) return;
+    const to = Math.max(0, Math.min(sec, el.duration || time.duration || 0));
+    el.currentTime = to;
+    setTime((t0) => ({ ...t0, current: to }));
+    editorStore.getState().setCurrentTime(to);
+  };
+
+  // Old narration still plays after the script changed: say it is not what the script says now.
+  const note = !scene
+    ? null
+    : scene.muted
+      ? t.player.mutedScene
+      : !scene.audio.assetId
+        ? t.player.noAudio
+        : scene.audio.status === "stale"
+          ? t.player.staleAudio
+          : null;
+  const total = time.duration || scene?.durationSec || 0;
 
   return (
     <div className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
@@ -97,14 +117,31 @@ export function ScenePlayer({ projectId, scene, hidden }: ScenePlayerProps) {
       </Button>
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="w-10 text-right font-mono text-xs text-neutral-400 tabular-nums">{formatDuration(time.current)}</span>
-        <div className="h-1 flex-1 overflow-hidden rounded-full bg-neutral-800">
-          <div className="h-full bg-accent-500" style={{ width: `${progress * 100}%` }} />
-        </div>
+        {/* Seek bar: click or drag; ←／→ jump 5 seconds. */}
+        <input
+          type="range"
+          className="h-1 min-w-0 flex-1 accent-[var(--color-accent-500)]"
+          min={0}
+          max={Math.max(total, 0.1)}
+          step={0.1}
+          value={Math.min(time.current, total)}
+          disabled={!playable || !url}
+          aria-label={t.player.seek}
+          aria-valuetext={`${formatDuration(time.current)} / ${formatDuration(total)}`}
+          onChange={(e) => seek(Number(e.target.value))}
+          onKeyDown={(e) => {
+            if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+            e.preventDefault();
+            e.stopPropagation();
+            seek(time.current + (e.key === "ArrowLeft" ? -5 : 5));
+          }}
+          data-testid="player-seek"
+        />
         <span className="w-10 font-mono text-xs text-neutral-400 tabular-nums">
           {formatDuration(time.duration || scene?.durationSec || 0)}
         </span>
       </div>
-      {note && <span className="text-xs text-neutral-400">{note}</span>}
+      {note && <span className={`text-xs ${scene?.audio.status === "stale" && !scene.muted ? "text-amber-300" : "text-neutral-400"}`}>{note}</span>}
       {playback.playAll ? (
         <Button size="sm" icon={Square} onClick={() => editorStore.getState().stopPlayback()}>
           {t.player.stopAll}

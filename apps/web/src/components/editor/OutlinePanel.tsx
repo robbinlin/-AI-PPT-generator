@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { GlossaryEntry } from "@lvs/shared";
+import { isTranslationNotReading, usesGlossaryTerm, type GlossaryEntry } from "@lvs/shared";
 import { ListTree, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useApi } from "../../api/context";
 import { errorMessage } from "../../api/types";
@@ -105,7 +105,32 @@ export function OutlinePanel({ actions }: { actions: Pick<EditorActions, "enqueu
   );
 }
 
+/**
+ * What a glossary reading does to the narration: which pages it changes, or why it changes none
+ * (a translation such as Resources→資源 is not applied). Shown in the read-only table, so a
+ * wrong reading is visible without opening each page's 讀音文本.
+ */
+function useReadingEffects(glossary: GlossaryEntry[]): Map<string, { text: string; warn: boolean }> {
+  const detail = useEditor((s) => s.detail);
+  return useMemo(() => {
+    const out = new Map<string, { text: string; warn: boolean }>();
+    if (!detail) return out;
+    const scenes = visibleScenes(detail);
+    for (const g of glossary) {
+      if (!g.reading?.trim() || g.reading === g.term) continue;
+      if (isTranslationNotReading(g.term, g.reading)) {
+        out.set(g.term, { text: t.outline.readingIsTranslation, warn: true });
+        continue;
+      }
+      const pages = scenes.filter((s) => usesGlossaryTerm(detail.scripts[s.id]?.script ?? "", g.term)).map((s) => s.index + 1);
+      out.set(g.term, pages.length ? { text: fmt(t.outline.readingPages, { pages: pageRanges(pages) }), warn: false } : { text: t.outline.readingUnused, warn: false });
+    }
+    return out;
+  }, [detail, glossary]);
+}
+
 function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
+  const effects = useReadingEffects(glossary);
   const api = useApi();
   const [editing, setEditing] = useState(false);
   const [rows, setRows] = useState<GlossaryEntry[]>(glossary);
@@ -248,7 +273,12 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
             {glossary.map((g) => (
               <tr key={g.term} className="align-top">
                 <td className="border-b border-neutral-800/60 py-1.5 pr-2 font-medium break-words text-neutral-100">{g.term}</td>
-                <td className="border-b border-neutral-800/60 py-1.5 pr-2 break-words">{g.reading || t.outline.readingPlaceholder}</td>
+                <td className="border-b border-neutral-800/60 py-1.5 pr-2 break-words">
+                  {g.reading || t.outline.readingPlaceholder}
+                  {effects.get(g.term) && (
+                    <span className={`mt-0.5 block ${effects.get(g.term)!.warn ? "text-amber-300" : "text-neutral-400"}`}>{effects.get(g.term)!.text}</span>
+                  )}
+                </td>
                 <td className="border-b border-neutral-800/60 py-1.5 break-words">{g.definition ?? t.common.none}</td>
               </tr>
             ))}

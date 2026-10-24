@@ -511,10 +511,20 @@ export class HttpApiClient implements ApiClient {
 
   // ---------------------------------------------------------------- events
 
-  subscribe(projectId: string, listener: ProjectEventListener): () => void {
+  subscribe(projectId: string, listener: ProjectEventListener, onConnection?: (state: "open" | "lost") => void): () => void {
     const source = new EventSource(
       this.url(`/projects/${enc(projectId)}/events`),
     );
+    // EventSource reconnects by itself; tell the editor so it can say so and reload afterwards.
+    let lost = false;
+    source.onerror = () => {
+      if (!lost) onConnection?.("lost");
+      lost = true;
+    };
+    source.onopen = () => {
+      if (lost) onConnection?.("open");
+      lost = false;
+    };
     const handle = (ev: MessageEvent<string>) => {
       let data: unknown;
       try {

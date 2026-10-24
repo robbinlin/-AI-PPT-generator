@@ -338,8 +338,14 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
       </div>
       <div className="mt-1 flex flex-col">
         {srt && srtUrl ? (
-          <button type="button" className={item} onClick={() => void save(srtUrl, `${baseName}.srt`, { description: t.export.srt, mime: "application/x-subrip" })}>
+          // The subtitles belong to the last export: named and labelled like its video.
+          <button
+            type="button"
+            className={item}
+            onClick={() => void save(srtUrl, video ? videoFileName(detail.project.name, video, !!videoOutdated).replace(/\.mp4$/, ".srt") : `${baseName}.srt`, { description: t.export.srt, mime: "application/x-subrip" })}
+          >
             <Subtitles className="size-4" aria-hidden /> {t.export.srt}
+            {videoOutdated && <span className="ml-auto text-xs text-amber-300">{t.export.srtOld}</span>}
           </button>
         ) : (
           <button type="button" className={item} disabled title={t.export.srtUnavailable}>

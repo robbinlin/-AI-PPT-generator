@@ -3,7 +3,7 @@ import type { AspectRatio, CreateProjectRequest, Language } from "@lvs/shared";
 import { FileUp, X } from "lucide-react";
 import { errorMessage } from "../../api/types";
 import { ACCEPTED_EXTENSIONS, validateUpload } from "../../hooks/useEditorActions";
-import { fmt, t } from "../../i18n";
+import { t } from "../../i18n";
 import { formatBytes } from "../../lib/format";
 import { nameFromFile } from "../../lib/pendingUpload";
 import { Button, IconButton } from "../ui/Button";
@@ -137,13 +137,14 @@ export function NewProjectDialog({ open, initialFile, onClose, onCreate }: NewPr
         <div className="grid grid-cols-2 gap-3">
           <Field label={t.projects.language}>
             <Select value={language} onChange={setLanguage} options={LANGUAGES.map((v) => ({ value: v, label: t.languages[v] }))} />
+            {language === "mixed" && <p className="mt-1 text-xs text-neutral-400">{t.projects.mixedHint}</p>}
           </Field>
           <Field label={t.projects.aspectRatio}>
             <Select value={aspectRatio} onChange={setAspectRatio} options={RATIOS.map((v) => ({ value: v, label: t.aspectRatios[v] }))} />
           </Field>
         </div>
         {!file && <p className="text-xs text-neutral-400">{t.projects.uploadHint}</p>}
-        {error && <p className="text-xs text-rose-300">{fmt(t.app.error, { message: error })}</p>}
+        {error && <p className="text-xs text-rose-300">{error}</p>}
       </form>
     </Modal>
   );

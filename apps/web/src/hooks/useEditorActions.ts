@@ -10,7 +10,6 @@ import {
   type AvatarLoss,
   confirmContent,
   ESTIMATED_TYPES,
-  estimateWaitSec,
   isForced,
   needsConfirm,
   needsConfirmWithoutEstimate,
@@ -105,8 +104,9 @@ export function useEditorActions() {
           const ok = await confirmAction(unknownEstimateContent(type, avatarProvider));
           if (!ok) return null;
         }
-        if (estimate && estimateWaitSec(type, estimate, avatarProvider) > 90) requestNotifyPermission();
       }
+      // Any job may outlast the user's attention (an export takes minutes too): ask once, now.
+      requestNotifyPermission();
       try {
         const { job } = await api.enqueueJob(projectId(), req);
         store().upsertJob(job);

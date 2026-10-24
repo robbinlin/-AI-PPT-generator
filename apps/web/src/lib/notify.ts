@@ -12,7 +12,12 @@ export function notifyIfHidden(title: string, body: string): void {
   try {
     if (typeof document === "undefined" || !document.hidden) return;
     if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    new Notification(title, { body, tag: title });
+    const n = new Notification(title, { body, tag: title });
+    // Clicking it brings the editor tab back.
+    n.onclick = () => {
+      window.focus();
+      n.close();
+    };
   } catch {
     // ignore
   }

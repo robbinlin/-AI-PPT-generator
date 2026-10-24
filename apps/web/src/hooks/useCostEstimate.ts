@@ -22,7 +22,8 @@ export function useCostEstimate(
   missingScriptIds: string[] = [],
 ): CombinedEstimate | null {
   const api = useApi();
-  const [estimate, setEstimate] = useState<CombinedEstimate | null>(null);
+  const [estimate, setEstimate] = useState<(CombinedEstimate & { key: string }) | null>(null);
+  const key = `${projectId}|${avatarEnabled}|${revision}|${missingScriptIds.join(",")}`;
 
   useEffect(() => {
     if (!projectId) return;
@@ -43,7 +44,7 @@ export function useCostEstimate(
             parts[type] = e;
             total += e.total;
           }
-          setEstimate({ total, currency: results[0]?.[1].currency ?? "USD", parts });
+          setEstimate({ total, currency: results[0]?.[1].currency ?? "USD", parts, key });
         })
         .catch(() => alive && setEstimate(null));
     }, 600);
@@ -54,5 +55,9 @@ export function useCostEstimate(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, projectId, avatarEnabled, revision, missingScriptIds.join(",")]);
 
+  // While refreshing, an older price may stay up (no blinking), but never an older 「nothing left
+  // to do」: right after parsing that would say 素材都已完成 before any script exists.
+  if (!estimate) return null;
+  if (estimate.key !== key && Object.keys(estimate.parts).length === 0) return null;
   return estimate;
 }

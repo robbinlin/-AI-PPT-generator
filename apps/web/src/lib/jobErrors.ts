@@ -8,6 +8,7 @@ import { t } from "../i18n";
 export function friendlyJobError(message: string | undefined): string | undefined {
   if (!message) return undefined;
   const rules: Array<[RegExp, string]> = [
+    [/簡報解析失敗|parse_failed|ConvertError|ParseError|soffice|parser exited/i, t.jobErrors.parse],
     [/avatarId must be set|avatar provider .* must be set|no avatar selected/i, t.jobErrors.noAvatar],
     [/RESOURCE_EXHAUSTED|quota|rate.?limit|\b429\b/i, t.jobErrors.quota],
     [/UNAVAILABLE|overloaded|high demand|\b503\b|\b502\b/i, t.jobErrors.busy],

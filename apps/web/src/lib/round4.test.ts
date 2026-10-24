@@ -25,7 +25,7 @@ describe("confirmContent for 全部做完再匯出", () => {
   const estimate = { total: 10, currency: "USD", sceneCount: 5, seconds: 200, lines: [] };
   it("says the video is exported afterwards, and how", () => {
     const c = confirmContent("generate_avatar", { type: "generate_avatar", force: false, thenRender: { preset: "hd_1080p", burnSubtitles: true } }, estimate, "heygen");
-    expect(c.lines.join("\n")).toContain("完成後會自動匯出影片（1080p，字幕印在影片上）");
+    expect(c.lines.join("\n")).toContain("完成後會自動匯出影片（1080p，字幕直接印在影片上）");
     expect(c.confirmLabel).toContain("開始產生並自動匯出");
   });
   it("is unchanged without a chained export", () => {

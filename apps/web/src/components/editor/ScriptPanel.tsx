@@ -1,5 +1,5 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
-import { avatarInVideo } from "@lvs/shared";
+import { avatarInVideo, effectiveReadings, usesGlossaryTerm } from "@lvs/shared";
 import type { ScriptRevision } from "@lvs/shared";
 import { AlertTriangle, ChevronRight, Redo2, Undo2, Volume2, VolumeX, WandSparkles } from "lucide-react";
 import type { EditorActions } from "../../hooks/useEditorActions";
@@ -42,11 +42,13 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const paidAvatarReady = !!scene && !!av && av.enabled && !!av.avatarId && av.providerId !== "local" && !scene.muted && scene.avatar.status === "ready";
   const serverRedo = usePendingEstimate(paidAvatarReady ? detail?.project.id : undefined, "generate_avatar", `${av?.avatarId}:${scene?.durationSec}`, "all", scene ? [scene.id] : undefined);
   if (!detail || !scene) {
-    return <p className="p-4 text-sm text-neutral-400">{detail && detail.slides.length === 0 ? t.editor.waitForSlides : t.editor.selectPage}</p>;
+    const parseFailed = detail?.sourceDocument?.parseStatus === "failed";
+    return <p className="p-4 text-sm text-neutral-400">{detail && detail.slides.length === 0 ? (parseFailed ? t.editor.parseFailedPanel : t.editor.waitForSlides) : t.editor.selectPage}</p>;
   }
 
   const text = currentScript({ detail, drafts }, scene.id);
   const revision = detail.scripts[scene.id];
+  const glossaryHits = effectiveReadings(detail.outline?.glossary ?? []).filter((g) => usesGlossaryTerm(text, g.term));
   const hasDraft = drafts[scene.id] !== undefined;
   const settings = detail.project.settings;
   const seconds = estimateSpeechSeconds(text, settings.language, settings.voice.speed);
@@ -227,6 +229,15 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
         </p>
       )}
 
+      {/* Narration differs from the script here (glossary readings): say so where it is visible. */}
+      {glossaryHits.length > 0 && (
+        <p className="text-xs text-neutral-400" data-testid="glossary-applied">
+          {fmt(t.script.glossaryApplied, { list: glossaryHits.map((g) => `${g.term} → ${g.reading}`).join("、") })}{" "}
+          <button type="button" className="text-accent-300 hover:underline" onClick={() => openEditorTab("outline")}>
+            {t.script.glossaryFix}
+          </button>
+        </p>
+      )}
       <DerivedTexts revision={revision} pending={hasDraft} />
     </div>
   );

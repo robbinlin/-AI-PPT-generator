@@ -195,9 +195,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.clean and args.out.exists():
             shutil.rmtree(args.out)
         manifest_path = parse_file(args.input, args.out, dpi=args.dpi, thumb_width=args.thumb_width, timeout=args.timeout)
-    except ParseError as exc:
-        sys.stderr.write(json.dumps({"error": "parse_failed", "message": str(exc)}) + "\n")
-        return 1
+    except (ParseError, ConvertError) as exc:
+        # Exit code 2 = the file itself can't be read: retrying the same file won't help.
+        sys.stderr.write(json.dumps({"error": "parse_failed", "message": f"{type(exc).__name__}: {exc}"}) + "\n")
+        return 2
     except Exception as exc:  # noqa: BLE001 - report anything to the caller as JSON
         sys.stderr.write(json.dumps({"error": "internal", "message": f"{type(exc).__name__}: {exc}"}) + "\n")
         return 1
