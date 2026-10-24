@@ -141,14 +141,18 @@ export function withEffectiveStatuses(
 ): Scene[] {
   const orderedSlides = scenesInOrder.map((s) => slidesById.get(s.slideId)).filter((s): s is Slide => !!s);
   const outlineHash = outlineInputHash(orderedSlides, settings);
-  return scenesInOrder.map((scene, i) => {
+  // Scripts are written with their *visible* neighbours (generate_script): compare the same way, or
+  // a page next to a hidden one reads 需更新 forever, even right after an AI rewrite.
+  const visibleSlides = orderedSlides.filter((s) => !s.hidden);
+  return scenesInOrder.map((scene) => {
     const slide = slidesById.get(scene.slideId);
     if (!slide) return scene;
     const script = scripts[scene.id];
+    const pos = visibleSlides.findIndex((s) => s.id === slide.id);
     const scriptHash = scriptInputHash({
       slide,
-      prev: orderedSlides[i - 1],
-      next: orderedSlides[i + 1],
+      prev: pos > 0 ? visibleSlides[pos - 1] : undefined,
+      next: pos >= 0 ? visibleSlides[pos + 1] : undefined,
       outlineInputHash: outline?.inputHash ?? outlineHash,
       settings,
     });
@@ -164,6 +168,15 @@ export function withEffectiveStatuses(
       out.audio = { ...scene.audio, status: effectiveStatus(scene.audio, aHash) };
       const sHash = subtitleInputHash({ audioInputHash: aHash, subtitleText: script.subtitleText, settings });
       out.subtitle = { ...scene.subtitle, status: effectiveStatus(scene.subtitle, sHash) };
+      // Only 「每行字數上限」 changed (same audio and text): the export re-wraps the cues for free,
+      // so the subtitles count as current rather than asking for new speech.
+      if (out.subtitle.status === "stale" && out.audio.status === "ready" && scene.subtitle.cues?.length && scene.subtitle.inputHash) {
+        const stored = scene.subtitle.inputHash;
+        const onlyWidth = Array.from({ length: 75 }, (_, k) => k + 6).some(
+          (m) => subtitleInputHash({ audioInputHash: aHash, subtitleText: script.subtitleText, settings: { ...settings, subtitles: { ...settings.subtitles, style: { ...settings.subtitles.style, maxCharsPerLine: m } } } }) === stored,
+        );
+        if (onlyWidth) out.subtitle = { ...out.subtitle, status: "ready" };
+      }
       if (scene.audio.assetId) {
         const vHash = avatarInputHash({ audioAssetId: scene.audio.assetId, settings });
         out.avatar = { ...scene.avatar, status: effectiveStatus(scene.avatar, vHash) };

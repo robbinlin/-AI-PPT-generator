@@ -428,3 +428,29 @@ export function alignToPauses(
   }
   return out;
 }
+
+/**
+ * Re-wraps existing timed cues for a new 「每行字數上限」 without the audio's word timings: each
+ * cue is split like buildCues would, and its time shared by text weight. Free (no TTS), so a
+ * width change doesn't make every page's subtitles 需更新.
+ */
+export function rechunkCues(cues: SubtitleCue[], maxCharsPerLine: number): SubtitleCue[] {
+  const out: SubtitleCue[] = [];
+  for (const cue of cues) {
+    const parts = segmentCueTexts(cue.text, maxCharsPerLine);
+    if (parts.length <= 1) {
+      out.push({ ...cue, index: out.length + 1 });
+      continue;
+    }
+    const weights = parts.map((t) => textUnits(t).reduce((a, u) => a + unitWeight(u.text), 0) || 1);
+    const total = weights.reduce((a, b) => a + b, 0);
+    let acc = 0;
+    for (let i = 0; i < parts.length; i++) {
+      const startSec = cue.startSec + (acc / total) * (cue.endSec - cue.startSec);
+      acc += weights[i]!;
+      const endSec = i === parts.length - 1 ? cue.endSec : cue.startSec + (acc / total) * (cue.endSec - cue.startSec);
+      out.push({ index: out.length + 1, startSec, endSec, text: parts[i]! });
+    }
+  }
+  return out;
+}

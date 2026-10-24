@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Job } from "@lvs/shared";
+import type { Job, Scene } from "@lvs/shared";
 import { CircleCheck, CircleSlash, CircleX, Download, ListChecks, X } from "lucide-react";
 import { useApi, useAssetUrl } from "../../api/context";
 import type { EditorActions } from "../../hooks/useEditorActions";
@@ -10,7 +10,7 @@ import { Button, IconButton } from "../ui/Button";
 import { ProgressBar, Spinner } from "../ui/Misc";
 import { friendlyJobError } from "../../lib/jobErrors";
 import { isVideoCurrent } from "../../lib/scenes";
-import { pageRanges } from "../../lib/settingsImpact";
+import { pageRanges, visibleScenes } from "../../lib/settingsImpact";
 import { saveVideo } from "../../lib/saveFiles";
 import { confirmAction } from "../../store/confirmStore";
 
@@ -29,9 +29,23 @@ function JobError({ message }: { message: string }) {
 }
 
 /** 「・第 2–6 頁・完成後自動匯出」: which pages a job covers, so recent jobs are told apart. */
+/** Which page state a job writes (pages it finished carry its jobId there). */
+const FIELD: Partial<Record<Job["type"], "script" | "audio" | "avatar">> = {
+  generate_script: "script",
+  translate_script: "script",
+  synthesize_speech: "audio",
+  generate_avatar: "avatar",
+};
+
 function JobDetail({ job }: { job: Job }) {
   const scenes = useEditor((s) => s.detail?.scenes);
   const parts: string[] = [];
+  // A failed multi-page job: say how far it got (the rest is what 補齊 will do).
+  const field = FIELD[job.type];
+  if (job.status === "failed" && field && scenes) {
+    const done = scenes.filter((s) => (s[field] as { jobId?: string }).jobId === job.id && s[field].status === "ready").length;
+    if (done > 0) parts.push(fmt(t.jobs.detailPartial, { n: done }));
+  }
   const ids = "sceneIds" in job.payload ? job.payload.sceneIds : undefined;
   const result = job.result as { processed?: number; reused?: number } | undefined;
   if (ids?.length && scenes) {
@@ -142,6 +156,8 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
   const projectId = useEditor((s) => s.detail?.project.id);
   const active = useEditor((s) => s.detail?.activeJobs);
   const recent = useEditor((s) => s.recentJobs);
+  const detailNow = useEditor((s) => s.detail);
+  const visibleNow = detailNow ? visibleScenes(detailNow) : [];
   const now = useTick(5000, open && (active?.length ?? 0) > 0);
   const [showAll, setShowAll] = useState(false);
   const panel = useRef<HTMLElement>(null);
@@ -248,7 +264,7 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
           {recent.length === 0 && <p className="text-xs text-neutral-400">{t.jobs.none}</p>}
           <ul className="flex flex-col gap-1">
             {(showAll ? recent : recent.slice(0, RECENT_SHOWN)).map((job) => (
-              <RecentJob key={job.id} job={job} latestVideoJobId={latestVideoJobId} superseded={isSuperseded(job, recent)} />
+              <RecentJob key={job.id} job={job} latestVideoJobId={latestVideoJobId} superseded={isSuperseded(job, recent, visibleNow)} />
             ))}
           </ul>
           {!showAll && recent.length > RECENT_SHOWN && (
@@ -265,8 +281,13 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
 const RECENT_SHOWN = 10;
 
 /** A failure that a later run of the same kind (and pages) has since fixed: shown faded. */
-function isSuperseded(job: Job, recent: Job[]): boolean {
+function isSuperseded(job: Job, recent: Job[], scenes: Scene[]): boolean {
   if (job.status !== "failed") return false;
+  // Nothing left to do for what it covered (e.g. a later 補齊 made the missing page): fixed.
+  const field = FIELD[job.type];
+  const ids = "sceneIds" in job.payload ? job.payload.sceneIds : undefined;
+  const covered = scenes.filter((s) => (ids?.length ? ids.includes(s.id) : field !== "script" ? !s.muted : true));
+  if (field && covered.length > 0 && covered.every((s) => s[field].status === "ready")) return true;
   const key = (j: Job) => `${j.type}:${"sceneIds" in j.payload ? (j.payload.sceneIds ?? []).join(",") : ""}`;
   const at = (j: Job) => j.finishedAt ?? j.createdAt;
   return recent.some((o) => o.status === "succeeded" && key(o) === key(job) && at(o) > at(job));

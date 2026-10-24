@@ -57,6 +57,8 @@ export interface CreateRevisionInput {
   outlineRevisionId?: string;
   /** Hash of the inputs that produced an AI script; for user scripts the hash of the text. */
   inputHash?: string;
+  /** The job that wrote it: a retried 「全部重新產生」 skips pages it already finished. */
+  jobId?: string;
   deriveTexts?: DeriveTexts;
   /** Glossary readings applied by `deriveTexts` (latest outline). */
   glossary?: GlossaryEntry[];
@@ -80,6 +82,11 @@ export async function createScriptRevision(db: Db, input: CreateRevisionInput): 
     latest.subtitleText === subtitleText &&
     latest.source === input.source
   ) {
+    // Saving the same hand-written text again confirms it still fits a slide that changed (deck
+    // replaced): the page stops reading 需更新.
+    if (input.source !== "ai" && input.scene.script.status === "stale") {
+      await db.update(scenes).set({ script: { ...input.scene.script, status: "ready" } }).where(eq(scenes.id, input.scene.id));
+    }
     return { revision: latest, created: false };
   }
   const version = (latest?.version ?? 0) + 1;
@@ -105,7 +112,7 @@ export async function createScriptRevision(db: Db, input: CreateRevisionInput): 
     .update(scenes)
     .set({
       scriptRevisionId: revision.id,
-      script: { status: "ready", inputHash: input.inputHash ?? hash },
+      script: { status: "ready", inputHash: input.inputHash ?? hash, ...(input.jobId ? { jobId: input.jobId } : {}) },
       audio: stale(input.scene.audio),
       subtitle: stale(input.scene.subtitle),
       avatar: stale(input.scene.avatar),

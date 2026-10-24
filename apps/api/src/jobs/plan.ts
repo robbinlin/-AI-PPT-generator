@@ -8,6 +8,16 @@ import { outlineInputHash, selectScenesToProcess } from "./hashes.js";
 export interface SelectionOptions {
   sceneIds?: string[];
   force?: boolean;
+  /** The running job: pages it already finished are skipped when it is retried (see doneBy). */
+  jobId?: string;
+}
+
+/**
+ * A forced job that fails part-way is retried from the start; without this it would pay again for
+ * every page it had already finished (and a translation would overwrite edits made meanwhile).
+ */
+export function doneBy(jobId: string | undefined, state: { status: string; jobId?: string }): boolean {
+  return !!jobId && state.jobId === jobId && state.status === "ready";
 }
 
 /** Page number the editor shows for a scene (P1, P2… in the current order). */
@@ -39,7 +49,7 @@ export function scriptTargets(detail: ProjectDetail, opts: SelectionOptions = {}
   const replan = outlineNeedsRegeneration(detail);
   return selectScenesToProcess(visible, opts.sceneIds, !!opts.force, (s) =>
     replan && detail.scripts[s.id]?.source === "ai" && s.script.status === "ready" ? "stale" : s.script.status,
-  );
+  ).filter((s) => !doneBy(opts.jobId, s.script));
 }
 
 /** Scenes synthesize_speech / generate_avatar can work on: visible, narrated, with a script. */
@@ -48,14 +58,16 @@ export function narratedCandidates(detail: ProjectDetail): Scene[] {
 }
 
 export function speechTargets(detail: ProjectDetail, opts: SelectionOptions = {}): Scene[] {
-  return selectScenesToProcess(narratedCandidates(detail), opts.sceneIds, !!opts.force, (s) => s.audio.status);
+  return selectScenesToProcess(narratedCandidates(detail), opts.sceneIds, !!opts.force, (s) => s.audio.status).filter((s) => !doneBy(opts.jobId, s.audio));
 }
 
 export const audioReady = (s: Scene): boolean => s.audio.status === "ready" && !!s.audio.assetId;
 
 /** A scene without up-to-date audio needs a new avatar clip too (the audio will be redone first). */
 export function avatarTargets(detail: ProjectDetail, opts: SelectionOptions = {}): Scene[] {
-  return selectScenesToProcess(narratedCandidates(detail), opts.sceneIds, !!opts.force, (s) => (audioReady(s) ? s.avatar.status : "stale"));
+  return selectScenesToProcess(narratedCandidates(detail), opts.sceneIds, !!opts.force, (s) => (audioReady(s) ? s.avatar.status : "stale")).filter(
+    (s) => !doneBy(opts.jobId, s.avatar),
+  );
 }
 
 /** Narration seconds of a scene: real audio when ready, else the script's estimate, else chars / 4.5. */

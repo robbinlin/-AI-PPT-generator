@@ -13,7 +13,7 @@ import { getProjectDetail } from "../../services/projects.js";
 import { createScriptRevision } from "../../services/scripts.js";
 import { throwIfAborted, type JobContext, type JobHandler } from "../context.js";
 import { audioInputHash, avatarInputHash, outlineInputHash, renderInputHash, scriptInputHash } from "../hashes.js";
-import { audioReady, avatarTargets, narratedCandidates, pageList, pageNo, scriptTargets, speechTargets, visibleScenesOf } from "../plan.js";
+import { audioReady, avatarTargets, doneBy, narratedCandidates, pageList, pageNo, scriptTargets, speechTargets, visibleScenesOf } from "../plan.js";
 
 async function loadDetail(ctx: JobContext) {
   const [project] = await ctx.db.select().from(projects).where(eq(projects.id, ctx.job.projectId)).limit(1);
@@ -187,7 +187,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
       ctx.publish({ kind: "outline", outline });
       ({ detail, visibleScenes, slidesById } = await loadDetail(ctx));
     }
-    const targets = scriptTargets(detail, { sceneIds: ctx.job.payload.sceneIds, force: ctx.job.payload.force });
+    const targets = scriptTargets(detail, { sceneIds: ctx.job.payload.sceneIds, force: ctx.job.payload.force, jobId: ctx.job.id });
     const ids: string[] = [];
     // Scenes are processed in deck order so each prompt can see the script written just before it.
     const latestScript = new Map(Object.entries(detail.scripts).map(([sceneId, rev]) => [sceneId, rev.script]));
@@ -251,7 +251,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
   const synthesizeSpeech: JobHandler<{ type: "synthesize_speech"; sceneIds?: string[]; force: boolean }> = async (ctx) => {
     const { detail } = await loadDetail(ctx);
     const withScript = narratedCandidates(detail);
-    const targets = speechTargets(detail, { sceneIds: ctx.job.payload.sceneIds, force: ctx.job.payload.force });
+    const targets = speechTargets(detail, { sceneIds: ctx.job.payload.sceneIds, force: ctx.job.payload.force, jobId: ctx.job.id });
     const plan = progressPlan(withScript, targets, narrationWeight(detail));
     for (const scene of targets) {
       const n = pageNo(scene);
@@ -271,7 +271,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
     // Every narrated page with a script is a candidate; pages whose audio is missing or stale
     // get it synthesized first, so "產生人像" never silently skips them.
     const candidates = narratedCandidates(detail);
-    const targets = avatarTargets(detail, { sceneIds: ctx.job.payload.sceneIds, force: ctx.job.payload.force });
+    const targets = avatarTargets(detail, { sceneIds: ctx.job.payload.sceneIds, force: ctx.job.payload.force, jobId: ctx.job.id });
     const plan = progressPlan(candidates, targets, narrationWeight(detail));
     let synthesized = 0;
     let reused = 0;
@@ -336,7 +336,8 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
     // Same slide order and outline hash withEffectiveStatuses uses, so the scripts read as current.
     const orderedSlides = detail.scenes.map((s) => slidesById.get(s.slideId)).filter((s): s is Slide => !!s);
     const outlineHash = detail.outline?.inputHash ?? outlineInputHash(orderedSlides, settings);
-    const targets = detail.scenes.filter((s) => srcText(s.index));
+    // A retry skips pages this job already translated (edits made there meanwhile are kept).
+    const targets = detail.scenes.filter((s) => srcText(s.index) && !doneBy(ctx.job.id, s.script));
     const plan = progressPlan(targets, targets, (s) => srcText(s.index).length);
     let translated = 0;
     // Pages are independent (context comes from the source text), so a few run at once.
@@ -378,6 +379,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
         // mark it stale (that would point 下一步 at 產生全部講稿 and overwrite the translation).
         source: "translation",
         language: to,
+        jobId: ctx.job.id,
         inputHash: scriptInputHash({ slide, prev: orderedSlides[i - 1], next: orderedSlides[i + 1], outlineInputHash: outlineHash, settings }),
         estimatedDurationSec: out.estimatedDurationSec,
       });

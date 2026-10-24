@@ -12,6 +12,8 @@ export function useMenuFocus(
   trigger?: RefObject<HTMLElement | null>,
   /** Preferred first item (e.g. a harmless one), else the first enabled item. */
   initial?: string,
+  /** With no `initial` item available, focus the menu itself rather than the first item (which may be destructive). */
+  initialOnly = false,
 ): void {
   useEffect(() => {
     if (!open) return;
@@ -21,7 +23,7 @@ export function useMenuFocus(
     const focusFirst = () => {
       if (menu.current?.contains(document.activeElement)) return;
       const preferred = initial ? menu.current?.querySelector<HTMLElement>(initial) : null;
-      (preferred ?? items()[0])?.focus();
+      (preferred ?? (initialOnly ? menu.current : items()[0]))?.focus();
     };
     const timer = setTimeout(focusFirst, 0);
     const observer = new MutationObserver(focusFirst);
@@ -53,5 +55,5 @@ export function useMenuFocus(
       observer.disconnect();
       el?.removeEventListener("keydown", onKey);
     };
-  }, [open, menu, onClose, trigger, initial]);
+  }, [open, menu, onClose, trigger, initial, initialOnly]);
 }

@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Job, ProjectDetail, ProjectEvent, ScriptRevision } from "@lvs/shared";
 import { jobs } from "../src/db/schema.js";
-import { createTestServer, multipart, TINY_PDF, type TestServer } from "./helpers.js";
+import { createTestServer, FakeParserRunner, multipart, TINY_PDF, type TestServer } from "./helpers.js";
 
 let t: TestServer;
 let projectId: string;
@@ -332,6 +332,52 @@ describe("providers", () => {
     expect((await t.app.inject({ method: "DELETE", url: `/providers/mock/voices/${voice.json().id}` })).statusCode).toBe(204);
     const mockAvatars = await t.app.inject({ method: "GET", url: "/providers/mock/avatars" });
     expect(mockAvatars.json()[0].id).toBe("mock-teacher");
+  });
+});
+
+describe("replacing the deck", () => {
+  it("keeps hidden pages hidden, keeps hand-written pages that vanished, and waits for running jobs", async () => {
+    const parser = new FakeParserRunner([
+      { pageNumber: 1, title: "Intro", plainText: "Welcome" },
+      { pageNumber: 2, title: "Methods", plainText: "ANOVA" },
+      { pageNumber: 3, title: "Results", plainText: "Effects" },
+    ]);
+    const t = await createTestServer({ parser });
+    try {
+      const id = (await t.app.inject({ method: "POST", url: "/projects", payload: { name: "replace" } })).json().id as string;
+      const get = async () => (await t.app.inject({ method: "GET", url: `/projects/${id}` })).json() as ProjectDetail;
+      await t.app.inject({ method: "POST", url: `/projects/${id}/source`, ...multipart("v1.pdf", TINY_PDF, "application/pdf") });
+      await t.ctx.runner.drain();
+      let d = await get();
+      await t.app.inject({ method: "PATCH", url: `/projects/${id}/slides/${d.slides[0]!.id}`, payload: { hidden: true } });
+      await t.app.inject({ method: "PUT", url: `/projects/${id}/scenes/${d.scenes[2]!.id}/script`, payload: { script: "我親手寫的結果說明。" } });
+
+      // While a job runs, the deck can't be replaced.
+      await t.app.inject({ method: "POST", url: `/projects/${id}/jobs`, payload: { type: "synthesize_speech", force: false } });
+      const refused = await t.app.inject({ method: "POST", url: `/projects/${id}/source`, ...multipart("v2.pdf", TINY_PDF, "application/pdf") });
+      expect(refused.statusCode).toBe(409);
+      await t.ctx.runner.drain();
+
+      // New deck: page 3 is gone, pages 1–2 unchanged.
+      parser.pages = parser.pages.slice(0, 2);
+      await t.app.inject({ method: "POST", url: `/projects/${id}/source`, ...multipart("v2.pdf", TINY_PDF, "application/pdf") });
+      await t.ctx.runner.drain();
+      d = await get();
+      expect(d.slides[0]!.hidden).toBe(true);
+      expect(d.slides).toHaveLength(3);
+      const kept = d.slides[2]!;
+      expect(kept.hidden).toBe(true);
+      const keptScene = d.scenes.find((sc) => sc.slideId === kept.id)!;
+      expect(d.scripts[keptScene.id]?.script).toBe("我親手寫的結果說明。");
+      // A hand-written script marked stale (slide changed) is confirmed by saving the same text.
+      const { scenes: scenesTable } = await import("../src/db/schema.js");
+      await t.ctx.db.update(scenesTable).set({ script: { status: "stale" } }).where(eq(scenesTable.id, keptScene.id));
+      expect((await get()).scenes.find((sc) => sc.id === keptScene.id)!.script.status).toBe("stale");
+      await t.app.inject({ method: "PUT", url: `/projects/${id}/scenes/${keptScene.id}/script`, payload: { script: "我親手寫的結果說明。" } });
+      expect((await get()).scenes.find((sc) => sc.id === keptScene.id)!.script.status).toBe("ready");
+    } finally {
+      await t.close();
+    }
   });
 });
 

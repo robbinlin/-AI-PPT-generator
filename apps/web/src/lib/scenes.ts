@@ -1,12 +1,15 @@
 import type { Asset, AvatarLayout, Language, Project, Scene, Slide } from "@lvs/shared";
+import { MUTED_SCENE_SEC } from "./timelineModel";
 
 /** Narration length of the visible (non-hidden) scenes, including each scene's tail pause. */
 export function computeTotalDuration(slides: readonly Slide[], scenes: readonly Scene[]): number {
   const hidden = new Set(slides.filter((s) => s.hidden).map((s) => s.id));
   let total = 0;
   for (const scene of scenes) {
-    if (hidden.has(scene.slideId) || scene.durationSec === undefined) continue;
-    total += scene.durationSec + scene.tailPauseSec;
+    if (hidden.has(scene.slideId)) continue;
+    // A muted page holds for a fixed time (like the render), whatever its old narration length.
+    if (scene.muted) total += MUTED_SCENE_SEC + scene.tailPauseSec;
+    else if (scene.durationSec !== undefined) total += scene.durationSec + scene.tailPauseSec;
   }
   return Math.round(total * 100) / 100;
 }

@@ -27,6 +27,7 @@ import {
   avatarEngine,
   buildCues,
   cuesToSrt,
+  rechunkCues,
   generateOutline as pipelineOutline,
   generateSceneScript,
   translateSceneScript,
@@ -268,6 +269,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         language: settings.language,
         outlineRevisionId: outline.id,
         inputHash: scriptInputHash({ slide, prev, next, outlineInputHash: outline.inputHash, settings }),
+        jobId: ctx.job.id,
         glossary: outline.glossary,
         estimatedDurationSec: result.estimatedDurationSec,
       });
@@ -437,7 +439,8 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         const avatarAsset = settings.avatar.enabled && !s.muted && s.avatar.status === "ready" && s.avatar.assetId ? assetMap.get(s.avatar.assetId) : undefined;
         const layout = s.avatarLayout ?? settings.avatar.layout;
         const chroma = avatarAsset?.producedBy.providerId ? CHROMA_KEY_BY_PROVIDER[avatarAsset.producedBy.providerId] : undefined;
-        const cues: SubtitleCue[] = settings.subtitles.enabled && !s.muted ? (s.subtitle.cues ?? []) : [];
+        // Re-wrapped for the current line width (a width change alone doesn't need new speech).
+        const cues: SubtitleCue[] = settings.subtitles.enabled && !s.muted ? rechunkCues(s.subtitle.cues ?? [], settings.subtitles.style.maxCharsPerLine) : [];
         renderScenes.push({
           sceneId: s.id,
           imagePath: await localFile(ctx.storage, image, workDir),

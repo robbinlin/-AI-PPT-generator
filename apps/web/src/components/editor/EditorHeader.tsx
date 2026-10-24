@@ -51,7 +51,7 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
   const { project, sourceDocument } = detail;
   const hasSlides = detail.slides.length > 0;
   // Same numbers as the timeline: estimated narration counts until the audio exists (then "約").
-  const timeline = buildTimeline(detail.scenes, detail.slides, detail.scripts);
+  const timeline = buildTimeline(detail.scenes, detail.slides, detail.scripts, undefined, detail.project.settings.transition);
   const durationLabel = fmt(timeline.blocks.some((b) => b.estimated) ? t.editor.totalDurationEstimated : t.editor.totalDuration, {
     time: formatDuration(timeline.totalSec),
   });

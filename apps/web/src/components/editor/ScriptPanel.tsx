@@ -52,7 +52,16 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const hasDraft = drafts[scene.id] !== undefined;
   const settings = detail.project.settings;
   const seconds = estimateSpeechSeconds(text, settings.language, settings.voice.speed);
-  const generating = scene.script.status === "generating" || scene.script.status === "queued";
+  // The server doesn't mark pages 「generating」: a script/translation job covering this page counts
+  // (an explicit page list, a forced 「全部」, or 補齊 for a page that has no script yet). Its result
+  // would replace whatever is typed meanwhile, so the box is locked until it's done.
+  const coveredByJob = detail.activeJobs.some((j) => {
+    if (j.type !== "generate_script" && j.type !== "translate_script") return false;
+    const p = j.payload as { sceneIds?: string[]; force?: boolean };
+    if (p.sceneIds?.length) return p.sceneIds.includes(scene.id);
+    return j.type === "translate_script" || !!p.force || scene.script.status === "missing" || scene.script.status === "failed";
+  });
+  const generating = scene.script.status === "generating" || scene.script.status === "queued" || coveredByJob;
   const noScript = !text.trim();
   const needs = (st: { status: string }) => st.status === "stale" || st.status === "failed";
   // A hidden page is not in the video: never offer to pay for its narration or presenter.
@@ -216,6 +225,15 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
       {!generating && scene.script.status === "stale" && revision?.source === "ai" && (
         <p className="rounded-md border border-sky-500/30 bg-sky-500/10 px-2.5 py-2 text-xs text-sky-100" data-testid="script-stale-hint">
           {t.script.staleScript}
+        </p>
+      )}
+      {/* A hand-written or translated script kept through a deck replacement onto a changed slide. */}
+      {!generating && scene.script.status === "stale" && revision && revision.source !== "ai" && (
+        <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-100" data-testid="script-slide-changed-hint">
+          {t.script.staleSlideChanged}{" "}
+          <button type="button" className="font-medium text-amber-200 underline hover:text-amber-50" onClick={() => void actions.saveScript(scene.id, text)}>
+            {t.script.confirmFits}
+          </button>
         </p>
       )}
       {!generating && noScript && !hidden && (

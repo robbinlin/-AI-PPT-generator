@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { and, asc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import { sha256Hex, SlideContent, type ParserManifest, type SceneAssetState } from "@lvs/shared";
 import { toScene, toSlide } from "../../db/mappers.js";
-import { assets, scenes, slides, sourceDocuments, type SceneRow, type SlideRow } from "../../db/schema.js";
+import { assets, scenes, scriptRevisions, slides, sourceDocuments, type SceneRow, type SlideRow } from "../../db/schema.js";
 import { NonRetryableJobError } from "../../errors.js";
 import type { JobHandler } from "../context.js";
 import { throwIfAborted } from "../context.js";
@@ -130,6 +130,12 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
         const slide = insertedSlides[i]!;
         const m = matched.get(slide.id);
         if (m) {
+          // A page hidden before stays hidden (13 of 18 hidden pages must not all come back).
+          const was = m.scene.slideId ? oldSlideById.get(m.scene.slideId) : undefined;
+          if (was?.hidden) {
+            const [h] = await tx.update(slides).set({ hidden: true }).where(eq(slides.id, slide.id)).returning();
+            insertedSlides[i] = h!;
+          }
           const staleScript: SceneAssetState =
             m.kind === "same" || m.scene.script.status === "missing" ? m.scene.script : { ...m.scene.script, status: "stale" };
           const [row] = await tx
@@ -148,7 +154,33 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
         }
       }
       const keptSceneIds = new Set(resultScenes.map((s) => s.id));
-      const orphanScenes = oldScenes.filter((s) => !keptSceneIds.has(s.id)).map((s) => s.id);
+      let orphanScenes = oldScenes.filter((s) => !keptSceneIds.has(s.id)).map((s) => s.id);
+      // A page with no match in the new deck whose script someone wrote or translated is kept, as a
+      // hidden page at the end (with its old slide picture), instead of losing the text and its
+      // history. The user can copy the text over or delete the page.
+      if (orphanScenes.length) {
+        const revs = await tx.select().from(scriptRevisions).where(inArray(scriptRevisions.sceneId, orphanScenes)).orderBy(desc(scriptRevisions.version));
+        const latest = new Map<string, (typeof revs)[number]>();
+        for (const r of revs) if (!latest.has(r.sceneId)) latest.set(r.sceneId, r);
+        const keep = orphanScenes.filter((id) => {
+          const src = latest.get(id)?.source;
+          return src === "user" || src === "translation";
+        });
+        for (const id of keep) {
+          const sc = oldScenes.find((s) => s.id === id)!;
+          const old = oldSlideById.get(sc.slideId);
+          if (!old) continue;
+          const index = insertedSlides.length;
+          const [copy] = await tx
+            .insert(slides)
+            .values({ ...old, id: randomUUID(), sourceDocumentId: docId, index, hidden: true })
+            .returning();
+          insertedSlides.push(copy!);
+          const [row] = await tx.update(scenes).set({ slideId: copy!.id, index }).where(eq(scenes.id, id)).returning();
+          resultScenes.push(row!);
+        }
+        orphanScenes = orphanScenes.filter((id) => !keep.includes(id));
+      }
       if (orphanScenes.length) await tx.delete(scenes).where(inArray(scenes.id, orphanScenes));
       // Old slides of THIS project (previous document versions) are no longer referenced by any scene.
       // The project filter is essential: without it every other project's slides would be wiped.

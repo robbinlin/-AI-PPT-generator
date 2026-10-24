@@ -57,7 +57,7 @@ function TimelineView({ actions }: { actions: Pick<EditorActions, "reorder" | "u
   }, [collapsed]);
 
   const model = useMemo(
-    () => (detail ? buildTimeline(detail.scenes, detail.slides, detail.scripts, resize ?? undefined) : { blocks: [], totalSec: 0 }),
+    () => (detail ? buildTimeline(detail.scenes, detail.slides, detail.scripts, resize ?? undefined, detail.project.settings.transition) : { blocks: [], totalSec: 0 }),
     [detail, resize],
   );
 

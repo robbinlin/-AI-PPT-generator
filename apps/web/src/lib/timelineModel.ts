@@ -1,7 +1,9 @@
-﻿import type { Scene, ScriptRevision, Slide } from "@lvs/shared";
+﻿import type { Scene, ScriptRevision, Slide, Transition } from "@lvs/shared";
 
 /** Hold time for a muted page, mirroring the API's MUTED_SCENE_SEC. */
 export const MUTED_SCENE_SEC = 3;
+/** Cross-fade length, mirroring the API's render plan (transitionDurationSec). */
+export const FADE_SEC = 0.4;
 /** Shown for pages with neither audio nor an estimate yet. */
 const FALLBACK_SEC = 5;
 
@@ -30,6 +32,8 @@ export function buildTimeline(
   slides: readonly Slide[],
   scripts: Readonly<Record<string, ScriptRevision | undefined>>,
   tailOverride?: { sceneId: string; tail: number },
+  /** Project-wide transition: a fade overlaps neighbouring pages, so the video is shorter. */
+  projectTransition: Transition = "none",
 ): { blocks: TimelineBlock[]; totalSec: number } {
   const slideById = new Map(slides.map((s) => [s.id, s]));
   const ordered = [...scenes].sort((a, b) => a.index - b.index);
@@ -48,8 +52,13 @@ export function buildTimeline(
     }
     const tail = tailOverride?.sceneId === scene.id ? tailOverride.tail : (scene.tailPauseSec ?? 0.5);
     const total = Math.max(0.5, narration + tail);
-    blocks.push({ scene, slide, index: blocks.length, pageNumber: slide.index + 1, start: t, narration, tail, total, estimated });
-    t += total;
+    // Same rule as the renderer: a fade into this page overlaps the previous one (at most half of either).
+    const prev = blocks.at(-1);
+    const fade = !!prev && (scene.transitionIn ?? projectTransition) === "fade";
+    const overlap = fade ? Math.min(FADE_SEC, prev.total / 2, total / 2) : 0;
+    const start = Math.max(0, t - overlap);
+    blocks.push({ scene, slide, index: blocks.length, pageNumber: slide.index + 1, start, narration, tail, total, estimated });
+    t = start + total;
   }
   return { blocks, totalSec: t };
 }

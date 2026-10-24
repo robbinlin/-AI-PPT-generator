@@ -7,7 +7,9 @@ import { describe, expect, it } from "vitest";
 import { ProjectSettings } from "@lvs/shared";
 import type { SceneRow, SlideRow } from "../src/db/schema.js";
 import { matchScenes, slideContentHash } from "../src/jobs/handlers/parse-document.js";
-import { audioInputHash, effectiveStatus, outlineInputHash, selectScenesToProcess } from "../src/jobs/hashes.js";
+import { audioInputHash, effectiveStatus, outlineInputHash, scriptInputHash, selectScenesToProcess } from "../src/jobs/hashes.js";
+import { withEffectiveStatuses } from "../src/services/projects.js";
+import { speechTargets } from "../src/jobs/plan.js";
 import { HttpError } from "@lvs/providers";
 import { providerErrorMessage } from "../src/errors.js";
 import { KeyCrypto } from "../src/services/providers.js";
@@ -140,5 +142,29 @@ describe("providerErrorMessage", () => {
     expect(providerErrorMessage(g)).toBe("HTTP 429 quota exceeded");
     expect(providerErrorMessage(new HttpError(502, "u", "<html>bad gateway</html>"))).toBe("HTTP 502 <html>bad gateway</html>");
     expect(providerErrorMessage(new Error("boom"))).toBe("boom");
+  });
+});
+
+describe("withEffectiveStatuses", () => {
+  it("compares a script with its visible neighbours, like generate_script writes it", () => {
+    const settings = ProjectSettings.parse({});
+    const slides = [0, 1, 2].map((i) => ({ id: `s${i}`, index: i, contentHash: `h${i}`, hidden: i === 1 }) as never as import("@lvs/shared").Slide);
+    const outlineHash = outlineInputHash(slides, settings);
+    // Page 3 was written next to page 1 (page 2 is hidden).
+    const hash = scriptInputHash({ slide: slides[2]!, prev: slides[0], next: undefined, outlineInputHash: outlineHash, settings });
+    const scene = { id: "c2", slideId: "s2", index: 2, script: { status: "ready", inputHash: hash }, audio: { status: "missing" }, subtitle: { status: "missing" }, avatar: { status: "missing" } } as never as import("@lvs/shared").Scene;
+    const others = [0, 1].map((i) => ({ id: `c${i}`, slideId: `s${i}`, index: i, script: { status: "missing" }, audio: { status: "missing" }, subtitle: { status: "missing" }, avatar: { status: "missing" } }) as never as import("@lvs/shared").Scene);
+    const scripts = { c2: { source: "ai", pronunciationText: "", subtitleText: "" } } as never;
+    const out = withEffectiveStatuses([...others, scene], new Map(slides.map((s) => [s.id, s])), scripts, undefined, settings);
+    expect(out[2]!.script.status).toBe("ready");
+  });
+});
+
+describe("retried forced jobs", () => {
+  it("skip the pages the same job already finished", () => {
+    const scene = (id: string, jobId: string) => ({ id, slideId: "a", index: 0, muted: false, audio: { status: "ready", jobId }, script: { status: "ready" }, avatar: { status: "missing" }, subtitle: { status: "missing" } });
+    const detail = { slides: [{ id: "a", hidden: false }], scenes: [scene("x", "J"), scene("y", "K")], scripts: { x: {}, y: {} } } as never;
+    expect(speechTargets(detail, { force: true, jobId: "J" }).map((s) => s.id)).toEqual(["y"]);
+    expect(speechTargets(detail, { force: true }).map((s) => s.id)).toEqual(["x", "y"]);
   });
 });

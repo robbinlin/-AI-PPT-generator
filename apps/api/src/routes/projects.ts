@@ -159,6 +159,14 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
   app.post<{ Params: { id: string } }>("/projects/:id/source", async (req) => {
     const { ownerId } = ctx.auth.resolve(req);
     const project = await requireProject(db, ownerId, req.params.id);
+    // Replacing the deck while pages are being written, voiced or animated would let those jobs
+    // keep working (and paying) for pages the new deck no longer has.
+    const [busy] = await db
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.projectId, project.id), inArray(jobs.type, [...PAGE_JOBS, "render_video"]), inArray(jobs.status, ["queued", "running"])))
+      .limit(1);
+    if (busy) throw conflict(`「${JOB_LABEL[busy.type] ?? "匯出影片"}」正在進行，請等它完成（或在「工作」停止）後再替換簡報。`);
     const part = await req.file();
     if (!part) throw badRequest("multipart field `file` is required");
 
@@ -309,6 +317,10 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
       ctx.bus.publish(project.id, { kind: "script", script: revision });
       if (fresh) ctx.bus.publish(project.id, { kind: "scene", scene: toScene(fresh) });
       await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, project.id));
+    } else if (scene.script.status === "stale") {
+      // Same text re-saved as 「講稿沒問題」: the scene may have turned ready (see createScriptRevision).
+      const [fresh] = await db.select().from(scenes).where(eq(scenes.id, scene.id)).limit(1);
+      if (fresh) ctx.bus.publish(project.id, { kind: "scene", scene: toScene(fresh) });
     }
     return revision;
   });

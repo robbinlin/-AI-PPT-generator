@@ -92,7 +92,8 @@ function SlidePreviewView({
             }
           />
         )}
-        {subtitles.enabled && cue && (
+        {/* A muted page has no subtitles in the video either. */}
+        {subtitles.enabled && cue && !scene?.muted && (
           <SubtitleOverlay
             text={cue}
             style={subtitles.style}
