@@ -26,7 +26,7 @@ export function currentRenderHashes(scenesInOrder: Scene[], slidesById: Map<stri
   const visible = scenesInOrder.filter((sc) => !slidesById.get(sc.slideId)?.hidden);
   const out: string[] = [];
   for (const preset of RENDER_PRESETS) {
-    for (const burnSubtitles of [true, false]) out.push(renderInputHash({ scenesInOrder: visible, settings, preset, burnSubtitles }));
+    for (const burnSubtitles of [true, false]) out.push(renderInputHash({ scenesInOrder: visible, settings, preset, burnSubtitles, slidesById }));
   }
   return out;
 }

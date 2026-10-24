@@ -54,10 +54,20 @@ export function avatarInputHash(args: { audioAssetId: string; settings: ProjectS
   });
 }
 
-export function renderInputHash(args: { scenesInOrder: Scene[]; settings: ProjectSettings; preset: string; burnSubtitles: boolean }): string {
+export function renderInputHash(args: {
+  scenesInOrder: Scene[];
+  settings: ProjectSettings;
+  preset: string;
+  burnSubtitles: boolean;
+  /** Slide content per scene: a deck replaced with an edited slide 5 makes the old video outdated. */
+  slidesById: Map<string, Slide>;
+}): string {
   return pipeline.renderInputHash({
     scenes: args.scenesInOrder.map((s) => ({
       sceneId: s.id,
+      // The slide's content hash, not its image id: every replacement makes new image ids, and an
+      // unchanged slide must not make the video outdated.
+      imageAssetId: args.slidesById.get(s.slideId)?.contentHash,
       audioAssetId: s.audio.assetId,
       avatarVideoAssetId: s.avatar.assetId,
       subtitleAssetId: s.subtitle.assetId,

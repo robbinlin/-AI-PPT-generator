@@ -311,7 +311,13 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
     if (notReady.length) {
       throw new NonRetryableJobError(`第 ${pageList(notReady)} 頁的語音不是最新的，請先按上方的「補齊語音」，或在「匯出影片」裡按「產生語音並匯出」`);
     }
-    const inputHash = renderInputHash({ scenesInOrder: visibleScenes, settings: detail.project.settings, preset: ctx.job.payload.preset, burnSubtitles: burn });
+    const inputHash = renderInputHash({
+      scenesInOrder: visibleScenes,
+      settings: detail.project.settings,
+      preset: ctx.job.payload.preset,
+      burnSubtitles: burn,
+      slidesById: new Map(detail.slides.map((sl) => [sl.id, sl])),
+    });
     await ctx.emit(0.05, "準備合成影片");
     const out = await seams.renderVideo({ ctx, scenesInOrder: visibleScenes, settings: detail.project.settings, inputHash, preset: ctx.job.payload.preset, burnSubtitles: burn });
     return { ...out, inputHash };

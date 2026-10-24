@@ -164,9 +164,10 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const [busy] = await db
       .select()
       .from(jobs)
-      .where(and(eq(jobs.projectId, project.id), inArray(jobs.type, [...PAGE_JOBS, "render_video"]), inArray(jobs.status, ["queued", "running"])))
+      .where(and(eq(jobs.projectId, project.id), inArray(jobs.type, [...PAGE_JOBS, "render_video", "parse_document"]), inArray(jobs.status, ["queued", "running"])))
       .limit(1);
-    if (busy) throw conflict(`「${JOB_LABEL[busy.type] ?? "匯出影片"}」正在進行，請等它完成（或在「工作」停止）後再替換簡報。`);
+    // Two decks read at once would delete each other's pages (and the scripts on them).
+    if (busy) throw conflict(`「${JOB_LABEL[busy.type] ?? (busy.type === "parse_document" ? "解析簡報" : "匯出影片")}」正在進行，請等它完成（或在「工作」停止）後再替換簡報。`);
     const part = await req.file();
     if (!part) throw badRequest("multipart field `file` is required");
 

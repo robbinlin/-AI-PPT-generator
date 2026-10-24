@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { ProjectSettings } from "@lvs/shared";
 import type { SceneRow, SlideRow } from "../src/db/schema.js";
 import { matchScenes, slideContentHash } from "../src/jobs/handlers/parse-document.js";
-import { audioInputHash, effectiveStatus, outlineInputHash, scriptInputHash, selectScenesToProcess } from "../src/jobs/hashes.js";
+import { audioInputHash, effectiveStatus, outlineInputHash, renderInputHash, scriptInputHash, selectScenesToProcess } from "../src/jobs/hashes.js";
 import { withEffectiveStatuses } from "../src/services/projects.js";
 import { speechTargets } from "../src/jobs/plan.js";
 import { HttpError } from "@lvs/providers";
@@ -166,5 +166,16 @@ describe("retried forced jobs", () => {
     const detail = { slides: [{ id: "a", hidden: false }], scenes: [scene("x", "J"), scene("y", "K")], scripts: { x: {}, y: {} } } as never;
     expect(speechTargets(detail, { force: true, jobId: "J" }).map((s) => s.id)).toEqual(["y"]);
     expect(speechTargets(detail, { force: true }).map((s) => s.id)).toEqual(["x", "y"]);
+  });
+});
+
+describe("renderInputHash", () => {
+  it("changes when a page's slide content changes (deck replaced with an edited slide)", () => {
+    const settings = ProjectSettings.parse({});
+    const scene = { id: "c1", slideId: "s1", muted: false, tailPauseSec: 0.5, audio: { status: "ready", assetId: "a" }, avatar: { status: "missing" }, subtitle: { status: "ready", assetId: "srt" } } as never as import("@lvs/shared").Scene;
+    const hash = (contentHash: string) =>
+      renderInputHash({ scenesInOrder: [scene], settings, preset: "hd_1080p", burnSubtitles: true, slidesById: new Map([["s1", { id: "s1", contentHash } as never]]) });
+    expect(hash("v1")).toBe(hash("v1"));
+    expect(hash("v1")).not.toBe(hash("v2"));
   });
 });

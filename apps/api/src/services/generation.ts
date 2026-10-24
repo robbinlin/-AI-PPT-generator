@@ -449,7 +449,9 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         const width = settings.subtitles.style.maxCharsPerLine;
         const built = subtitleBuiltWidth({ subtitleInputHash: s.subtitle.inputHash, audioInputHash: s.audio.inputHash, subtitleText: subtitleTextByScene.get(s.id) ?? "", settings });
         const stored = s.subtitle.cues ?? [];
-        const cues: SubtitleCue[] = settings.subtitles.enabled && !s.muted ? (built !== undefined && built !== width ? rechunkCues(stored, width) : stored) : [];
+        // Width unknown (text changed, or cues from an older recipe): re-wrap only if a line is too long.
+        const tooLong = built === undefined && stored.some((c) => c.text.split("\n").some((l) => [...l].length > width));
+        const cues: SubtitleCue[] = settings.subtitles.enabled && !s.muted ? ((built !== undefined && built !== width) || tooLong ? rechunkCues(stored, width) : stored) : [];
         renderScenes.push({
           sceneId: s.id,
           imagePath: await localFile(ctx.storage, image, workDir),

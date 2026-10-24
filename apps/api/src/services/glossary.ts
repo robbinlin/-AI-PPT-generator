@@ -6,7 +6,7 @@ import type { AppContext } from "../context.js";
 import { toOutline, toScene } from "../db/mappers.js";
 import { outlineRevisions, scenes } from "../db/schema.js";
 import { conflict } from "../errors.js";
-import { audioInputHash, subtitleInputHash } from "../jobs/hashes.js";
+import { audioInputHash, subtitleBuiltWidth, subtitleInputHash } from "../jobs/hashes.js";
 import { getProjectDetail } from "./projects.js";
 import { createScriptRevision, pipelineDeriveTexts } from "./scripts.js";
 
@@ -94,7 +94,13 @@ export async function updateGlossary(
       const aHash = audioInputHash({ pronunciationText: rev.pronunciationText, settings, glossaryReadings: next });
       if (scene.audio.status === "ready") set.audio = { ...sceneRow.audio, status: "ready", inputHash: aHash };
       if (scene.subtitle.status === "ready") {
-        set.subtitle = { ...sceneRow.subtitle, status: "ready", inputHash: subtitleInputHash({ audioInputHash: aHash, subtitleText: rev.subtitleText, settings }) };
+        // Keep the line width the cues were actually built with (a width change since is re-wrapped
+        // at export): stamping today's width would make the export use the old wrapping as-is.
+        const built =
+          subtitleBuiltWidth({ subtitleInputHash: sceneRow.subtitle.inputHash, audioInputHash: sceneRow.audio.inputHash, subtitleText: rev.subtitleText, settings }) ??
+          settings.subtitles.style.maxCharsPerLine;
+        const asBuilt = { ...settings, subtitles: { ...settings.subtitles, style: { ...settings.subtitles.style, maxCharsPerLine: built } } };
+        set.subtitle = { ...sceneRow.subtitle, status: "ready", inputHash: subtitleInputHash({ audioInputHash: aHash, subtitleText: rev.subtitleText, settings: asBuilt }) };
       }
       if (Object.keys(set).length === 0) continue;
       await db.update(scenes).set(set).where(eq(scenes.id, scene.id));

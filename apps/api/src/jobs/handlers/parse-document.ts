@@ -130,10 +130,11 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
         const slide = insertedSlides[i]!;
         const m = matched.get(slide.id);
         if (m) {
-          // A page the user hid stays hidden when it comes back unchanged (13 of 18 hidden pages must
-          // not all return). A page kept from an earlier replacement that is back in the deck shows again.
+          // A page the user hid stays hidden, also when its slide was edited (a new date in every
+          // footer must not bring 13 hidden pages back). A page kept from an earlier replacement
+          // (page number past KEPT_PAGE_BASE) that is back in the deck shows again.
           const was = m.scene.slideId ? oldSlideById.get(m.scene.slideId) : undefined;
-          if (m.kind === "same" && was?.hidden && was.pageNumber < KEPT_PAGE_BASE) {
+          if (was?.hidden && was.pageNumber < KEPT_PAGE_BASE) {
             const [h] = await tx.update(slides).set({ hidden: true }).where(eq(slides.id, slide.id)).returning();
             insertedSlides[i] = h!;
           }

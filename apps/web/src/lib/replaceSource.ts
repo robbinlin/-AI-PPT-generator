@@ -3,7 +3,7 @@ import { fmt, t } from "../i18n";
 import { confirmAction } from "../store/confirmStore";
 import { toast } from "../store/toastStore";
 
-const BLOCKING = new Set(["generate_script", "synthesize_speech", "generate_avatar", "translate_script", "render_video"]);
+const BLOCKING = new Set(["generate_script", "synthesize_speech", "generate_avatar", "translate_script", "render_video", "parse_document"]);
 import { avatarInVideo } from "@lvs/shared";
 
 /**

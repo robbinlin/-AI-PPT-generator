@@ -16,7 +16,7 @@ export function renderScriptDocument(detail: ProjectDetail, format: "txt" | "md"
     const slide = slidesById.get(scene.slideId);
     if (!slide || slide.hidden) continue;
     const rev = detail.scripts[scene.id];
-    const title = slide.content.title?.trim() || `第 ${slide.pageNumber} 頁`;
+    const title = slide.content.title?.trim() || `第 ${scene.index + 1} 頁`;
     if (format === "md") {
       parts.push(`## ${scene.index + 1}. ${title}\n`);
       parts.push(rev ? `${rev.script.trim()}\n` : "_（尚未生成講稿）_\n");

@@ -358,12 +358,12 @@ describe("replacing the deck", () => {
       expect(refused.statusCode).toBe(409);
       await t.ctx.runner.drain();
 
-      // New deck: page 3 is gone, pages 1–2 unchanged.
-      parser.pages = parser.pages.slice(0, 2);
+      // New deck: page 3 is gone, page 1 (hidden) got a small edit, page 2 unchanged.
+      parser.pages = [{ pageNumber: 1, title: "Intro", plainText: "Welcome (2026)" }, parser.pages[1]!];
       await t.app.inject({ method: "POST", url: `/projects/${id}/source`, ...multipart("v2.pdf", TINY_PDF, "application/pdf") });
       await t.ctx.runner.drain();
       d = await get();
-      expect(d.slides[0]!.hidden).toBe(true);
+      expect(d.slides[0]!.hidden).toBe(true); // hidden by the user, edited: still hidden
       expect(d.slides).toHaveLength(3);
       const kept = d.slides[2]!;
       expect(kept.hidden).toBe(true);
@@ -387,6 +387,9 @@ describe("replacing the deck", () => {
       await t.app.inject({ method: "POST", url: `/projects/${id}/source`, ...multipart("v3.pdf", TINY_PDF, "application/pdf") });
       const during = await t.app.inject({ method: "POST", url: `/projects/${id}/jobs`, payload: { type: "synthesize_speech", force: false } });
       expect(during.statusCode).toBe(409);
+      // A second deck while the first is still being read would delete its pages: refused.
+      const second = await t.app.inject({ method: "POST", url: `/projects/${id}/source`, ...multipart("v4.pdf", TINY_PDF, "application/pdf") });
+      expect(second.statusCode).toBe(409);
       await t.ctx.runner.drain();
       d = await get();
       expect(d.slides).toHaveLength(3);
