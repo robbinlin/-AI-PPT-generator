@@ -8,8 +8,11 @@ import type {
   Transition,
   UpdateProjectRequest,
 } from "@lvs/shared";
+import { Languages } from "lucide-react";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { useStudioLists } from "../../hooks/useStudioLists";
+import { useTranslateProject } from "../../hooks/useTranslateProject";
+import { Button } from "../ui/Button";
 import { t } from "../../i18n";
 import { useEditor } from "../../store/editorStore";
 import { Field, Select, type Option } from "../ui/Field";
@@ -60,7 +63,9 @@ export function SettingsPanel({
   actions: Pick<EditorActions, "updateProject" | "changeSettings">;
 }) {
   const project = useEditor((s) => s.detail?.project);
+  const hasSlides = useEditor((s) => (s.detail?.slides.length ?? 0) > 0);
   const { providers } = useStudioLists(project, actions);
+  const translate = useTranslateProject();
   if (!project) return null;
   const s = project.settings;
   const patch = (settings: SettingsPatch) =>
@@ -108,6 +113,15 @@ export function SettingsPanel({
             />
           </Field>
         </div>
+        {s.language !== "en" && hasSlides && (
+          <div className="flex items-center gap-2 rounded-md border border-neutral-800 px-3 py-2">
+            <Languages className="size-4 shrink-0 text-neutral-400" aria-hidden />
+            <p className="flex-1 text-xs text-neutral-400">{t.projects.translateHint}</p>
+            <Button size="sm" onClick={() => void translate({ id: project.id, name: project.name })} data-testid="translate-project">
+              {t.translate.settingsButton}
+            </Button>
+          </div>
+        )}
         {s.audience === "custom" && (
           <Field label={t.settings.audienceNote}>
             <CommitText

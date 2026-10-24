@@ -4,13 +4,14 @@
  * clearly marked function that @lvs/pipeline / @lvs/providers will fill in.
  */
 import { and, desc, eq } from "drizzle-orm";
-import type { OutlineRevision, ProjectSettings, Scene, ScriptRevision, Slide } from "@lvs/shared";
+import type { GlossaryEntry, Language, OutlineRevision, ProjectSettings, Scene, ScriptRevision, Slide } from "@lvs/shared";
 import { toScene } from "../../db/mappers.js";
 import { assets, projects, scenes } from "../../db/schema.js";
 import { NonRetryableJobError, NotImplementedJobError } from "../../errors.js";
 import { getProjectDetail } from "../../services/projects.js";
-import type { JobContext, JobHandler } from "../context.js";
-import { audioInputHash, avatarInputHash, outlineInputHash, renderInputHash } from "../hashes.js";
+import { createScriptRevision } from "../../services/scripts.js";
+import { throwIfAborted, type JobContext, type JobHandler } from "../context.js";
+import { audioInputHash, avatarInputHash, outlineInputHash, renderInputHash, scriptInputHash } from "../hashes.js";
 import { audioReady, avatarTargets, narratedCandidates, pageList, pageNo, scriptTargets, speechTargets, visibleScenesOf } from "../plan.js";
 
 async function loadDetail(ctx: JobContext) {
@@ -88,6 +89,20 @@ export interface GenerationSeams {
   generateAvatar(args: { ctx: JobContext; scene: Scene; audioAssetId: string; settings: ProjectSettings; inputHash: string }): Promise<void>;
   /** TODO(render): build RenderSpec from scenes/assets (storage.localPath), run @lvs/render, store `video` + `subtitle` assets. */
   renderVideo(args: { ctx: JobContext; scenesInOrder: Scene[]; settings: ProjectSettings; inputHash: string; preset: string; burnSubtitles: boolean }): Promise<{ videoAssetId: string; srtAssetId?: string }>;
+  /** One page's narration translated by the LLM, with the spoken + subtitle texts for the target language. */
+  translateScript(args: {
+    ctx: JobContext;
+    settings: ProjectSettings;
+    from: Language;
+    to: Language;
+    script: string;
+    previousScript?: string;
+    nextScript?: string;
+    glossary: GlossaryEntry[];
+    title: string;
+    pageNumber: number;
+    pageCount: number;
+  }): Promise<{ script: string; pronunciationText: string; subtitleText: string; estimatedDurationSec: number }>;
 }
 
 export const unimplementedSeams: GenerationSeams = {
@@ -105,6 +120,9 @@ export const unimplementedSeams: GenerationSeams = {
   },
   renderVideo: async () => {
     throw new NotImplementedJobError("render_video");
+  },
+  translateScript: async () => {
+    throw new NotImplementedJobError("translate_script");
   },
 };
 
@@ -292,5 +310,78 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
     return { ...out, inputHash };
   };
 
-  return { generateOutline, generateScript, synthesizeSpeech, generateAvatar, renderVideo };
+  /**
+   * Fills a translated copy's scripts from its source project: page i of the copy gets page i's
+   * latest script, translated with the neighbouring pages and the source glossary as context.
+   * The scripts count as AI-written and current for the copy's slides, so nothing reads 需更新.
+   */
+  const translateScripts: JobHandler<{ type: "translate_script"; sourceProjectId: string; targetLanguage: Language }> = async (ctx) => {
+    const { project, detail, slidesById } = await loadDetail(ctx);
+    const source = await getProjectDetail(ctx.db, project.ownerId, ctx.job.payload.sourceProjectId);
+    const settings = detail.project.settings;
+    const from = source.project.settings.language;
+    const to = ctx.job.payload.targetLanguage;
+    const srcByIndex = new Map(source.scenes.map((s) => [s.index, s]));
+    const srcText = (index: number) => {
+      const sc = srcByIndex.get(index);
+      return sc ? (source.scripts[sc.id]?.script ?? "").trim() : "";
+    };
+    // Same slide order and outline hash withEffectiveStatuses uses, so the scripts read as current.
+    const orderedSlides = detail.scenes.map((s) => slidesById.get(s.slideId)).filter((s): s is Slide => !!s);
+    const outlineHash = detail.outline?.inputHash ?? outlineInputHash(orderedSlides, settings);
+    const targets = detail.scenes.filter((s) => srcText(s.index));
+    const plan = progressPlan(targets, targets, (s) => srcText(s.index).length);
+    let translated = 0;
+    // Pages are independent (context comes from the source text), so a few run at once.
+    const concurrency = Math.max(1, Math.min(ctx.config.SCRIPT_CONCURRENCY ?? 3, targets.length));
+    let cursor = 0;
+    const worker = async () => {
+      for (;;) {
+        const scene = targets.at(cursor++);
+        if (!scene || ctx.signal.aborted) return;
+        await translateOne(scene);
+      }
+    };
+    const translateOne = async (scene: Scene) => {
+      throwIfAborted(ctx.signal);
+      const i = detail.scenes.findIndex((s) => s.id === scene.id);
+      await ctx.emit(plan.start(scene), `正在翻譯第 ${pageNo(scene)} 頁講稿`);
+      const out = await seams.translateScript({
+        ctx,
+        settings,
+        from,
+        to,
+        script: srcText(scene.index),
+        previousScript: srcText(scene.index - 1) || undefined,
+        nextScript: srcText(scene.index + 1) || undefined,
+        glossary: source.outline?.glossary ?? [],
+        title: source.project.name,
+        pageNumber: pageNo(scene),
+        pageCount: detail.scenes.length,
+      });
+      const slide = slidesById.get(scene.slideId);
+      const [row] = await ctx.db.select().from(scenes).where(eq(scenes.id, scene.id)).limit(1);
+      if (!slide || !row) return;
+      const { revision } = await createScriptRevision(ctx.db, {
+        scene: row,
+        script: out.script,
+        pronunciationText: out.pronunciationText,
+        subtitleText: out.subtitleText,
+        source: "ai",
+        language: to,
+        inputHash: scriptInputHash({ slide, prev: orderedSlides[i - 1], next: orderedSlides[i + 1], outlineInputHash: outlineHash, settings }),
+        estimatedDurationSec: out.estimatedDurationSec,
+      });
+      ctx.publish({ kind: "script", script: revision });
+      const [fresh] = await ctx.db.select().from(scenes).where(eq(scenes.id, scene.id)).limit(1);
+      if (fresh) ctx.publish({ kind: "scene", scene: toScene(fresh) });
+      translated++;
+      await ctx.emit(plan.finish(scene), `第 ${pageNo(scene)} 頁翻譯完成`);
+    };
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    throwIfAborted(ctx.signal);
+    return { translated, skipped: detail.scenes.length - translated };
+  };
+
+  return { generateOutline, generateScript, synthesizeSpeech, generateAvatar, renderVideo, translateScripts };
 }

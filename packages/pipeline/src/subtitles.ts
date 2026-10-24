@@ -33,31 +33,54 @@ export function chunkSentence(sentence: string, maxChars: number, maxLines = MAX
   const chunks: string[] = [];
   let cur = "";
   for (const c of clauses) {
-    if (cur && displayWidth(cur + c) > maxWidth) {
+    if (cur && displayWidth(cur + c) > maxWidth && displayWidth(c) <= maxWidth) {
       chunks.push(cur.trim());
       cur = c;
     } else {
-      cur += c;
+      // A clause too long for one cue anyway is joined to what precedes it and split evenly
+      // below, so a short lead-in ("In this class,") never flashes by as a cue of its own.
+      cur += cur && !/\s$/.test(cur) && /^[A-Za-z0-9]/.test(c) ? ` ${c}` : c;
     }
   }
   if (cur.trim()) chunks.push(cur.trim());
-  // hard-wrap anything still too wide
-  return chunks.flatMap((c) => (displayWidth(c) <= maxWidth ? [c] : hardWrap(c, maxWidth)));
+  // split anything still too wide into evenly sized pieces
+  return chunks.flatMap((c) => (displayWidth(c) <= maxWidth ? [c] : balancedWrap(c, maxWidth)));
 }
 
-function hardWrap(text: string, maxWidth: number): string[] {
-  const out: string[] = [];
-  let cur = "";
-  for (const token of tokensForWrap(text)) {
-    if (cur && displayWidth(cur + token) > maxWidth) {
-      out.push(cur.trim());
-      cur = token.trimStart();
-    } else {
-      cur += token;
+/**
+ * Split `text` into the fewest pieces that fit `maxWidth`, of about equal width, at word
+ * (Latin) or character (CJK) boundaries. Greedy filling would leave a stub such as
+ * "Consumption." as a last piece that is on screen for a fraction of a second.
+ */
+export function balancedWrap(text: string, maxWidth: number): string[] {
+  const tokens = tokensForWrap(text);
+  const total = displayWidth(text);
+  for (let pieces = Math.ceil(total / maxWidth); pieces <= tokens.length; pieces++) {
+    const target = total / pieces;
+    const out: string[] = [];
+    let cur = "";
+    let fits = true;
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i]!;
+      const left = pieces - out.length; // pieces still to fill, this one included
+      const next = cur + token;
+      // Close the piece once it reaches the target width (or the next token would not fit),
+      // keeping enough tokens for the pieces after it.
+      if (cur && left > 1 && (displayWidth(next) > maxWidth || displayWidth(cur) >= target - displayWidth(token) / 2) && tokens.length - i >= left - 1) {
+        out.push(cur.trim());
+        cur = token.trimStart();
+      } else {
+        cur = next;
+      }
+      if (displayWidth(cur.trim()) > maxWidth) {
+        fits = false;
+        break;
+      }
     }
+    if (cur.trim()) out.push(cur.trim());
+    if (fits && out.every((p) => displayWidth(p) <= maxWidth)) return out;
   }
-  if (cur.trim()) out.push(cur.trim());
-  return out;
+  return [text.trim()];
 }
 
 /** Wrap tokens: CJK per char, Latin per word (with its trailing space). */
@@ -81,8 +104,31 @@ function tokensForWrap(text: string): string[] {
   return toks;
 }
 
-/** Insert line breaks so no line exceeds `maxChars` columns, breaking at clause punctuation when possible. */
+/**
+ * Insert line breaks so no line exceeds `maxChars` columns. A cue that fits two lines gets
+ * exactly two: at clause punctuation when both halves fit, else at the most even word or
+ * character boundary — a comma break that pushed the rest onto a third line is never taken.
+ */
 export function wrapCueLines(text: string, maxChars: number): string {
+  const trimmed = text.trim();
+  if (displayWidth(trimmed) <= maxChars) return trimmed;
+  if (displayWidth(trimmed) <= maxChars * MAX_LINES) {
+    const toks = tokensForWrap(trimmed);
+    let best: { at: number; score: number } | undefined;
+    for (let i = 1; i < toks.length; i++) {
+      const a = toks.slice(0, i).join("").trim();
+      const b = toks.slice(i).join("").trim();
+      if (!a || !b || displayWidth(a) > maxChars || displayWidth(b) > maxChars) continue;
+      const clause = /[，、,；;：:]$/.test(a);
+      const score = Math.abs(displayWidth(a) - displayWidth(b)) - (clause ? maxChars * 0.35 : 0);
+      if (!best || score < best.score) best = { at: i, score };
+    }
+    if (best) return `${toks.slice(0, best.at).join("").trim()}\n${toks.slice(best.at).join("").trim()}`;
+  }
+  return greedyWrapLines(trimmed, maxChars);
+}
+
+function greedyWrapLines(text: string, maxChars: number): string {
   const lines: string[] = [];
   let rest = text.trim();
   while (displayWidth(rest) > maxChars) {
@@ -142,7 +188,10 @@ export function buildCues(input: BuildCuesInput): SubtitleCue[] {
   if (ts && ts.length > 0) {
     timing = alignToTimestamps(cueUnits, ts, prop);
   } else if (input.pauses && input.pauses.length > 0) {
-    timing = alignToPauses(prop, input.pauses, input.durationSec);
+    // Only a cue that ends at punctuation can end at a pause: a sentence split mid-way has no
+    // pause there, and snapping to a nearby breath squeezed one cue to a third of a second.
+    const snappable = texts.slice(0, -1).map((t) => /[。！？!?.…，、,；;：:]["」』）)]*$/u.test(t.trim()));
+    timing = alignToPauses(prop, input.pauses, input.durationSec, snappable);
   }
 
   // Monotonic clean-up.
@@ -302,6 +351,8 @@ export function alignToPauses(
   prop: Array<{ start: number; end: number }>,
   pauses: AudioPause[],
   durationSec: number,
+  /** Per boundary (cue i | cue i+1): may it sit on a pause? Absent = all may. */
+  snappable?: boolean[],
 ): Array<{ start: number; end: number }> {
   const n = prop.length;
   if (n < 2) return prop;
@@ -315,7 +366,8 @@ export function alignToPauses(
   const maxDrift = Math.max(1.5, durationSec * 0.12);
   const mid = inner.map((p) => (p.startSec + p.endSec) / 2);
   // Longer pauses are more likely sentence ends than comma breaths; give them a small head start.
-  const cost = (b: number, j: number) => Math.abs(mid[j]! - estimates[b]!) - 0.6 * Math.min(1, inner[j]!.endSec - inner[j]!.startSec);
+  const cost = (b: number, j: number) =>
+    snappable && snappable[b] === false ? Number.POSITIVE_INFINITY : Math.abs(mid[j]! - estimates[b]!) - 0.6 * Math.min(1, inner[j]!.endSec - inner[j]!.startSec);
   // dp[b][j]: best total cost assigning boundaries 0..b with boundary b -> pause j (or unmatched).
   const INF = Number.POSITIVE_INFINITY;
   const B = estimates.length;

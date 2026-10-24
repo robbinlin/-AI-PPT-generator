@@ -6,3 +6,4 @@ export * from "./estimate.js";
 export * from "./prompts.js";
 export * from "./outline.js";
 export * from "./script.js";
+export * from "./translate.js";

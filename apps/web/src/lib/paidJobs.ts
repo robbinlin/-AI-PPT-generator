@@ -33,6 +33,8 @@ export function estimateWaitSec(type: EstimateType, estimate: CostEstimate, avat
       return avatarProviderId === "local" ? 20 + seconds * 3 : pages * 90 + seconds * 6;
     case "render_video":
       return 20 + seconds * 0.5;
+    case "translate_script":
+      return pages * 4;
   }
 }
 

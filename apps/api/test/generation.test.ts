@@ -46,7 +46,13 @@ const seams: GenerationSeams = {
     const videoAssetId = await fakeAsset(ctx.db, ctx.job.projectId, "video", inputHash, ctx.job.id);
     return { videoAssetId };
   },
+  async translateScript({ script, previousScript, pageNumber, to }) {
+    translateCalls.push({ script, previousScript, pageNumber, to });
+    const text = `Page ${pageNumber} in English.`;
+    return { script: text, pronunciationText: text, subtitleText: text, estimatedDurationSec: 2 };
+  },
 };
+const translateCalls: Array<{ script: string; previousScript?: string; pageNumber: number; to: string }> = [];
 
 let t: TestServer;
 let projectId: string;
@@ -229,6 +235,46 @@ describe("generation handlers", () => {
     const after = await detail();
     expect(after.scenes.map((s) => s.avatar.assetId)).toEqual(original);
     expect(after.scenes.every((s) => s.avatar.status === "ready")).toBe(true);
+  });
+
+  it("建立英文版 copies the deck under the new project and fills it with translated, current scripts", async () => {
+    const src = await detail();
+    const est = await estimate("type=translate_script");
+    expect(est.sceneCount).toBe(3);
+    expect(est.lines.map((l) => l.unit)).toEqual(["tokens_in", "tokens_out"]); // one LLM call per page (the mock LLM is free)
+
+    const res = await t.app.inject({ method: "POST", url: `/projects/${projectId}/translations`, payload: { language: "en" } });
+    expect(res.statusCode).toBe(201);
+    const { project, job } = res.json() as { project: Project; job: Job };
+    expect(project.name).toBe("gen（英文版）");
+    expect(project.settings.language).toBe("en");
+    expect(project.settings.voice).toEqual(src.project.settings.voice);
+    expect(job.type).toBe("translate_script");
+    await t.ctx.runner.drain();
+
+    const en = (await t.app.inject({ method: "GET", url: `/projects/${project.id}` })).json() as ProjectDetail;
+    expect(en.slides).toHaveLength(src.slides.length);
+    expect(en.slides.map((s) => s.content.title)).toEqual(src.slides.map((s) => s.content.title));
+    expect(en.slides.map((s) => s.hidden)).toEqual(src.slides.map((s) => s.hidden));
+    // Own assets and files: the copy's slide images are served for the copy, not borrowed.
+    for (const s of en.slides) {
+      expect(src.slides.some((o) => o.imageAssetId === s.imageAssetId)).toBe(false);
+      const url = await t.app.inject({ method: "GET", url: `/projects/${project.id}/assets/${s.imageAssetId}/url` });
+      expect(url.statusCode).toBe(200);
+    }
+    expect(translateCalls.map((c) => c.pageNumber)).toEqual([1, 2, 3]);
+    expect(translateCalls.every((c) => c.to === "en")).toBe(true);
+    expect(translateCalls[1]!.previousScript).toBe(src.scripts[src.scenes[0]!.id]!.script);
+    for (const sc of en.scenes) {
+      expect(en.scripts[sc.id]?.script).toBe(`Page ${sc.index + 1} in English.`);
+      expect(sc.script.status).toBe("ready"); // current, not 需更新
+      expect(sc.audio.status).toBe("missing"); // English speech is made in the copy
+      expect(sc.avatar.status).toBe("missing");
+    }
+    // The original is untouched.
+    const after = await detail();
+    expect(after.scenes.map((s) => after.scripts[s.id]?.script)).toEqual(src.scenes.map((s) => src.scripts[s.id]?.script));
+    expect(after.project.settings.language).toBe(src.project.settings.language);
   });
 
   it("zh-TW errors for a disabled avatar and a project without slides", async () => {

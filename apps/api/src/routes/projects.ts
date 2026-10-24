@@ -9,6 +9,7 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import {
   CreateProjectRequest,
+  CreateTranslationRequest,
   EnqueueJobRequest,
   JobType,
   ProjectSettings,
@@ -26,6 +27,7 @@ import { renderScriptDocument } from "../jobs/handlers/export-script.js";
 import { estimateJob } from "../services/estimate.js";
 import { getProjectDetail, latestOutline, latestSourceDocument, projectListExtras, requireProject } from "../services/projects.js";
 import { createScriptRevision } from "../services/scripts.js";
+import { createTranslatedProject } from "../services/translation.js";
 import { SOURCE_MIME, sniffSourceKind } from "../util/magic.js";
 import { parse } from "../util/validate.js";
 
@@ -66,6 +68,15 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const [row] = await db.insert(projects).values({ id: randomUUID(), ownerId, name: body.name, settings }).returning();
     reply.code(201);
     return toProject(row!);
+  });
+
+  // A copy of the project in another language (deck copied, scripts translated by a job).
+  app.post<{ Params: { id: string } }>("/projects/:id/translations", async (req, reply) => {
+    const { ownerId } = ctx.auth.resolve(req);
+    const body = parse(CreateTranslationRequest, req.body);
+    const result = await createTranslatedProject(ctx, ownerId, req.params.id, body.language, body.name);
+    reply.code(201);
+    return result;
   });
 
   app.get<{ Params: { id: string } }>("/projects/:id", async (req) => {

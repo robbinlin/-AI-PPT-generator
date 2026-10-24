@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SubtitleStyle } from "@lvs/shared";
-import { splitSentences } from "../src/segment.js";
-import { alignToPauses, assColor, buildCues, chunkSentence, cuesToAss, cuesToSrt, formatAssTime, formatSrtTime, segmentCueTexts, wrapCueLines } from "../src/subtitles.js";
+import { displayWidth, splitSentences } from "../src/segment.js";
+import { alignToPauses, assColor, balancedWrap, buildCues, chunkSentence, cuesToAss, cuesToSrt, formatAssTime, formatSrtTime, segmentCueTexts, wrapCueLines } from "../src/subtitles.js";
 
 describe("segmentation", () => {
   it("splits sentences on CJK and Latin terminators", () => {
@@ -15,9 +15,37 @@ describe("segmentation", () => {
     for (const c of chunks) expect(Array.from(c).length).toBeLessThanOrEqual(24);
     expect(chunks.length).toBeGreaterThan(1);
   });
-  it("hard-wraps text without punctuation", () => {
+  it("splits text without punctuation into even pieces, not full pieces plus a stub", () => {
     const chunks = chunkSentence("一".repeat(50), 10);
-    expect(chunks.map((c) => c.length)).toEqual([20, 20, 10]);
+    expect(chunks.map((c) => c.length)).toEqual([17, 17, 16]);
+  });
+  it("English: no one-word stub cue and no lone lead-in clause (live 建立英文版 output)", () => {
+    const a = "The topic we are going to explore today is the effect of High-Intensity Interval Training on Maximum Oxygen Consumption.";
+    const ca = chunkSentence(a, 28);
+    expect(ca.join(" ")).toBe(a);
+    expect(ca.length).toBe(2);
+    expect(Math.min(...ca.map((c) => c.split(" ").length))).toBeGreaterThan(5);
+    const b = "In this class, we will examine relevant intervention studies to help you gain a deep understanding of the differences in physiological adaptations brought about by different training modalities.";
+    const cb = chunkSentence(b, 28);
+    expect(cb.join(" ")).toBe(b);
+    expect(cb[0]).not.toBe("In this class,");
+    for (const c of cb) expect(displayWidth(c)).toBeLessThanOrEqual(56);
+    expect(balancedWrap("short", 28)).toEqual(["short"]);
+  });
+  it("wrapCueLines keeps a two-line cue on two lines, preferring a comma only when both halves fit", () => {
+    const cue = "In this class, we will examine relevant intervention studies to help you gain a deep understanding";
+    const lines = wrapCueLines(cue, 28).split("\n");
+    expect(lines).toHaveLength(2);
+    for (const l of lines) expect(displayWidth(l)).toBeLessThanOrEqual(28);
+    expect(wrapCueLines("Next, let's look at the three main learning objectives for this week.", 28).split("\n")).toHaveLength(2);
+  });
+  it("alignToPauses leaves a mid-sentence boundary proportional instead of snapping it to a breath", () => {
+    const prop = [
+      { start: 0, end: 4 },
+      { start: 4, end: 8 },
+    ];
+    expect(alignToPauses(prop, [{ startSec: 0.5, endSec: 0.8 }], 8, [false])[0]!.end).toBeCloseTo(4, 1);
+    expect(alignToPauses(prop, [{ startSec: 3.6, endSec: 3.9 }], 8, [true])[0]!.end).toBeCloseTo(3.6, 2);
   });
   it("wrapCueLines breaks at a clause boundary", () => {
     expect(wrapCueLines("前半句很短，後半句也不長", 8)).toBe("前半句很短，\n後半句也不長");

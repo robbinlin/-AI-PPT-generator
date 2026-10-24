@@ -15,7 +15,7 @@ import {
   AvatarLayout,
   MAX_TAIL_PAUSE_SEC,
 } from "./entities.js";
-import { Transition } from "./enums.js";
+import { Language, Transition } from "./enums.js";
 
 /** HTTP DTOs shared by apps/api and apps/web. Routes are documented in docs/API.md. */
 
@@ -46,6 +46,14 @@ export const CreateProjectRequest = z.object({
   settings: ProjectSettings.partial().optional(),
 });
 export type CreateProjectRequest = z.infer<typeof CreateProjectRequest>;
+
+/** POST /projects/:id/translations — a copy of the project in another language. */
+export const CreateTranslationRequest = z.object({
+  language: Language,
+  /** Defaults to "<name>（英文版）". */
+  name: z.string().min(1).max(200).optional(),
+});
+export type CreateTranslationRequest = z.infer<typeof CreateTranslationRequest>;
 
 export const UpdateProjectRequest = z.object({
   name: z.string().min(1).max(200).optional(),

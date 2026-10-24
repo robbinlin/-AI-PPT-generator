@@ -35,7 +35,15 @@ function slideBlocks(prompt: string): Array<{ number: number; title: string; bod
 
 const isOutlinePrompt = (prompt: string) => /^## (投影片內容|Slide content)$/m.test(prompt);
 
+const TRANSLATION = /^## Narration to translate\n([\s\S]*)$/m;
+
 export const smartMockResponder: MockLlmResponder = ({ prompt }) => {
+  // Translation prompt (pipeline translate.ts): a deterministic stand-in "translation".
+  const translation = TRANSLATION.exec(prompt);
+  if (translation) {
+    const page = /Page (\d+) of/.exec(prompt)?.[1] ?? "?";
+    return { script: `[EN] Page ${page}: ${translation[1]!.trim().slice(0, 120)}` };
+  }
   const zh = /繁體中文|投影片/.test(prompt);
   if (isOutlinePrompt(prompt)) {
     const slides = slideBlocks(prompt);

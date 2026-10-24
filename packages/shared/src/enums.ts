@@ -27,6 +27,7 @@ export const JobType = z.enum([
   "generate_avatar",
   "render_video",
   "export_script",
+  "translate_script",
 ]);
 export type JobType = z.infer<typeof JobType>;
 

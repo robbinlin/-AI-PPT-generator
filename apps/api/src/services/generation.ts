@@ -29,6 +29,7 @@ import {
   cuesToSrt,
   generateOutline as pipelineOutline,
   generateSceneScript,
+  translateSceneScript,
   type PipelineSlide,
 } from "@lvs/pipeline";
 import { render } from "@lvs/render";
@@ -270,6 +271,16 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       });
       await publishScene(ctx, scene.id);
       return revision;
+    },
+
+    async translateScript({ ctx, settings, from, to, script, previousScript, nextScript, glossary, title, pageNumber, pageCount }) {
+      const ownerId = await ownerOf(ctx);
+      const llm = await withProvider(() => providers.llm(ownerId, settings.llmProviderId));
+      const result = await labelled(`第 ${pageNumber} 頁翻譯失敗（${providerLabel(llm.id)}）`, () =>
+        translateSceneScript({ llm, script, from, to, previousScript, nextScript, glossary, title, pageNumber, pageCount }),
+      );
+      await usage(ctx, llm.id, result.usage);
+      return result;
     },
 
     async synthesizeSpeech({ ctx, scene, script, settings, inputHash, outline, progress }) {

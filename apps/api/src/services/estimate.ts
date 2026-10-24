@@ -13,6 +13,8 @@ import {
 
 /** Prompt characters the script writer adds on top of the slide text (outline, neighbours, instructions). */
 const SCRIPT_PROMPT_OVERHEAD_CHARS = 2500;
+/** Instructions + glossary in a translation prompt. */
+const TRANSLATE_PROMPT_OVERHEAD_CHARS = 1500;
 
 export type EstimateOptions = SelectionOptions;
 
@@ -86,6 +88,16 @@ export function estimateJob(detail: ProjectDetail, type: JobType, opts: Estimate
       }
       parts.push(estimateCost("generate_avatar", { providerId: s.avatar.providerId ?? "heygen", seconds: Math.ceil(seconds), engine: avatarEngine(s.avatar) }));
       return merge(parts, targets.length, seconds);
+    }
+    case "translate_script": {
+      // Estimated on the SOURCE project: one LLM call per page that has a script, each prompt
+      // carrying that page plus its neighbours as context.
+      const pages = visibleScenesOf(detail).filter((sc) => detail.scripts[sc.id]?.script.trim());
+      const n = pages.length;
+      const chars = pages.reduce((a, sc) => a + detail.scripts[sc.id]!.script.length, 0);
+      const perCall = n ? TRANSLATE_PROMPT_OVERHEAD_CHARS + (3 * chars) / n : 0;
+      const outPerCall = n ? Math.ceil((chars / n) * 1.5) : 0; // English runs ~1.5 tokens per Chinese character
+      return merge([estimateCost("generate_script", { providerId: s.llmProviderId, chars: perCall, calls: n, outputTokensPerCall: outPerCall })], n, secondsOf(pages));
     }
     case "render_video": {
       const visible = visibleScenesOf(detail);

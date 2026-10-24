@@ -18,6 +18,7 @@ export function buildHandlers(seams: GenerationSeams = unimplementedSeams): Part
     synthesize_speech: gen.synthesizeSpeech as JobHandler,
     generate_avatar: gen.generateAvatar as JobHandler,
     render_video: gen.renderVideo as JobHandler,
+    translate_script: gen.translateScripts as JobHandler,
   };
 }
 

@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import { Copy, FileStack, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { Copy, FileStack, Languages, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { useApi, useAssetUrl } from "../api/context";
 import { errorMessage, type ProjectSummary } from "../api/types";
+import { ConfirmHost } from "../components/ConfirmHost";
 import { NewProjectDialog } from "../components/projects/NewProjectDialog";
 import { Button, IconButton } from "../components/ui/Button";
 import { Field, TextInput } from "../components/ui/Field";
 import { Spinner } from "../components/ui/Misc";
 import { Modal } from "../components/ui/Modal";
 import { fmt, t } from "../i18n";
+import { useTranslateProject } from "../hooks/useTranslateProject";
 import { formatRelativeTime } from "../lib/format";
 import { toast } from "../store/toastStore";
 
@@ -21,6 +23,7 @@ export function ProjectsPage() {
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const translate = useTranslateProject();
 
   const load = useCallback(() => {
     setError(null);
@@ -82,6 +85,7 @@ export function ProjectsPage() {
               project={p}
               onRename={() => setPending({ kind: "rename", project: p })}
               onDuplicate={() => void duplicate(p)}
+              onTranslate={p.pageCount ? () => void translate(p) : undefined}
               onDelete={() => setPending({ kind: "delete", project: p })}
             />
           </li>
@@ -114,6 +118,7 @@ export function ProjectsPage() {
           toast(t.projects.deleted);
         }}
       />
+      <ConfirmHost />
     </div>
   );
 }
@@ -122,11 +127,14 @@ function ProjectCard({
   project,
   onRename,
   onDuplicate,
+  onTranslate,
   onDelete,
 }: {
   project: ProjectSummary;
   onRename: () => void;
   onDuplicate: () => void;
+  /** Absent until the project has slides. */
+  onTranslate?: () => void;
   onDelete: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -195,6 +203,7 @@ function ProjectCard({
           >
             <MenuItem icon={Pencil} label={t.projects.rename} onClick={pick(onRename)} />
             <MenuItem icon={Copy} label={t.projects.duplicate} onClick={pick(onDuplicate)} />
+            {onTranslate && <MenuItem icon={Languages} label={t.projects.translate} onClick={pick(onTranslate)} />}
             <MenuItem icon={Trash2} label={t.projects.delete} onClick={pick(onDelete)} danger />
           </div>
         )}

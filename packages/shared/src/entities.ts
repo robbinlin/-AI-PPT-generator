@@ -362,6 +362,8 @@ export const JobPayload = z.discriminatedUnion("type", [
     burnSubtitles: z.boolean().optional(),
   }),
   z.object({ type: z.literal("export_script"), format: z.enum(["txt", "md", "docx"]).default("md") }),
+  /** Runs on the NEW (translated) project: translates each page's latest script of `sourceProjectId`. */
+  z.object({ type: z.literal("translate_script"), sourceProjectId: Id, targetLanguage: Language }),
 ]);
 export type JobPayload = z.infer<typeof JobPayload>;
 

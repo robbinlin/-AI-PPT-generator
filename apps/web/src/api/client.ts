@@ -12,6 +12,7 @@ import {
   ScriptRevision,
   Slide,
   type CreateProjectRequest,
+  type CreateTranslationRequest,
   type EnqueueJobRequest,
   type JobStatus,
   type ReorderSlidesRequest,
@@ -26,6 +27,7 @@ import {
   AvatarCharacterSchema,
   HealthResponse,
   ProjectSummary,
+  CreateTranslationResponse,
   ReorderSlidesResponse,
   UploadSourceResponse,
   VoiceSchema,
@@ -324,6 +326,10 @@ export class HttpApiClient implements ApiClient {
 
   createProject(req: CreateProjectRequest) {
     return this.json(Project, "POST", "/projects", req);
+  }
+
+  createTranslation(projectId: string, req: CreateTranslationRequest) {
+    return this.json(CreateTranslationResponse, "POST", `/projects/${enc(projectId)}/translations`, req);
   }
 
   getProject(projectId: string) {

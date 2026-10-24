@@ -3,6 +3,7 @@ import {
   type Asset,
   type CostEstimate,
   type CreateProjectRequest,
+  type CreateTranslationRequest,
   type EnqueueJobRequest,
   type EnqueueJobResponse,
   type Job,
@@ -59,6 +60,7 @@ import {
   type ApiClient,
   type AssetUrlResponse,
   type AvatarOption,
+  type CreateTranslationResponse,
   type EstimateOptions,
   type EstimateType,
   type HealthResponse,
@@ -833,6 +835,20 @@ export class MockApiClient implements ApiClient {
             return { assetId: asset.id };
           },
         };
+      case "translate_script": {
+        const src = this.projects.get(p.sourceProjectId);
+        const targets = sortByIndex(ps.detail.scenes).filter((s) => {
+          const from = src && sortByIndex(src.detail.scenes).find((x) => x.index === s.index);
+          return !!(from && src.detail.scripts[from.id]?.script.trim());
+        });
+        return this.perScenePlan(ps, job, "script", targets, "翻譯講稿", (s) => {
+          const from = sortByIndex(src!.detail.scenes).find((x) => x.index === s.index)!;
+          const rev = this.addRevision(ps, s, `[EN] ${src!.detail.scripts[from.id]!.script}`, "ai");
+          s.script = { status: "ready", inputHash: randomHex(64), jobId: job.id };
+          this.emit(ps, { kind: "script", script: rev });
+          this.emit(ps, { kind: "scene", scene: s });
+        });
+      }
     }
   }
 
@@ -1065,6 +1081,40 @@ export class MockApiClient implements ApiClient {
     const project = this.makeProject(req.name, req.settings ?? {});
     this.projects.set(project.id, this.newProjectState(project));
     return clone(project);
+  }
+
+  async createTranslation(projectId: string, req: CreateTranslationRequest): Promise<CreateTranslationResponse> {
+    await this.wait();
+    const src = this.state(projectId);
+    const project = this.makeProject(req.name ?? `${src.detail.project.name}（英文版）`, { ...src.detail.project.settings, language: req.language });
+    const ps = this.newProjectState(project);
+    const empty = { status: "missing" as const };
+    ps.detail.sourceDocument = src.detail.sourceDocument ? { ...clone(src.detail.sourceDocument), id: uuid(), projectId: project.id } : undefined;
+    const slideIds = new Map<string, string>();
+    ps.detail.slides = src.detail.slides.map((s) => {
+      const id = uuid();
+      slideIds.set(s.id, id);
+      return { ...clone(s), id, projectId: project.id };
+    });
+    ps.detail.scenes = src.detail.scenes.map((s) => ({
+      ...clone(s),
+      id: uuid(),
+      projectId: project.id,
+      slideId: slideIds.get(s.slideId) ?? s.slideId,
+      script: empty,
+      audio: empty,
+      avatar: empty,
+      subtitle: empty,
+    }));
+    // Slide images are shared data URLs in the mock; copy the asset records the slides point at.
+    for (const s of src.detail.slides) for (const id of [s.imageAssetId, s.thumbnailAssetId]) if (id && src.detail.assets[id]) ps.detail.assets[id] = clone(src.detail.assets[id]!);
+    for (const id of Object.keys(ps.detail.assets)) {
+      const factory = src.urlFactories.get(id);
+      if (factory) ps.urlFactories.set(id, factory);
+    }
+    this.projects.set(project.id, ps);
+    const job = this.startJob(ps, { type: "translate_script", sourceProjectId: projectId, targetLanguage: req.language });
+    return clone({ project, job });
   }
 
   async getProject(projectId: string): Promise<ProjectDetail> {
@@ -1321,6 +1371,11 @@ export class MockApiClient implements ApiClient {
     const settings = ps.detail.project.settings;
     const all = options.scope === "all";
     const scenes = this.visibleScenes(ps).filter((s) => !options.sceneIds || options.sceneIds.includes(s.id));
+    if (type === "translate_script") {
+      const pages = scenes.filter((s) => ps.detail.scripts[s.id]?.script.trim());
+      const cost = round(pages.length * 0.002);
+      return { lines: [{ providerId: settings.llmProviderId, unit: "tokens_out", quantity: pages.length * 600, estimatedCost: cost }], total: cost, currency: "USD", sceneCount: pages.length };
+    }
     if (type === "generate_script") {
       const pending = scenes.filter((s) => all || s.script.status !== "ready");
       const cost = round(pending.length * 0.002);

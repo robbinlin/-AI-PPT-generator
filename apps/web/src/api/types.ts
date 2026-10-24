@@ -8,6 +8,7 @@ import {
   Language,
   type CostEstimate,
   type CreateProjectRequest,
+  type CreateTranslationRequest,
   type EnqueueJobRequest,
   type EnqueueJobResponse,
   type JobStatus,
@@ -35,6 +36,9 @@ export type UploadSourceResponse = z.infer<typeof UploadSourceResponse>;
 
 export const ReorderSlidesResponse = z.object({ slides: z.array(Slide), scenes: z.array(Scene) });
 export type ReorderSlidesResponse = z.infer<typeof ReorderSlidesResponse>;
+
+export const CreateTranslationResponse = z.object({ project: Project, job: Job });
+export type CreateTranslationResponse = z.infer<typeof CreateTranslationResponse>;
 
 export const AssetUrlResponse = z.object({ url: z.string().min(1), expiresAt: z.string() });
 export type AssetUrlResponse = z.infer<typeof AssetUrlResponse>;
@@ -67,7 +71,7 @@ export type AvatarOption = z.infer<typeof AvatarCharacterSchema>;
 export const ProjectSummary = Project.extend({ pageCount: z.number().int().nonnegative().optional() });
 export type ProjectSummary = z.infer<typeof ProjectSummary>;
 
-export type EstimateType = "generate_script" | "synthesize_speech" | "generate_avatar" | "render_video";
+export type EstimateType = "generate_script" | "synthesize_speech" | "generate_avatar" | "render_video" | "translate_script";
 /** `pending` (default): only pages the job would actually process; `all`: a forced regeneration. */
 export interface EstimateOptions {
   scope?: "pending" | "all";
@@ -106,6 +110,8 @@ export interface ApiClient {
 
   listProjects(): Promise<ProjectSummary[]>;
   createProject(req: CreateProjectRequest): Promise<Project>;
+  /** A copy of the project in another language; its scripts are translated by the returned job. */
+  createTranslation(projectId: string, req: CreateTranslationRequest): Promise<CreateTranslationResponse>;
   getProject(projectId: string): Promise<ProjectDetail>;
   updateProject(projectId: string, req: UpdateProjectRequest): Promise<Project>;
   deleteProject(projectId: string): Promise<void>;
