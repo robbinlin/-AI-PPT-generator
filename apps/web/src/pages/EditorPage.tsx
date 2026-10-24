@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useBlocker, useParams } from "react-router";
 import { FileQuestion } from "lucide-react";
 import type { ProjectEvent } from "@lvs/shared";
 import { useApiEnv } from "../api/context";
@@ -21,6 +21,7 @@ import { fmt, t } from "../i18n";
 import { friendlyJobError } from "../lib/jobErrors";
 import { notifyIfHidden } from "../lib/notify";
 import { takePendingUpload } from "../lib/pendingUpload";
+import { confirmDiscard, hasUnsaved } from "../lib/unsavedGuard";
 import { editorStore, useEditor } from "../store/editorStore";
 import { toast } from "../store/toastStore";
 
@@ -118,6 +119,15 @@ export function EditorPage() {
   }, [api, assetUrls, projectId]);
 
   useScriptAutosave(drafts, actions.saveScript);
+
+  // Unsaved glossary edits: any navigation away (a link, the gear, the browser's back) asks first.
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => hasUnsaved() && currentLocation.pathname !== nextLocation.pathname);
+  const blockerRef = useRef(blocker);
+  blockerRef.current = blocker;
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    void confirmDiscard().then((ok) => (ok ? blockerRef.current.proceed?.() : blockerRef.current.reset?.()));
+  }, [blocker.state]);
 
   // A save that got no response is retried for a few seconds: say so instead of staying silent.
   useEffect(() => {

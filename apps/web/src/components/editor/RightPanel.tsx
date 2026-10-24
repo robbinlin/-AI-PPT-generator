@@ -31,6 +31,11 @@ function initialTab(): Tab {
 export function RightPanel({ actions }: { actions: EditorActions }) {
   const [tab, setTab] = useState<Tab>(initialTab);
   const tabRef = useRef(tab);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Each tab opens at its top (the same scroll container is reused between tabs).
+  useEffect(() => {
+    if (panelRef.current) panelRef.current.scrollTop = 0;
+  }, [tab]);
   const choose = async (next: Tab) => {
     // Switching tabs unmounts the panel: unsaved glossary edits would vanish silently.
     if (next !== tabRef.current && !(await confirmDiscard())) return;
@@ -53,7 +58,18 @@ export function RightPanel({ actions }: { actions: EditorActions }) {
 
   return (
     <aside className="flex min-h-0 flex-col border-l border-neutral-800 bg-neutral-900">
-      <div role="tablist" className="flex shrink-0 border-b border-neutral-800 px-2">
+      <div
+        role="tablist"
+        className="flex shrink-0 border-b border-neutral-800 px-2"
+        // Tabs pattern: ←／→／Home／End move between tabs (one Tab stop for the row).
+        onKeyDown={(e) => {
+          const i = TABS.indexOf(tab);
+          const next = e.key === "ArrowRight" ? TABS[(i + 1) % TABS.length] : e.key === "ArrowLeft" ? TABS[(i - 1 + TABS.length) % TABS.length] : e.key === "Home" ? TABS[0] : e.key === "End" ? TABS[TABS.length - 1] : undefined;
+          if (!next) return;
+          e.preventDefault();
+          void choose(next).then(() => document.getElementById(`tab-${tabRef.current}`)?.focus());
+        }}
+      >
         {TABS.map((id) => (
           <button
             key={id}
@@ -61,6 +77,7 @@ export function RightPanel({ actions }: { actions: EditorActions }) {
             type="button"
             id={`tab-${id}`}
             aria-selected={tab === id}
+            tabIndex={tab === id ? 0 : -1}
             aria-controls={`panel-${id}`}
             onClick={() => void choose(id)}
             className={`-mb-px border-b-2 px-2.5 py-2.5 text-sm whitespace-nowrap transition-colors ${
@@ -71,7 +88,7 @@ export function RightPanel({ actions }: { actions: EditorActions }) {
           </button>
         ))}
       </div>
-      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={panelRef} role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="min-h-0 flex-1 overflow-y-auto">
         {tab === "script" && <ScriptPanel actions={actions} />}
         {tab === "studio" && <StudioPanel actions={actions} />}
         {tab === "settings" && <SettingsPanel actions={actions} />}

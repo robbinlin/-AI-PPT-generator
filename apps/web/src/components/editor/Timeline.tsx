@@ -412,7 +412,8 @@ function ResizeHandle({ block, pxPerSec, state, onDrag, onCommit, keyboard = tru
   return (
     <>
       <div
-        role="slider"
+        // The narration row repeats the slide row's edge for the mouse only: one slider per page.
+        role={keyboard ? "slider" : undefined}
         tabIndex={keyboard ? 0 : -1}
         aria-hidden={keyboard ? undefined : true}
         aria-label={fmt(t.timeline.resize, { n: block.index + 1 })}
@@ -545,7 +546,7 @@ function NarrationBlock({
         <div
           className="h-full shrink-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_3px,rgba(255,255,255,0.06)_3px,rgba(255,255,255,0.06)_6px)]"
           style={{ width: Math.max(0, block.tail * pxPerSec - 2) }}
-          title={`${t.timeline.tailPause} ${block.tail.toFixed(1)}s`}
+          title={`${t.timeline.tailPause} ${block.tail.toFixed(1)} 秒`}
         />
       )}
       {/* Same edge as the slide block above; only that one is a keyboard stop. */}
@@ -637,7 +638,7 @@ function PageMenu({
         <button type="button" className="rounded border border-neutral-700 px-1.5" onClick={() => setTail(tail - 0.5)} aria-label="-0.5s">
           −
         </button>
-        <span className="w-10 text-center tabular-nums">{tail.toFixed(1)}s</span>
+        <span className="w-10 text-center tabular-nums">{tail.toFixed(1)} 秒</span>
         <button type="button" className="rounded border border-neutral-700 px-1.5" onClick={() => setTail(tail + 0.5)} aria-label="+0.5s">
           +
         </button>

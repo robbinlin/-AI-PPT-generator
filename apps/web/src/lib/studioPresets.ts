@@ -23,12 +23,12 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
   },
   {
     id: "presenter-right",
-    label: "講者在右",
+    label: "人像在右",
     layout: { visible: true, shape: "rect", anchor: "bottom-right", size: 0.86, margin: 0, slideScale: 0.74, slideAlign: "left", x: 0.86, y: 0.57 },
   },
   {
     id: "presenter-left",
-    label: "講者在左",
+    label: "人像在左",
     layout: { visible: true, shape: "rect", anchor: "bottom-left", size: 0.86, margin: 0, slideScale: 0.74, slideAlign: "right", x: 0.14, y: 0.57 },
   },
   {

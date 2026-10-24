@@ -17,15 +17,28 @@ describe("toast durations", () => {
     vi.advanceTimersByTime(2_000);
     expect(alive()).toBe(0);
   });
-  it("falls back to 10 s with an action, 7 s for errors, 3.5 s otherwise", () => {
+  it("falls back to 10 s with an action, 15 s for errors, 3.5 s otherwise", () => {
     toast("a", "info", { label: "復原", run: () => undefined });
     toast("b", "error");
     toast("c");
     vi.advanceTimersByTime(3_600);
     expect(useToasts.getState().toasts.map((x) => x.text)).toEqual(["a", "b"]);
-    vi.advanceTimersByTime(3_500);
-    expect(useToasts.getState().toasts.map((x) => x.text)).toEqual(["a"]);
-    vi.advanceTimersByTime(3_000);
+    vi.advanceTimersByTime(6_500);
+    expect(useToasts.getState().toasts.map((x) => x.text)).toEqual(["b"]);
+    vi.advanceTimersByTime(5_000);
+    expect(alive()).toBe(0);
+  });
+  it("stops counting down while hovered or focused", () => {
+    toast("x", "error");
+    const id = useToasts.getState().toasts[0]!.id;
+    vi.advanceTimersByTime(10_000);
+    useToasts.getState().pause(id);
+    vi.advanceTimersByTime(60_000);
+    expect(alive()).toBe(1);
+    useToasts.getState().resume(id);
+    vi.advanceTimersByTime(4_000);
+    expect(alive()).toBe(1);
+    vi.advanceTimersByTime(1_500);
     expect(alive()).toBe(0);
   });
 });

@@ -41,7 +41,7 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const paidAvatarReady = !!scene && !!av && av.enabled && !!av.avatarId && av.providerId !== "local" && !scene.muted && scene.avatar.status === "ready";
   const serverRedo = usePendingEstimate(paidAvatarReady ? detail?.project.id : undefined, "generate_avatar", `${av?.avatarId}:${scene?.durationSec}`, "all", scene ? [scene.id] : undefined);
   if (!detail || !scene) {
-    return <p className="p-4 text-sm text-neutral-400">{t.editor.selectPage}</p>;
+    return <p className="p-4 text-sm text-neutral-400">{detail && detail.slides.length === 0 ? t.editor.waitForSlides : t.editor.selectPage}</p>;
   }
 
   const text = currentScript({ detail, drafts }, scene.id);
@@ -50,6 +50,7 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const settings = detail.project.settings;
   const seconds = estimateSpeechSeconds(text, settings.language, settings.voice.speed);
   const generating = scene.script.status === "generating" || scene.script.status === "queued";
+  const noScript = !text.trim();
   const needs = (st: { status: string }) => st.status === "stale" || st.status === "failed";
   // A hidden page is not in the video: never offer to pay for its narration or presenter.
   const hidden = detail.slides.find((sl) => sl.id === scene.slideId)?.hidden ?? false;
@@ -113,12 +114,13 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
 
       <div className="flex items-center gap-1.5">
         <Button size="sm" icon={WandSparkles} onClick={() => setRewriteOpen(true)} disabled={generating} data-testid="ai-rewrite">
-          {t.script.aiRewrite}
+          {noScript ? t.script.aiWrite : t.script.aiRewrite}
         </Button>
         <RewriteDialog
           open={rewriteOpen}
           page={scene.index + 1}
           userEdited={revision?.source === "user"}
+          fresh={noScript}
           avatarCost={paidAvatarReady ? redoCost : undefined}
           onClose={() => setRewriteOpen(false)}
           onRewrite={(instruction) => void rewrite(instruction)}
@@ -207,6 +209,17 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
         </div>
       )}
 
+      {/* Why the page list says 講稿需更新, and what (not) to do about it. */}
+      {!generating && scene.script.status === "stale" && revision?.source === "ai" && (
+        <p className="rounded-md border border-sky-500/30 bg-sky-500/10 px-2.5 py-2 text-xs text-sky-100" data-testid="script-stale-hint">
+          {t.script.staleScript}
+        </p>
+      )}
+      {!generating && noScript && !hidden && (
+        <p className="rounded-md border border-neutral-700 px-2.5 py-2 text-xs text-neutral-300" data-testid="script-missing-hint">
+          {t.script.noScriptHint}
+        </p>
+      )}
       {hidden && (
         <p className="rounded-md border border-neutral-700 px-2.5 py-2 text-xs text-neutral-300" data-testid="hidden-hint">
           {t.script.hiddenPage}

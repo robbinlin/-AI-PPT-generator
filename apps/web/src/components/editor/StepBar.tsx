@@ -13,6 +13,7 @@ import { visibleScenes } from "../../lib/settingsImpact";
 import { useEditor } from "../../store/editorStore";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Misc";
+import { useFreshUndownloadedVideo } from "./ExportMenu";
 import { openEditorTab, type Tab } from "./RightPanel";
 
 export const OPEN_EXPORT_EVENT = "lvs:open-export";
@@ -43,7 +44,13 @@ export function buildSteps(detail: ProjectDetail): { steps: Step[]; next: Step |
     done: list.filter((s) => s[field].status === "ready").length,
     total: list.length,
   });
-  const scriptCount = countReady(scenes, "script");
+  // A script written from an older outline still exists and still reads fine: it does not hold
+  // up the next step (rewriting it would replace the text and its finished audio). Only pages
+  // without a script do; the page list and the script panel point out the outdated ones.
+  const scriptCount = {
+    done: scenes.filter((s) => s.script.status === "ready" || s.script.status === "stale").length,
+    total: scenes.length,
+  };
   const audioCount = countReady(spoken, "audio");
   const avatarOn = detail.project.settings.avatar.enabled && !!detail.project.settings.avatar.avatarId;
   const avatarCount = countReady(spoken, "avatar");
@@ -81,7 +88,10 @@ export function StepBar({ actions }: { actions: EditorActions }) {
   const revision = detail
     ? detail.scenes.map((s) => `${s.script.status}${s.audio.status}${s.avatar.status}${s.muted}`).join("") + JSON.stringify(detail.project.settings)
     : "";
-  const nextCost = usePendingEstimate(detail?.project.id, costType, revision);
+  // The script step only writes pages without a script, so its price covers just those.
+  const missingScripts = detail && costType === "generate_script" ? visibleScenes(detail).filter((s) => s.script.status === "missing" || s.script.status === "failed").map((s) => s.id) : undefined;
+  const nextCost = usePendingEstimate(detail?.project.id, costType, revision, "pending", missingScripts);
+  const undownloaded = useFreshUndownloadedVideo();
   if (!detail || !plan) return null;
   const { steps, next } = plan;
 
@@ -97,10 +107,13 @@ export function StepBar({ actions }: { actions: EditorActions }) {
       case "upload":
         void pickFile();
         return;
-      case "script":
+      case "script": {
         openEditorTab("script");
-        void actions.enqueue({ type: "generate_script", force: false });
+        // Only the pages that have no script (missing/failed); never rewrite existing ones from here.
+        const ids = visibleScenes(detail).filter((s) => s.script.status === "missing" || s.script.status === "failed").map((s) => s.id);
+        if (ids.length) void actions.enqueue({ type: "generate_script", force: false, sceneIds: ids });
         return;
+      }
       case "voice":
         void actions.enqueue({ type: "synthesize_speech", force: false });
         return;
@@ -179,12 +192,13 @@ export function StepBar({ actions }: { actions: EditorActions }) {
           <>
             <span className="hidden text-neutral-400 min-[1200px]:inline">{t.steps.next}</span>
             <Button size="sm" variant="primary" disabled={next.busy} onClick={runNext} data-testid="step-next">
-              {nextLabel[next.id]}
-              {nextCost && nextCost.sceneCount !== 0 && <span className="ml-1 font-normal">（{twdShort(nextCost.total, nextCost.currency)}）</span>}
+              {next.id === "upload" && next.busy ? t.steps.parsing : nextLabel[next.id]}
+              {nextCost && nextCost.sceneCount !== 0 && <span className="font-normal">（{twdShort(nextCost.total, nextCost.currency)}）</span>}
             </Button>
           </>
         ) : (
-          <span className="text-emerald-300">{t.steps.allDone}</span>
+          // Done is only done once the file is saved: until then point at the download.
+          <span className="text-emerald-300">{undownloaded ? t.steps.doneDownload : t.steps.allDone}</span>
         )}
       </div>
       <input

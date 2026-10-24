@@ -193,6 +193,8 @@ function ProjectCard({
 
   const pick = (fn: () => void) => () => {
     setMenuOpen(false);
+    // The menu item is about to disappear: dialogs opened from it return focus to ⋯ instead.
+    menuRef.current?.querySelector<HTMLElement>("button")?.focus();
     fn();
   };
 

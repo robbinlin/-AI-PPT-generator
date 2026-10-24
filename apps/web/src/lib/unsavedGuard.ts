@@ -5,7 +5,10 @@ import { confirmAction } from "../store/confirmStore";
  * Panels with edits that are not saved automatically (the glossary editor) register here, so
  * switching tabs or closing the window asks before throwing them away.
  */
-const unsaved = new Map<string, string>();
+// Kept on globalThis: the guard must be one register even if the module is loaded twice
+// (a dev-server reload can leave the panel and the editor page holding different copies).
+const store = globalThis as typeof globalThis & { __lvsUnsaved?: Map<string, string> };
+const unsaved = (store.__lvsUnsaved ??= new Map<string, string>());
 
 /** `message` names what would be lost; null clears it. */
 export function setUnsaved(key: string, message: string | null): void {

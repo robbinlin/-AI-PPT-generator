@@ -14,6 +14,7 @@ export function RewriteDialog({
   open,
   page,
   userEdited,
+  fresh = false,
   avatarCost,
   onClose,
   onRewrite,
@@ -21,6 +22,8 @@ export function RewriteDialog({
   open: boolean;
   page: number;
   userEdited: boolean;
+  /** The page has no script yet: 「AI 產生」, nothing gets replaced. */
+  fresh?: boolean;
   /** Set when this page has a finished paid avatar (e.g. 「約 NT$40」). */
   avatarCost?: string;
   onClose: () => void;
@@ -39,7 +42,7 @@ export function RewriteDialog({
 
   return (
     <Modal
-      title={fmt(t.rewrite.title, { n: page })}
+      title={fmt(fresh ? t.rewrite.titleFresh : t.rewrite.title, { n: page })}
       open={open}
       onClose={onClose}
       width="w-[460px]"
@@ -83,7 +86,7 @@ export function RewriteDialog({
           />
         </label>
         <ul className="flex flex-col gap-1 text-xs text-neutral-400">
-          <li>{t.rewrite.noteReplace}</li>
+          {!fresh && <li>{t.rewrite.noteReplace}</li>}
           {userEdited && <li className="text-amber-200">{t.rewrite.noteUserEdited}</li>}
           {avatarCost && (
             <li className="flex gap-1.5 text-amber-200">

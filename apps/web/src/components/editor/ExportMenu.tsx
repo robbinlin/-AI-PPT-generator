@@ -69,13 +69,26 @@ export function ExportMenu({ actions, disabled }: { actions: Pick<EditorActions,
 
   useEffect(() => {
     if (!open) return;
+    const button = ref.current?.querySelector<HTMLElement>("[data-testid=export-button]");
+    // A popup panel (not a menu): focus moves to its first control, Esc returns it to the button.
+    const timer = setTimeout(() => {
+      ref.current?.querySelector<HTMLElement>('[data-export-panel] button:not([disabled]), [data-export-panel] input:not([disabled])')?.focus();
+    }, 0);
+    // Clicks in a confirmation opened from the panel (e.g. 全部做完再匯出) must not close it.
+    const inModal = (target: EventTarget | null) => target instanceof Element && !!target.closest("[role=dialog][aria-modal=true]");
     const onDown = (e: MouseEvent) => {
+      if (inModal(e.target)) return;
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || document.querySelector("[role=dialog][aria-modal=true]")) return;
+      setOpen(false);
+      button?.focus();
+    };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
+      clearTimeout(timer);
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
@@ -88,7 +101,7 @@ export function ExportMenu({ actions, disabled }: { actions: Pick<EditorActions,
         icon={Film}
         disabled={disabled}
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         onClick={() => setOpen((v) => !v)}
         data-testid="export-button"
         title={freshVideo && !renderJob ? t.export.readyToDownload : undefined}
@@ -125,6 +138,8 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
   const srtUrl = useAssetUrl(detail?.project.id, srt?.id);
 
   const scenes = detail ? visibleScenes(detail).filter((s) => !s.muted) : [];
+  // A page with no script cannot get narration: that is the real thing to fix first.
+  const noScript = scenes.filter((s) => s.script.status === "missing" || !detail?.scripts[s.id]?.script.trim());
   const audioNotReady = scenes.filter((s) => s.audio.status !== "ready").map((s) => s.index + 1);
   const avatarNotReady =
     detail?.project.settings.avatar.enabled && detail.project.settings.avatar.avatarId
@@ -185,7 +200,9 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
 
   return (
     <div
-      role="menu"
+      role="dialog"
+      aria-label={t.export.menu}
+      data-export-panel
       className="absolute top-10 right-0 z-30 w-80 rounded-lg border border-neutral-700 bg-neutral-900 p-2 shadow-2xl"
     >
       {video && videoUrl && (
@@ -229,6 +246,22 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
         {renderJob ? (
           // A running export always shows its progress, whatever else is still missing.
           <RenderProgress job={renderJob} />
+        ) : noScript.length > 0 ? (
+          <div className="flex flex-col gap-2" data-testid="export-preflight">
+            {preflightNote(fmt(t.export.preflightScript, { pages: pageRanges(noScript.map((s) => s.index + 1)) }))}
+            <Button
+              variant="primary"
+              size="sm"
+              className="w-full"
+              onClick={() => {
+                onDone();
+                void actions.enqueue({ type: "generate_script", force: false, sceneIds: noScript.map((s) => s.id) });
+              }}
+              data-testid="fix-script"
+            >
+              {t.export.fixScript}
+            </Button>
+          </div>
         ) : audioNotReady.length > 0 && avatarNotReady.length > 0 ? (
           // Everything missing is listed at once: making only the narration would export a video
           // whose presenter disappears on these pages.
@@ -267,8 +300,9 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
             </div>
           </div>
         ) : (
-          <Button variant="primary" size="sm" className="w-full" onClick={() => void render()}>
-            {t.export.start}
+          // A current video is done: downloading it is the main action, exporting again the side one.
+          <Button variant={video && !videoOutdated ? "secondary" : "primary"} size="sm" className="w-full" onClick={() => void render()} data-testid="start-export">
+            {video && !videoOutdated ? t.export.reexport : t.export.start}
           </Button>
         )}
       </div>

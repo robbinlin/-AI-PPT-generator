@@ -89,7 +89,8 @@ export function useEditorActions() {
         store().upsertJob(job);
         return job;
       } catch (err) {
-        toast(fmt(t.jobs.enqueueFailed, { message: errorMessage(err) }), "error");
+        // 「產生語音失敗：…」 rather than the technical 「無法建立工作」.
+        failed(t.jobs.types[req.type], err);
         return null;
       }
     };

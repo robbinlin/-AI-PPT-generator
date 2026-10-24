@@ -11,10 +11,13 @@ const toneClass: Record<ToastTone, string> = {
 export function Toasts() {
   const toasts = useToasts((s) => s.toasts);
   const dismiss = useToasts((s) => s.dismiss);
+  const pause = useToasts((s) => s.pause);
+  const resume = useToasts((s) => s.resume);
   if (toasts.length === 0) return null;
   return (
     <div
-      className="pointer-events-none fixed bottom-4 left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center gap-2"
+      // Above the editor's bottom controls (play bar, timeline header).
+      className="pointer-events-none fixed bottom-24 left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center gap-2"
       aria-live="polite"
     >
       {toasts.map((toast) => (
@@ -22,6 +25,10 @@ export function Toasts() {
           key={toast.id}
           role={toast.tone === "error" ? "alert" : "status"}
           className={`pointer-events-auto flex items-center gap-3 rounded-md border px-3 py-2 text-sm shadow-lg ${toneClass[toast.tone]}`}
+          onMouseEnter={() => pause(toast.id)}
+          onMouseLeave={() => resume(toast.id)}
+          onFocus={() => pause(toast.id)}
+          onBlur={() => resume(toast.id)}
         >
           <span>{toast.text}</span>
           {toast.action && (

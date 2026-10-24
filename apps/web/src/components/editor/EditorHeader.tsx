@@ -1,13 +1,12 @@
-import { useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router";
-import { ChevronLeft, Clock, FileText, Settings, Upload } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router";
+import { ChevronDown, ChevronLeft, Clock, FileText, Settings, Upload } from "lucide-react";
 import { ThemeToggle } from "../ThemeToggle";
 import type { EditorActions } from "../../hooks/useEditorActions";
-import { useCostEstimate } from "../../hooks/useCostEstimate";
+import { useCostEstimate, type CombinedEstimate } from "../../hooks/useCostEstimate";
 import { ACCEPTED_EXTENSIONS } from "../../hooks/useEditorActions";
 import { fmt, t } from "../../i18n";
 import { confirmReplaceSource } from "../../lib/replaceSource";
-import { confirmDiscard, hasUnsaved } from "../../lib/unsavedGuard";
 import { formatDuration, formatTwdFirst } from "../../lib/format";
 import { estimateLines, twdShort } from "../../lib/paidJobs";
 import { buildTimeline } from "../../lib/timelineModel";
@@ -26,7 +25,6 @@ export interface EditorHeaderProps {
 export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
   const detail = useEditor((s) => s.detail);
   const fileInput = useRef<HTMLInputElement>(null);
-  const navigate = useNavigate();
 
   // Changes whenever a scene's derived state or a script changes, which is what estimates depend on.
   const revision = useMemo(
@@ -61,12 +59,6 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <Link
           to="/"
-          onClick={(e) => {
-            // Unsaved glossary edits are not autosaved: ask before leaving the editor.
-            if (!hasUnsaved()) return;
-            e.preventDefault();
-            void confirmDiscard().then((ok) => ok && navigate("/"));
-          }}
           aria-label={t.editor.projects}
           title={t.editor.projects}
           className="flex shrink-0 items-center gap-0.5 rounded-md px-1.5 py-1 text-xs whitespace-nowrap text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
@@ -83,24 +75,14 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2 pl-2">
-          <span className="hidden min-[1200px]:contents">
+          {/* Before the deck is parsed there is nothing to time or price (「全部最新」 would be wrong). */}
+          {hasSlides && <span className="hidden min-[1200px]:contents">
             <Badge>
               <Clock className="size-3" aria-hidden />
               {durationLabel}
             </Badge>
-          </span>
-          {estimate && (
-            <Badge
-              tone="accent"
-              title={[
-                t.editor.estimateTitle,
-                ...Object.values(estimate.parts).flatMap((p) => (p ? estimateLines(p) : [])),
-                fmt(t.paid.cost, { cost: formatTwdFirst(estimate.total, estimate.currency) }),
-              ].join("\n")}
-            >
-              {estimate.total > 0 ? fmt(t.editor.estimate, { cost: twdShort(estimate.total, estimate.currency) }) : t.editor.estimateNone}
-            </Badge>
-          )}
+          </span>}
+          {hasSlides && estimate && <CostBadge estimate={estimate} />}
         </div>
       </div>
 
@@ -186,5 +168,55 @@ function ProjectName({ name, onRename }: { name: string; onRename: (name: string
     >
       {name}
     </button>
+  );
+}
+
+/**
+ * 「做完剩下的頁面 約 NT$321」 as a button: the breakdown opens on click (not only on hover), and it
+ * says how this total relates to the price on 下一步, which covers that one step only.
+ */
+function CostBadge({ estimate }: { estimate: CombinedEstimate }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const pending = Object.values(estimate.parts).filter(Boolean);
+  if (pending.length === 0) return <Badge tone="success">{t.editor.estimateNone}</Badge>;
+  const label = estimate.total > 0 ? fmt(t.editor.estimate, { cost: twdShort(estimate.total, estimate.currency) }) : t.editor.estimateFree;
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1 rounded-md border border-accent-500/30 bg-accent-500/15 px-2 py-0.5 text-xs text-accent-300 hover:bg-accent-500/25"
+        data-testid="cost-badge"
+      >
+        {label}
+        <ChevronDown className="size-3" aria-hidden />
+      </button>
+      {open && (
+        <div role="dialog" aria-label={t.editor.estimateTitle} className="absolute top-8 left-0 z-30 w-80 rounded-lg border border-neutral-700 bg-neutral-900 p-3 text-xs text-neutral-300 shadow-2xl">
+          <p className="mb-2 text-neutral-400">{t.editor.estimateTitle}</p>
+          <ul className="mb-2 flex flex-col gap-1">
+            {pending.flatMap((p) => estimateLines(p!)).map((line) => (
+              <li key={line}>・{line}</li>
+            ))}
+          </ul>
+          <p className="font-medium text-neutral-100">{fmt(t.paid.cost, { cost: formatTwdFirst(estimate.total, estimate.currency) })}</p>
+          <p className="mt-2 text-neutral-400">{t.editor.estimateNote}</p>
+        </div>
+      )}
+    </div>
   );
 }

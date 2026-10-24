@@ -90,7 +90,7 @@ export function ParseProgress({ filename, progress, message, failed }: ParseProg
           </div>
           <p className="text-xs text-neutral-400">
             {progress ? fmt(t.upload.parsing, { pct: Math.round(progress * 100) }) : t.upload.parsingDefault}
-            {message ? ` · ${message}` : ""}
+            {message ? `・${message}` : ""}
           </p>
         </>
       )}

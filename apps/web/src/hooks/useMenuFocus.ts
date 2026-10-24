@@ -5,14 +5,23 @@ import { useEffect, type RefObject } from "react";
  * to the first item, ↑／↓／Home／End move between items, Esc closes and returns focus to the
  * button that opened it, Tab closes. Items are found by `[role=menuitem]:not([disabled])`.
  */
-export function useMenuFocus(open: boolean, menu: RefObject<HTMLElement | null>, onClose: () => void, trigger?: RefObject<HTMLElement | null>): void {
+export function useMenuFocus(
+  open: boolean,
+  menu: RefObject<HTMLElement | null>,
+  onClose: () => void,
+  trigger?: RefObject<HTMLElement | null>,
+  /** Preferred first item (e.g. a harmless one), else the first enabled item. */
+  initial?: string,
+): void {
   useEffect(() => {
     if (!open) return;
     const returnTo = (trigger?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null)) as HTMLElement | null;
     const items = () => [...(menu.current?.querySelectorAll<HTMLElement>("[role=menuitem]:not([disabled])") ?? [])];
     // The menu may render its items a moment later (e.g. after loading).
     const focusFirst = () => {
-      if (!menu.current?.contains(document.activeElement)) items()[0]?.focus();
+      if (menu.current?.contains(document.activeElement)) return;
+      const preferred = initial ? menu.current?.querySelector<HTMLElement>(initial) : null;
+      (preferred ?? items()[0])?.focus();
     };
     const timer = setTimeout(focusFirst, 0);
     const observer = new MutationObserver(focusFirst);
@@ -44,5 +53,5 @@ export function useMenuFocus(open: boolean, menu: RefObject<HTMLElement | null>,
       observer.disconnect();
       el?.removeEventListener("keydown", onKey);
     };
-  }, [open, menu, onClose, trigger]);
+  }, [open, menu, onClose, trigger, initial]);
 }

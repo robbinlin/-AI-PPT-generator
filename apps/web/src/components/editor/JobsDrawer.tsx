@@ -83,7 +83,7 @@ export function JobsIndicator({ onOpen }: { onOpen: () => void }) {
       )}
       {lead ? (
         <span className="truncate">
-          {`${t.jobs.types[lead.type]} ${Math.round(lead.progress * 100)}%${eta ? ` · ${eta}` : ""}${active.length > 1 ? ` · ${fmt(t.jobs.count, { n: active.length })}` : ""}`}
+          {`${t.jobs.types[lead.type]} ${Math.round(lead.progress * 100)}%${eta ? `・${eta}` : ""}${active.length > 1 ? `・${fmt(t.jobs.count, { n: active.length })}` : ""}`}
         </span>
       ) : (
         <>
@@ -269,7 +269,16 @@ function RenderDownload({ job }: { job: Job }) {
   const url = useAssetUrl(job.projectId, assetId);
   if (!assetId || !url) return null;
   return (
-    <button type="button" className="flex items-center gap-1 rounded px-1.5 py-0.5 text-accent-300 hover:bg-neutral-800" onClick={() => void saveVideo(url, projectName, assetId)}>
+    <button
+      type="button"
+      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-accent-300 hover:bg-neutral-800"
+      // Several exports are listed: say which one this button saves.
+      aria-label={fmt(t.jobs.downloadNamed, {
+        preset: job.payload.type === "render_video" && job.payload.preset === "preview_540p" ? "540p" : "1080p",
+        time: new Date(job.finishedAt ?? job.createdAt).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+      })}
+      onClick={() => void saveVideo(url, projectName, assetId)}
+    >
       <Download className="size-3.5" aria-hidden />
       {t.jobs.download}
     </button>

@@ -96,7 +96,7 @@ function ProviderPills({
           } ${p.configured ? "" : "opacity-60"}`}
         >
           {p.displayName}
-          {priceHint(p.id) && <span className="ml-1 text-xs text-neutral-400">· {priceHint(p.id)}</span>}
+          {priceHint(p.id) && <span className="text-xs text-neutral-400">・{priceHint(p.id)}</span>}
           {!p.configured && " ⚠"}
         </button>
       ))}
@@ -297,7 +297,8 @@ function AvatarSection({
           {t.studio.noAvatar}
         </button>
         {loading && avatars.length === 0
-          ? Array.from({ length: 6 }, (_, i) => (
+          ? // As many placeholders as tiles to come (plus room for the stock heading): no jump on load.
+            Array.from({ length: GALLERY_COUNT }, (_, i) => (
               <div key={i} className="aspect-[3/4] animate-pulse rounded-md bg-neutral-800" aria-hidden />
             ))
           : ordered.slice(0, GALLERY_COUNT).flatMap((a, i, list) => {
@@ -704,7 +705,13 @@ function VoiceSection({
   // The chosen voice may sit below the list's fold: bring it into view so it is visible at a glance.
   const voiceList = useRef<HTMLUListElement>(null);
   useEffect(() => {
-    voiceList.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+    // Scroll the list itself only: scrollIntoView would also scroll the whole tab and hide the
+    // presenter choice at the top.
+    const ul = voiceList.current;
+    const el = ul?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!ul || !el) return;
+    const top = el.getBoundingClientRect().top - ul.getBoundingClientRect().top + ul.scrollTop;
+    if (top < ul.scrollTop || top + el.offsetHeight > ul.scrollTop + ul.clientHeight) ul.scrollTop = Math.max(0, top - (ul.clientHeight - el.offsetHeight) / 2);
   }, [s.voiceId, voices.length]);
 
   return (
@@ -735,7 +742,7 @@ function VoiceSection({
                 {v.tags && v.tags.length > 0 && <div className="truncate text-xs text-neutral-400">{v.tags
                     .slice(0, 3)
                     .map((tag) => (t.studio.voiceTags as Record<string, string>)[tag] ?? tag)
-                    .join(" · ")}</div>}
+                    .join("・")}</div>}
               </button>
               {isSel && <Check className="size-4 shrink-0 text-accent-300" aria-hidden />}
             </li>
@@ -776,7 +783,7 @@ function VoiceSection({
           min={0}
           max={3}
           step={0.1}
-          format={(v) => `${v.toFixed(1)}s`}
+          format={(v) => `${v.toFixed(1)} 秒`}
           onCommit={(sentencePauseSec) => setVoice({ sentencePauseSec })}
         />
       </Field>
@@ -871,7 +878,7 @@ function SubtitleSection({
             >
               <span className="flex h-9 w-full items-center justify-center rounded-sm bg-gradient-to-br from-slate-400 to-slate-600">
                 <span className="rounded px-1 text-xs leading-tight" style={subtitleCss({ ...preview, fontSizePx: 11 }, (px) => `${px}px`)}>
-                  字幕 Text
+                  字幕範例
                 </span>
               </span>
               {p.label}
