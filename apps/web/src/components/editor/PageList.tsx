@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -23,6 +23,7 @@ import { fmt, t } from "../../i18n";
 import { sortByIndex } from "../../lib/scenes";
 import { currentScript, useEditor } from "../../store/editorStore";
 import { PageListItem } from "./PageListItem";
+import { openEditorTab } from "./RightPanel";
 import { StatusLegend } from "./StatusDots";
 
 export interface PageListProps {
@@ -43,11 +44,14 @@ export function PageList({ actions }: PageListProps) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  // Keep the selected page in view when it changes from the keyboard.
+  const listRef = useRef<HTMLElement>(null);
+  // Keep the selected page in view when it changes from the keyboard; when focus is in the list,
+  // move it along (roving focus: one Tab stop for the whole list).
   useEffect(() => {
     if (!selectedSceneId) return;
     const el = document.querySelector(`[data-scene-id="${selectedSceneId}"]`);
     if (el && "scrollIntoView" in el) el.scrollIntoView({ block: "nearest" });
+    if (listRef.current?.contains(document.activeElement)) el?.querySelector<HTMLElement>("[data-page-button]")?.focus();
   }, [selectedSceneId]);
 
   const onDragEnd = ({ active, over }: DragEndEvent) => {
@@ -60,7 +64,19 @@ export function PageList({ actions }: PageListProps) {
   };
 
   return (
-    <aside className="flex min-h-0 flex-col border-r border-neutral-800 bg-neutral-900">
+    <aside ref={listRef} className="flex min-h-0 flex-col border-r border-neutral-800 bg-neutral-900">
+      {/* Keyboard users can jump past the page list straight to the script. */}
+      <button
+        type="button"
+        className="sr-only focus:not-sr-only focus:m-2 focus:rounded focus:bg-accent-600 focus:px-2 focus:py-1 focus:text-xs focus:text-white"
+        onClick={() => {
+          openEditorTab("script");
+          setTimeout(() => document.querySelector<HTMLTextAreaElement>("textarea")?.focus(), 50);
+        }}
+        data-testid="skip-to-script"
+      >
+        {t.pageList.skipToScript}
+      </button>
       <div className="flex items-center justify-between px-3 py-2.5">
         <h2 className="text-xs font-semibold text-neutral-300">{t.pageList.title}</h2>
         <span className="text-xs text-neutral-400">

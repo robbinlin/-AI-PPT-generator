@@ -7,20 +7,26 @@ import type { EstimateType } from "../api/types";
  * What one job type would cost for the pages it would really process (scope "pending"), for
  * labelling buttons such as 「產生語音（不到 NT$1）」. Re-fetched when `revision` changes.
  */
-export function usePendingEstimate(projectId: string | undefined, type: EstimateType | undefined, revision = ""): CostEstimate | undefined {
+export function usePendingEstimate(
+  projectId: string | undefined,
+  type: EstimateType | undefined,
+  revision = "",
+  /** "all": the price of redoing every page (a forced rerun). */
+  scope: "pending" | "all" = "pending",
+): CostEstimate | undefined {
   const api = useApi();
   const [estimate, setEstimate] = useState<{ key: string; value: CostEstimate }>();
-  const key = `${projectId}:${type}:${revision}`;
+  const key = `${projectId}:${type}:${scope}:${revision}`;
   useEffect(() => {
     if (!projectId || !type) return;
     let alive = true;
-    api.getEstimate(projectId, type, { scope: "pending" }).then(
+    api.getEstimate(projectId, type, { scope }).then(
       (value) => alive && setEstimate({ key, value }),
       () => alive && setEstimate(undefined),
     );
     return () => {
       alive = false;
     };
-  }, [api, projectId, type, key]);
+  }, [api, projectId, type, scope, key]);
   return estimate?.key === key ? estimate.value : undefined;
 }

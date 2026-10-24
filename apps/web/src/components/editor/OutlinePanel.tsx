@@ -167,7 +167,7 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
     }
   };
 
-  const input = "w-full rounded border border-neutral-700 bg-neutral-950 px-1.5 py-1 text-xs text-neutral-100 placeholder:text-neutral-600 focus:border-accent-500 focus:outline-none";
+  const input = "min-w-0 rounded border border-neutral-700 bg-neutral-950 px-1.5 py-1 text-xs text-neutral-100 placeholder:text-neutral-600 focus:border-accent-500 focus:outline-none";
 
   return (
     <section data-testid="glossary">
@@ -188,6 +188,7 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
               <div className="flex items-center gap-1.5">
                 <input
                   className={`${input} w-28 shrink-0 font-medium`}
+                  data-testid="glossary-term"
                   value={g.term}
                   placeholder={t.outline.term}
                   aria-label={t.outline.term}
@@ -197,7 +198,8 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
                   →
                 </span>
                 <input
-                  className={input}
+                  className={`${input} flex-1`}
+                  data-testid="glossary-reading"
                   value={g.reading ?? ""}
                   placeholder={t.outline.readingPlaceholder}
                   aria-label={`${g.term} ${t.outline.reading}`}
@@ -206,7 +208,7 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
               </div>
               <div className="mt-1.5 flex items-center gap-1.5">
                 <input
-                  className={`${input} text-neutral-400`}
+                  className={`${input} flex-1 text-neutral-400`}
                   value={g.definition ?? ""}
                   placeholder={t.outline.definition}
                   aria-label={`${g.term} ${t.outline.definition}`}

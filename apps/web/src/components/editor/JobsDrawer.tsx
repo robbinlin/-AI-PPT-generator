@@ -106,6 +106,7 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
   const active = useEditor((s) => s.detail?.activeJobs);
   const recent = useEditor((s) => s.recentJobs);
   const now = useTick(5000, open && (active?.length ?? 0) > 0);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     if (!open || !projectId) return;
@@ -120,6 +121,7 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
 
   if (!open) return null;
   const activeJobs = [...(active ?? [])].reverse();
+  const latestVideoJobId = recent.find((j) => j.type === "render_video" && j.status === "succeeded")?.id;
 
   return (
     <div className="fixed inset-0 z-40" onMouseDown={onClose}>
@@ -162,21 +164,37 @@ export function JobsDrawer({ open, onClose, actions }: JobsDrawerProps) {
           <h3 className="mb-2 text-xs font-semibold text-neutral-400">{t.jobs.recent}</h3>
           {recent.length === 0 && <p className="text-xs text-neutral-400">{t.jobs.none}</p>}
           <ul className="flex flex-col gap-1">
-            {recent.map((job) => (
-              <RecentJob key={job.id} job={job} />
+            {(showAll ? recent : recent.slice(0, RECENT_SHOWN)).map((job) => (
+              <RecentJob key={job.id} job={job} latestVideoJobId={latestVideoJobId} superseded={isSuperseded(job, recent)} />
             ))}
           </ul>
+          {!showAll && recent.length > RECENT_SHOWN && (
+            <button type="button" className="mt-2 text-xs text-accent-300 hover:underline" onClick={() => setShowAll(true)}>
+              {fmt(t.jobs.showOlder, { n: recent.length - RECENT_SHOWN })}
+            </button>
+          )}
         </div>
       </aside>
     </div>
   );
 }
 
-function RecentJob({ job }: { job: Job }) {
+const RECENT_SHOWN = 10;
+
+/** A failure that a later run of the same kind (and pages) has since fixed: shown faded. */
+function isSuperseded(job: Job, recent: Job[]): boolean {
+  if (job.status !== "failed") return false;
+  const key = (j: Job) => `${j.type}:${"sceneIds" in j.payload ? (j.payload.sceneIds ?? []).join(",") : ""}`;
+  const at = (j: Job) => j.finishedAt ?? j.createdAt;
+  return recent.some((o) => o.status === "succeeded" && key(o) === key(job) && at(o) > at(job));
+}
+
+function RecentJob({ job, latestVideoJobId, superseded }: { job: Job; latestVideoJobId?: string; superseded: boolean }) {
+  const when = job.finishedAt ?? job.createdAt;
   const Icon = job.status === "succeeded" ? CircleCheck : job.status === "failed" ? CircleX : CircleSlash;
   const color = job.status === "succeeded" ? "text-emerald-400" : job.status === "failed" ? "text-rose-400" : "text-neutral-400";
   return (
-    <li className="flex items-start gap-2 rounded px-1 py-1.5 text-xs">
+    <li className={`flex items-start gap-2 rounded px-1 py-1.5 text-xs ${superseded ? "opacity-50" : ""}`} title={superseded ? t.jobs.superseded : undefined}>
       <Icon className={`mt-0.5 size-3.5 shrink-0 ${color}`} aria-hidden />
       <div className="min-w-0 flex-1">
         <div className="flex justify-between gap-2">
@@ -184,10 +202,21 @@ function RecentJob({ job }: { job: Job }) {
             {t.jobs.types[job.type]}
             <JobDetail job={job} />
           </span>
-          <span className="text-neutral-400">{formatRelativeTime(job.finishedAt ?? job.createdAt)}</span>
+          <span className="shrink-0 text-neutral-400" title={new Date(when).toLocaleString("zh-TW")}>
+            {formatRelativeTime(when)}
+          </span>
         </div>
         <div className="flex items-center justify-between gap-2">
-          <span className={color}>{t.jobs.statuses[job.status]}</span>
+          <span className={color}>
+            {t.jobs.statuses[job.status]}
+            {job.type === "render_video" && job.status === "succeeded" && (
+              <span className="ml-1 text-neutral-400">
+                ・{job.payload.type === "render_video" && job.payload.preset === "preview_540p" ? "540p" : "1080p"}・
+                {job.id === latestVideoJobId ? t.jobs.latestVideo : t.jobs.olderVideo}
+              </span>
+            )}
+            {superseded && <span className="ml-1 text-neutral-400">{t.jobs.supersededShort}</span>}
+          </span>
           {job.type === "render_video" && job.status === "succeeded" && <RenderDownload job={job} />}
         </div>
         {job.error && <JobError message={job.error} />}

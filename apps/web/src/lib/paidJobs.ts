@@ -74,11 +74,21 @@ export function confirmContent(type: EstimateType, req: EnqueueJobRequest, estim
     fmt(t.paid.wait, { wait: formatWait(wait) }),
   ];
   const notes = [isForced(req) ? t.paid.forcedNote : "", wait > 90 ? t.paid.longNote : ""].filter(Boolean);
+  // 「全部做完再匯出」: say that the video follows, and how it will be exported.
+  const then = "thenRender" in req ? req.thenRender : undefined;
+  if (then) {
+    lines.push(
+      fmt(t.paid.thenRender, {
+        preset: then.preset === "preview_540p" ? "540p" : "1080p",
+        subtitles: then.burnSubtitles === false ? t.paid.thenRenderNoSubs : t.paid.thenRenderSubs,
+      }),
+    );
+  }
   return {
     title: fmt(t.paid.title, { job: t.jobs.types[type] }),
     lines,
     note: notes.join(" "),
-    confirmLabel: fmt(t.paid.start, { cost: twdShort(estimate.total, estimate.currency) }),
+    confirmLabel: fmt(then ? t.paid.startThenRender : t.paid.start, { cost: twdShort(estimate.total, estimate.currency) }),
   };
 }
 

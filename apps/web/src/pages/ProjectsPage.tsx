@@ -211,7 +211,7 @@ function ProjectCard({
         </div>
         <div className="min-w-0 pr-8">
           <h2 className="truncate text-sm font-semibold text-neutral-100">{project.name}</h2>
-          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs whitespace-nowrap text-neutral-400">
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs whitespace-nowrap text-neutral-400">
             <span className="shrink-0 rounded bg-neutral-800 px-1.5 py-0.5 text-xs font-medium text-neutral-300" data-testid="language-badge">
               {t.projects.languageBadge[project.settings.language]}
             </span>
@@ -222,10 +222,7 @@ function ProjectCard({
                   ? fmt(t.projects.activePages, { n: project.pageCount, active: project.activePageCount })
                   : fmt(t.projects.pages, { n: project.pageCount })}
             </span>
-            <span>
-              <span aria-hidden>· </span>
-              {fmt(t.projects.updated, { time: formatRelativeTime(project.updatedAt) })}
-            </span>
+            <span>{fmt(t.projects.updated, { time: formatRelativeTime(project.updatedAt) })}</span>
           </p>
         </div>
       </Link>

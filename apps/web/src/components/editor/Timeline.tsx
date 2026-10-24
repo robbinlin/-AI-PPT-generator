@@ -12,7 +12,7 @@ import { buildTimeline, computePeaks, type TimelineBlock } from "../../lib/timel
 import { editorStore, useEditor } from "../../store/editorStore";
 
 const LABEL_W = 64;
-const TRACK_H = { slides: 44, narration: 40, avatar: 14, subtitles: 18 } as const;
+const TRACK_H = { slides: 44, narration: 40, avatar: 14, subtitles: 22 } as const;
 
 /**
  * Light timeline under the preview: one block per page across slide / narration waveform /
@@ -564,16 +564,20 @@ function CueBlock({ block, pxPerSec }: { block: TimelineBlock; pxPerSec: number 
   const cues = block.scene.subtitle.cues ?? [];
   return (
     <>
-      {cues.map((c) => (
-        <div
-          key={c.index}
-          title={c.text}
-          className="absolute top-0.5 bottom-0.5 truncate rounded-sm bg-violet-500/30 px-0.5 text-[10px] leading-[14px] text-violet-50"
-          style={{ left: (block.start + c.startSec) * pxPerSec, width: Math.max(2, (c.endSec - c.startSec) * pxPerSec - 1) }}
-        >
-          {c.text}
-        </div>
-      ))}
+      {cues.map((c) => {
+        const width = Math.max(2, (c.endSec - c.startSec) * pxPerSec - 1);
+        return (
+          <div
+            key={c.index}
+            title={c.text}
+            className="absolute top-0.5 bottom-0.5 truncate rounded-sm bg-violet-500/30 px-0.5 text-xs leading-[18px] text-violet-50"
+            style={{ left: (block.start + c.startSec) * pxPerSec, width }}
+          >
+            {/* Too narrow for readable text (「Th…」): the full line is in the tooltip. */}
+            {width >= 40 ? c.text : null}
+          </div>
+        );
+      })}
     </>
   );
 }

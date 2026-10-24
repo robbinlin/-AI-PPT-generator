@@ -153,7 +153,7 @@ export function StepBar({ actions }: { actions: EditorActions }) {
               >
                 <span
                   className={`flex size-5 items-center justify-center rounded-full text-xs font-semibold ${
-                    step.done ? "bg-emerald-500 text-neutral-950" : current ? "bg-accent-500 text-white" : "bg-neutral-700 text-neutral-200"
+                    step.done ? "bg-emerald-500 text-neutral-950" : current ? "bg-accent-600 text-white" : "bg-neutral-700 text-neutral-200"
                   }`}
                   aria-hidden
                 >
@@ -178,7 +178,7 @@ export function StepBar({ actions }: { actions: EditorActions }) {
             <span className="hidden text-neutral-400 min-[1200px]:inline">{t.steps.next}</span>
             <Button size="sm" variant="primary" disabled={next.busy} onClick={runNext} data-testid="step-next">
               {nextLabel[next.id]}
-              {nextCost && nextCost.sceneCount !== 0 && <span className="ml-1 font-normal opacity-80">（{twdShort(nextCost.total, nextCost.currency)}）</span>}
+              {nextCost && nextCost.sceneCount !== 0 && <span className="ml-1 font-normal">（{twdShort(nextCost.total, nextCost.currency)}）</span>}
             </Button>
           </>
         ) : (

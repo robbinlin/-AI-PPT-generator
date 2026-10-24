@@ -34,6 +34,8 @@ export function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
 export interface Option<V extends string> {
   value: V;
   label: string;
+  /** Shown but not selectable (e.g. a service without an API key). */
+  disabled?: boolean;
 }
 
 export interface SelectProps<V extends string> extends Omit<SelectHTMLAttributes<HTMLSelectElement>, "onChange" | "value"> {
@@ -60,7 +62,7 @@ export function Select<V extends string>({ value, options, onChange, placeholder
         </option>
       )}
       {options.map((o) => (
-        <option key={o.value} value={o.value}>
+        <option key={o.value} value={o.value} disabled={o.disabled}>
           {o.label}
         </option>
       ))}

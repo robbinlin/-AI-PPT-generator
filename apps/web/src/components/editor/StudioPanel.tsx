@@ -110,6 +110,35 @@ function priceHint(providerId: string): string | undefined {
   return (t.studio.price as Record<string, string>)[providerId];
 }
 
+const SCENE_WORDS: Array<[RegExp, string]> = [
+  [/\bliving room\b/i, "客廳"],
+  [/\boffice\b/i, "辦公室"],
+  [/\bkitchen\b/i, "廚房"],
+  [/\bstudio\b/i, "攝影棚"],
+  [/\blobby\b/i, "大廳"],
+  [/\blibrary\b/i, "圖書館"],
+  [/\bclassroom\b/i, "教室"],
+  [/\boutdoors?\b/i, "戶外"],
+  [/\bsofa\b|\bcouch\b/i, "沙發"],
+  [/\bcasual\b/i, "休閒"],
+  [/\bbusiness\b/i, "商務"],
+];
+
+/** 「Dante Living Room 3」 → 「Dante・客廳 3」: the person's name stays, the scene is in Chinese. */
+export function localizeStockName(name: string): string {
+  const m = /^([A-Z][\w'-]*)\s+(.+)$/.exec(name.trim());
+  if (!m) return name;
+  let rest = m[2]!;
+  let hit = false;
+  for (const [re, zh] of SCENE_WORDS) {
+    if (re.test(rest)) {
+      rest = rest.replace(re, zh);
+      hit = true;
+    }
+  }
+  return hit ? `${m[1]}・${rest.replace(/\s{2,}/g, " ")}` : name;
+}
+
 /**
  * Display names: the user's own presenters get Chinese names by type (「我的照片型人像 1」; HeyGen
  * names them in English, e.g. "Man in black ribbed sweater"); stock ones keep their name, with a
@@ -130,12 +159,12 @@ function distinctNames(avatars: AvatarOption[]): Map<string, string> {
       continue;
     }
     if ((total.get(a.name) ?? 0) < 2) {
-      out.set(a.id, a.name);
+      out.set(a.id, localizeStockName(a.name));
       continue;
     }
     const n = (seen.get(a.name) ?? 0) + 1;
     seen.set(a.name, n);
-    out.set(a.id, `${a.name} #${n}`);
+    out.set(a.id, `${localizeStockName(a.name)} #${n}`);
   }
   return out;
 }
@@ -271,9 +300,8 @@ function AvatarSection({
           ? Array.from({ length: 6 }, (_, i) => (
               <div key={i} className="aspect-[3/4] animate-pulse rounded-md bg-neutral-800" aria-hidden />
             ))
-          : ordered
-              .slice(0, GALLERY_COUNT)
-              .map((a) => (
+          : ordered.slice(0, GALLERY_COUNT).flatMap((a, i, list) => {
+              const tile = (
                 <AvatarTile
                   key={a.id}
                   a={a}
@@ -282,7 +310,18 @@ function AvatarSection({
                   selected={s.enabled && a.id === s.avatarId}
                   onPick={() => pick(a.id)}
                 />
-              ))}
+              );
+              // Stock presenters start a group of their own, so they are not mistaken for the user's.
+              const firstStock = a.kind !== "personal" && (i === 0 || list[i - 1]!.kind === "personal") && list.some((o) => o.kind === "personal");
+              return firstStock
+                ? [
+                    <p key="stock-heading" className="col-span-full pt-1 text-xs text-neutral-400">
+                      {s.providerId === "heygen" ? t.studio.stockHeygen : t.studio.stock}
+                    </p>,
+                    tile,
+                  ]
+                : [tile];
+            })}
       </div>
       {loading && avatars.length === 0 && (
         <p className="flex items-center gap-1.5 text-xs text-neutral-400" role="status">
@@ -423,7 +462,7 @@ function AvatarTile({
           {[a.source ? t.studio.source[a.source] : "", number].filter(Boolean).join(" ")}
         </span>
       )}
-      <span className="absolute inset-x-0 bottom-0 line-clamp-2 on-dark bg-black/75 px-1 py-0.5 text-xs leading-tight break-all text-neutral-100">{name}</span>
+      <span className="absolute inset-x-0 bottom-0 line-clamp-2 on-dark bg-black/75 px-1 py-0.5 text-xs leading-tight break-words text-neutral-100">{name}</span>
       {selected && (
         <span className="absolute top-1 right-1 rounded-full bg-accent-500 p-0.5 text-white">
           <Check className="size-3" aria-hidden />

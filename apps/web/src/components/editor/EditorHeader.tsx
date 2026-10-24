@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
-import { ChevronLeft, Clock, FileText, Upload } from "lucide-react";
+import { ChevronLeft, Clock, FileText, Settings, Upload } from "lucide-react";
+import { ThemeToggle } from "../ThemeToggle";
 import type { EditorActions } from "../../hooks/useEditorActions";
 import { useCostEstimate } from "../../hooks/useCostEstimate";
 import { ACCEPTED_EXTENSIONS } from "../../hooks/useEditorActions";
@@ -105,6 +106,17 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
           </Button>
         )}
         <ExportMenu actions={actions} disabled={!hasSlides} />
+        {/* Error help points here (「右上角『進階設定』」), so the editor offers it too. */}
+        <Link
+          to="/settings/providers"
+          aria-label={t.app.navProviders}
+          title={t.app.navProviders}
+          className="flex size-8 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+          data-testid="editor-settings-link"
+        >
+          <Settings className="size-4" aria-hidden />
+        </Link>
+        <ThemeToggle compact />
       </div>
 
       <input

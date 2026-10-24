@@ -45,9 +45,11 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const seconds = estimateSpeechSeconds(text, settings.language, settings.voice.speed);
   const generating = scene.script.status === "generating" || scene.script.status === "queued";
   const needs = (st: { status: string }) => st.status === "stale" || st.status === "failed";
-  const audioNeeds = !scene.muted && !!revision && (needs(scene.audio) || scene.audio.status === "missing");
+  // A hidden page is not in the video: never offer to pay for its narration or presenter.
+  const hidden = detail.slides.find((sl) => sl.id === scene.slideId)?.hidden ?? false;
+  const audioNeeds = !hidden && !scene.muted && !!revision && (needs(scene.audio) || scene.audio.status === "missing");
   const avatarOn = settings.avatar.enabled && !!settings.avatar.avatarId;
-  const avatarNeeds = avatarOn && !scene.muted && !!revision && (needs(scene.avatar) || scene.avatar.status === "missing");
+  const avatarNeeds = !hidden && avatarOn && !scene.muted && !!revision && (needs(scene.avatar) || scene.avatar.status === "missing");
   const busy = (type: string) => detail.activeJobs.some((j) => j.type === type);
   // A finished paid avatar is lip-synced to this exact text: say so before the first keystroke.
   const paidAvatarReady = avatarOn && settings.avatar.providerId !== "local" && !scene.muted && scene.avatar.status === "ready";
@@ -76,7 +78,7 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 p-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className="relative flex items-center justify-between gap-2">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-neutral-100">{fmt(t.script.heading, { n: scene.index + 1 })}</h2>
           {revision && (
@@ -93,6 +95,7 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
             projectId={detail.project.id}
             sceneId={scene.id}
             currentVersion={revision?.version}
+            currentText={text}
             // Through the editor (undoable, autosaved) like any edit.
             onRestore={(old) => editScript(scene.id, old)}
           />
@@ -179,7 +182,7 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
                 disabled={busy("synthesize_speech")}
                 onClick={() => void actions.enqueue({ type: "synthesize_speech", sceneIds: [scene.id], force: false })}
               >
-                {t.script.redoAudio}
+                {scene.audio.status === "missing" ? t.script.makeAudio : t.script.redoAudio}
               </Button>
             )}
             {avatarNeeds && (
@@ -188,11 +191,17 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
                 disabled={busy("generate_avatar")}
                 onClick={() => void actions.enqueue({ type: "generate_avatar", sceneIds: [scene.id], force: false })}
               >
-                {t.script.redoAvatar}
+                {scene.avatar.status === "missing" ? t.script.makeAvatar : t.script.redoAvatar}
               </Button>
             )}
           </div>
         </div>
+      )}
+
+      {hidden && (
+        <p className="rounded-md border border-neutral-700 px-2.5 py-2 text-xs text-neutral-300" data-testid="hidden-hint">
+          {t.script.hiddenPage}
+        </p>
       )}
 
       <DerivedTexts revision={revision} pending={hasDraft} />

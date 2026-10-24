@@ -200,7 +200,7 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
           <span className="flex-1">{videoOutdated ? t.export.downloadOld : t.export.download}</span>
           <span className="basis-full pl-6 text-xs text-neutral-400">
             {videoOutdated && <span className="text-amber-300/90">{t.export.outdated}・</span>}
-            {fmt(videoOutdated ? t.export.lastVideo : t.export.latestVideo, { time: formatRelativeTime(video.createdAt) })} · {formatBytes(video.sizeBytes)}
+            {fmt(videoOutdated ? t.export.lastVideo : t.export.latestVideo, { time: formatRelativeTime(video.createdAt) })}・{formatBytes(video.sizeBytes)}
           </span>
         </button>
       )}

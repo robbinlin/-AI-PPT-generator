@@ -38,6 +38,10 @@ export function BatchMenu({ actions, onReplace }: { actions: Pick<EditorActions,
     synthesize_speech: usePendingEstimate(pid, "synthesize_speech"),
     generate_avatar: usePendingEstimate(pid, "generate_avatar"),
   };
+  const redoCost: Partial<Record<Kind, CostEstimate | undefined>> = {
+    generate_script: usePendingEstimate(pid, "generate_script", "", "all"),
+    synthesize_speech: usePendingEstimate(pid, "synthesize_speech", "", "all"),
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -98,6 +102,8 @@ export function BatchMenu({ actions, onReplace }: { actions: Pick<EditorActions,
                     {r.redo && (
                       <button type="button" role="menuitem" className={`${item} text-neutral-400`} disabled={disabled || r.list.length === 0} onClick={() => run(r.kind, true)}>
                         {fmt(t.batch.redoAll, { n: r.list.length })}
+                        {redoCost[r.kind] && <span className="ml-1 text-xs">（{twdShort(redoCost[r.kind]!.total, redoCost[r.kind]!.currency)}）</span>}
+                        {r.kind === "generate_script" && <span className="block text-xs text-amber-300">{t.batch.redoScriptNote}</span>}
                       </button>
                     )}
                   </>

@@ -44,13 +44,15 @@ function providerOptions(
   kind: ProviderInfo["kind"],
   current: string | undefined,
 ): Option<string>[] {
-  const list = providers
+  const list: Option<string>[] = providers
     .filter((p) => p.kind === kind)
     .map((p) => ({
       value: p.id,
       label: p.configured
         ? p.displayName
         : `${p.displayName} ${t.settings.notConfigured}`,
+      // Choosing a service without a key would only make the next job fail; the current one stays pickable.
+      disabled: !p.configured && p.id !== current,
     }));
   if (current && !list.some((o) => o.value === current))
     list.unshift({ value: current, label: current });

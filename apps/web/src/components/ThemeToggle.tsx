@@ -4,7 +4,7 @@ import { t } from "../i18n";
 import { saveTheme, savedTheme, type Theme } from "../lib/theme";
 
 /** Dark / light switch in the top bar (light is easier to read in a bright classroom or office). */
-export function ThemeToggle() {
+export function ThemeToggle({ compact = false }: { compact?: boolean }) {
   const [theme, setTheme] = useState<Theme>(savedTheme);
   const next: Theme = theme === "dark" ? "light" : "dark";
   return (
@@ -20,7 +20,7 @@ export function ThemeToggle() {
       data-testid="theme-toggle"
     >
       {next === "light" ? <Sun className="size-3.5" aria-hidden /> : <Moon className="size-3.5" aria-hidden />}
-      {next === "light" ? t.app.themeLightShort : t.app.themeDarkShort}
+      {!compact && (next === "light" ? t.app.themeLightShort : t.app.themeDarkShort)}
     </button>
   );
 }

@@ -48,6 +48,9 @@ export function PageListItem(props: PageListItemProps) {
       <button
         type="button"
         className="block w-full text-left"
+        // Roving focus: only the current page is a Tab stop; ↑／↓ move between pages.
+        tabIndex={selected ? 0 : -1}
+        data-page-button
         onClick={props.onSelect}
         aria-label={fmt(t.editor.pageOf, { n: position })}
       >
@@ -87,6 +90,7 @@ export function PageListItem(props: PageListItemProps) {
             type="button"
             aria-label={t.pageList.actions}
             title={t.pageList.actions}
+            tabIndex={selected ? 0 : -1}
             className="rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100"
             onClick={() => setMenuOpen((v) => !v)}
           >
@@ -99,6 +103,7 @@ export function PageListItem(props: PageListItemProps) {
             className="cursor-grab touch-none rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 active:cursor-grabbing"
             {...props.dragAttributes}
             {...props.dragListeners}
+            tabIndex={selected ? 0 : -1}
           >
             <GripVertical className="size-3.5" aria-hidden />
           </button>

@@ -57,7 +57,7 @@ export function StatusDots({ scene }: { scene: Scene }) {
               title={label}
               data-field={field}
               data-status="unused"
-              className="flex h-5 min-w-5 items-center justify-center rounded border border-neutral-700 px-0.5 text-xs leading-none font-medium text-neutral-400 line-through"
+              className="flex h-5 min-w-5 items-center justify-center rounded border border-dashed border-neutral-600 px-0.5 text-xs leading-none font-medium text-neutral-400 opacity-60"
             >
               {t.status[field].slice(0, 1)}
             </li>
@@ -116,6 +116,10 @@ export function StatusLegend() {
           {t.status[s]}
         </span>
       ))}
+      <span className="inline-flex items-center gap-1">
+        <span className="inline-block size-3 rounded-sm border border-dashed border-neutral-600 opacity-60" aria-hidden />
+        {t.status.unused}
+      </span>
     </div>
   );
 }

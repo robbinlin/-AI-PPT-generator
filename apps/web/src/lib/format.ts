@@ -22,7 +22,8 @@ export function formatRelativeTime(iso: string, now: number = Date.now()): strin
 }
 
 export function formatCost(amount: number, currency = "USD"): string {
-  const digits = amount > 0 && amount < 1 ? 3 : 2;
+  // Three decimals only where two would read as US$0.00 (e.g. US$0.004 of speech).
+  const digits = amount > 0 && amount < 0.1 ? 3 : 2;
   try {
     return new Intl.NumberFormat("zh-TW", {
       style: "currency",
