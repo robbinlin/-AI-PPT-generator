@@ -180,6 +180,7 @@ export const zhTW = {
     fillSpeech: "補齊 {n} 頁語音",
     fillAvatar: "補齊 {n} 頁人像",
     andExport: "並匯出",
+    allHidden: "所有頁面都已隱藏：請在左側顯示至少一頁",
   },
   paid: {
     avatarLoss: "⚠ {n} 頁已完成的人像（已付費）會因為語音改變而作廢，需要重做{cost}。",
@@ -751,6 +752,8 @@ export const zhTW = {
     srt: "字幕檔 SRT",
     srtOld: "舊版（跟著上次匯出的影片）",
     srtUnavailable: "匯出影片後即可下載字幕檔",
+    srtOff: "字幕已關閉，不會產生字幕檔",
+    subtitlesOff: "字幕已關閉（在「人像與聲音」開啟）。",
     scriptTxt: "講稿 TXT",
     scriptMd: "講稿 MD",
     download: "下載影片",

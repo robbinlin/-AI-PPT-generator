@@ -348,6 +348,10 @@ describe("duplicate jobs", () => {
       // Another kind of job is fine.
       const other = await t.app.inject({ method: "POST", url: `/projects/${id}/jobs`, payload: { type: "generate_script", force: false } });
       expect(other.statusCode).toBe(202);
+      // A presenter job also makes narration: it waits for the speech job too.
+      const avatar = await t.app.inject({ method: "POST", url: `/projects/${id}/jobs`, payload: { type: "generate_avatar", force: false } });
+      expect(avatar.statusCode).toBe(409);
+      expect(avatar.json().error.message).toContain("產生語音");
     } finally {
       await t.close();
     }

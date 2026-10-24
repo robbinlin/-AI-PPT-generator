@@ -8,6 +8,8 @@ describe("errorMessage", () => {
     expect(errorMessage(new ApiRequestError("scene 3f2a not found", 404, "not_found"))).toContain("另一個分頁換了簡報");
     expect(errorMessage(new ApiRequestError("invalid body", 400, "bad_request"))).toContain("不符合格式");
     expect(errorMessage(new ApiRequestError("internal error", 500, "internal"))).toContain("伺服器發生錯誤");
+    expect(errorMessage(new ApiRequestError("file exceeds 209715200 bytes", 413, "bad_request"))).toBe(errorMessage(new ApiRequestError("x too large", 413, "x")));
+    expect(errorMessage(new ApiRequestError("unsupported file type; upload a .pptx", 400, "bad_request"))).toContain("Keynote");
     expect(errorMessage(new ApiRequestError("heygen: HTTP 401 invalid api key", 502, "upstream"))).not.toContain("HTTP 401");
     expect(errorMessage(new ApiRequestError("「產生語音」已經在進行中", 409, "conflict"))).toBe("「產生語音」已經在進行中");
   });

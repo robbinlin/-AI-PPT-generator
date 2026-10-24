@@ -23,6 +23,7 @@ import { notifyIfHidden } from "../lib/notify";
 import { takePendingUpload } from "../lib/pendingUpload";
 import { confirmDiscard, hasUnsaved, setUnsaved } from "../lib/unsavedGuard";
 import { editorStore, useEditor } from "../store/editorStore";
+import { useConfirm } from "../store/confirmStore";
 import { toast } from "../store/toastStore";
 import { useReconnectingToast } from "../hooks/useReconnectingToast";
 
@@ -42,6 +43,8 @@ export function EditorPage() {
   const runningJob = useEditor((s) => s.detail?.activeJobs[0]);
   const [doneUnseen, setDoneUnseen] = useState(false);
   const [offline, setOffline] = useState(false);
+  // A confirmation still open when the editor goes away (Back, another project) is a 「no」.
+  useEffect(() => () => useConfirm.getState().answer(false), [projectId]);
   useEffect(() => {
     const onVisible = () => !document.hidden && setDoneUnseen(false);
     document.addEventListener("visibilitychange", onVisible);

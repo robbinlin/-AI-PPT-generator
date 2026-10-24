@@ -57,6 +57,11 @@ function deepMerge<T extends Record<string, unknown>>(base: T, patch: Record<str
 
 /** Job types that work page by page and cost money: at most one at a time per page. */
 const PAGE_JOBS = new Set(["generate_script", "synthesize_speech", "generate_avatar", "translate_script"]);
+/** Jobs that write the same thing: a presenter job also makes missing narration. */
+const CLASHES: Record<string, string[]> = {
+  synthesize_speech: ["synthesize_speech", "generate_avatar"],
+  generate_avatar: ["synthesize_speech", "generate_avatar"],
+};
 const JOB_LABEL: Record<string, string> = { generate_script: "產生講稿", synthesize_speech: "產生語音", generate_avatar: "產生人像", translate_script: "翻譯講稿" };
 
 export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
@@ -343,12 +348,12 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
       const active = await db
         .select()
         .from(jobs)
-        .where(and(eq(jobs.projectId, project.id), eq(jobs.type, payload.type), inArray(jobs.status, ["queued", "running"])));
+        .where(and(eq(jobs.projectId, project.id), inArray(jobs.type, CLASHES[payload.type] ?? [payload.type]), inArray(jobs.status, ["queued", "running"])));
       const clash = active.find((j) => {
         const other = (j.payload as { sceneIds?: string[] }).sceneIds;
         return !mine?.length || !other?.length || other.some((id) => mine.includes(id));
       });
-      if (clash) throw conflict(`「${JOB_LABEL[payload.type] ?? payload.type}」已經在進行中，請等它完成（可按「工作」查看進度）。`);
+      if (clash) throw conflict(`「${JOB_LABEL[clash.type] ?? clash.type}」已經在進行中，請等它完成再開始（可按「工作」查看進度）。`);
     }
     // Estimate before enqueueing (the runner may start the job right away) with the job's own
     // selection: force → everything, sceneIds respected.

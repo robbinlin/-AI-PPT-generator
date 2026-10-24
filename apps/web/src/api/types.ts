@@ -175,6 +175,9 @@ export function errorMessage(err: unknown): string {
   const status = err instanceof ApiRequestError ? err.status : undefined;
   if (code === "network_error" || /failed to fetch|network ?error|load failed/i.test(message)) return t.apiErrors.network;
   if (code === "not_found" || status === 404) return t.apiErrors.notFound;
+  // Upload problems the server catches (the browser checks most of them first).
+  if (status === 413 || /file exceeds|too large/i.test(message)) return t.upload.tooLarge;
+  if (/unsupported file type|not a (pptx|pdf)/i.test(message)) return t.upload.badType;
   if (code === "bad_request" || code === "validation_error" || status === 400 || status === 413) return t.apiErrors.badRequest;
   if (code === "upstream" || status === 502) return friendlyJobError(message) ?? t.apiErrors.upstream;
   if (status !== undefined && status >= 500) return t.apiErrors.internal;

@@ -754,6 +754,9 @@ export class MockApiClient implements ApiClient {
     ps.detail.activeJobs = ps.detail.activeJobs.filter((j) => j.id !== job.id);
     this.recompute(ps);
     this.emit(ps, { kind: "job", job });
+    // 「…並匯出」: chain the export like the server's runner does.
+    const then = "thenRender" in job.payload ? job.payload.thenRender : undefined;
+    if (then) this.startJob(ps, { type: "render_video", preset: then.preset, ...(then.burnSubtitles !== undefined ? { burnSubtitles: then.burnSubtitles } : {}) });
   }
 
   private planFor(ps: ProjectState, job: Job): JobPlan {

@@ -38,7 +38,7 @@ const COST_TYPE: Partial<Record<StepId, EstimateType>> = {
   avatar: "generate_avatar",
 };
 
-export function buildSteps(detail: ProjectDetail, uploading = false): { steps: Step[]; next: Step | undefined } {
+export function buildSteps(detail: ProjectDetail, uploading = false): { steps: Step[]; next: Step | undefined; allHidden: boolean } {
   const busy = (type: string) => detail.activeJobs.some((j) => j.type === type);
   const scenes = visibleScenes(detail);
   const spoken = scenes.filter((s) => !s.muted);
@@ -59,6 +59,8 @@ export function buildSteps(detail: ProjectDetail, uploading = false): { steps: S
   const video = latestProjectAsset(detail.assets, detail.scenes, "video");
   const videoCurrent = isVideoCurrent(detail.currentRenderHashes, video);
   const hasSlides = detail.slides.length > 0;
+  // Every page hidden: nothing to make or export (0/0 is not 「已完成」).
+  const allHidden = hasSlides && scenes.length === 0;
 
   const steps: Step[] = [
     { id: "upload", done: hasSlides, busy: uploading || busy("parse_document") || detail.sourceDocument?.parseStatus === "running" },
@@ -67,14 +69,19 @@ export function buildSteps(detail: ProjectDetail, uploading = false): { steps: S
     {
       id: "avatar",
       done: avatarOn && hasSlides && avatarCount.done === avatarCount.total,
-      skipped: !avatarOn,
+      // No narrated page (all muted) means no presenter clip either.
+      skipped: !avatarOn || spoken.length === 0,
       busy: busy("generate_avatar"),
       count: avatarOn ? avatarCount : undefined,
       tab: "studio",
     },
     { id: "export", done: videoCurrent, busy: busy("render_video") },
   ];
-  return { steps, next: steps.find((s) => !s.done && !s.skipped) };
+  if (allHidden) {
+    for (const s of steps) if (s.id !== "upload") s.done = false;
+    return { steps, next: undefined, allHidden };
+  }
+  return { steps, next: steps.find((s) => !s.done && !s.skipped), allHidden };
 }
 
 /**
@@ -96,7 +103,7 @@ export function StepBar({ actions }: { actions: EditorActions }) {
   const nextCost = usePendingEstimate(detail?.project.id, costType, revision, "pending", missingScripts);
   const undownloaded = useFreshUndownloadedVideo();
   if (!detail || !plan) return null;
-  const { steps, next } = plan;
+  const { steps, next, allHidden } = plan;
   const translateJob = detail.activeJobs.find((j) => j.type === "translate_script");
 
   // A finished upload step looks like "look back", so replacing the deck always asks first.
@@ -226,7 +233,11 @@ export function StepBar({ actions }: { actions: EditorActions }) {
           </>
         ) : (
           // Done is only done once the file is saved: until then point at the download.
-          <span className="text-emerald-300">{undownloaded ? t.steps.doneDownload : t.steps.allDone}</span>
+          allHidden ? (
+            <span className="text-amber-300">{t.steps.allHidden}</span>
+          ) : (
+            <span className="text-emerald-300">{undownloaded ? t.steps.doneDownload : t.steps.allDone}</span>
+          )
         )}
       </div>
       <input

@@ -10,6 +10,7 @@ import { fmt, t } from "../../i18n";
 import { confirmReplaceSource } from "../../lib/replaceSource";
 import { formatDuration, formatTwdFirst } from "../../lib/format";
 import { estimateLines, twdShort } from "../../lib/paidJobs";
+import { visibleScenes } from "../../lib/settingsImpact";
 import { buildTimeline } from "../../lib/timelineModel";
 import { useEditor } from "../../store/editorStore";
 import { Button } from "../ui/Button";
@@ -88,7 +89,7 @@ export function EditorHeader({ actions, onOpenJobs }: EditorHeaderProps) {
               {durationLabel}
             </Badge>
           </span>}
-          {hasSlides && estimate && <CostBadge estimate={estimate} />}
+          {hasSlides && estimate && visibleScenes(detail).length > 0 && <CostBadge estimate={estimate} />}
         </div>
       </div>
 

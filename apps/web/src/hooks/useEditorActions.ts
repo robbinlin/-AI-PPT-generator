@@ -97,11 +97,14 @@ export function useEditorActions() {
     };
 
     const enqueueOnce = async (req: EnqueueJobRequest, options: EnqueueOptions): Promise<Job | null> => {
+      // The project this click belongs to: a confirmation can outlive the page (browser Back), and
+      // must never start the job on whatever project is open by then.
+      const pid = projectId();
       if (ESTIMATED_TYPES.has(req.type) && options.confirm !== false) {
         const type = req.type as EstimateType;
         let estimate: CostEstimate | null = null;
         try {
-          estimate = await api.getEstimate(projectId(), type, { scope: isForced(req) ? "all" : "pending", sceneIds: requestedScenes(req) });
+          estimate = await api.getEstimate(pid, type, { scope: isForced(req) ? "all" : "pending", sceneIds: requestedScenes(req) });
         } catch {
           estimate = null;
         }
@@ -123,7 +126,8 @@ export function useEditorActions() {
       // Any job may outlast the user's attention (an export takes minutes too): ask once, now.
       requestNotifyPermission();
       try {
-        const { job } = await api.enqueueJob(projectId(), req);
+        if (store().detail?.project.id !== pid) return null;
+        const { job } = await api.enqueueJob(pid, req);
         store().upsertJob(job);
         return job;
       } catch (err) {

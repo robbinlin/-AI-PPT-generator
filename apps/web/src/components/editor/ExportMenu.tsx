@@ -267,19 +267,23 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
         <label className="mb-2 flex items-center gap-2 text-xs text-neutral-300">
           <input
             type="checkbox"
-            checked={burn}
+            checked={burn && detail.project.settings.subtitles.enabled}
             disabled={!detail.project.settings.subtitles.enabled || !!renderJob}
             onChange={(e) => setBurn(e.target.checked)}
           />
           {/* A choice for this export only; the project's own setting lives in 人像與聲音. */}
           {t.export.burnSubtitlesOnce}
         </label>
+        {!detail.project.settings.subtitles.enabled && <p className="-mt-1 mb-2 text-xs text-neutral-400">{t.export.subtitlesOff}</p>}
         {detail.project.settings.subtitles.enabled && burn !== detail.project.settings.subtitles.burnIn && (
           <p className="-mt-1 mb-2 text-xs text-amber-300">{burn ? t.export.burnDiffersOn : t.export.burnDiffersOff}</p>
         )}
         {renderJob ? (
           // A running export always shows its progress, whatever else is still missing.
           <RenderProgress job={renderJob} />
+        ) : visibleScenes(detail).length === 0 ? (
+          // Every page hidden: nothing to export (the server would refuse too).
+          <p className="text-xs text-amber-300" data-testid="export-all-hidden">{t.steps.allHidden}</p>
         ) : noScript.length > 0 ? (
           <div className="flex flex-col gap-2" data-testid="export-preflight">
             {preflightNote(fmt(t.export.preflightScript, { pages: pageRanges(noScript.map((s) => s.index + 1)) }))}
@@ -360,7 +364,7 @@ function ExportPanel({ actions, onDone }: { actions: Pick<EditorActions, "enqueu
         ) : (
           <button type="button" className={item} disabled title={t.export.srtUnavailable}>
             <Subtitles className="size-4" aria-hidden /> {t.export.srt}
-            <span className="ml-auto text-xs text-neutral-400">{t.export.srtUnavailable}</span>
+            <span className="ml-auto text-xs text-neutral-400">{detail.project.settings.subtitles.enabled ? t.export.srtUnavailable : t.export.srtOff}</span>
           </button>
         )}
         <button type="button" className={item} onClick={() => void exportScript("txt")}>

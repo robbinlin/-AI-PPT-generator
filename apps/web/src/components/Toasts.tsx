@@ -16,8 +16,8 @@ export function Toasts() {
   if (toasts.length === 0) return null;
   return (
     <div
-      // Bottom-left, over the page list's legend: not over the preview, player or timeline clips.
-      className="pointer-events-none fixed bottom-4 left-4 z-[60] flex max-w-xs flex-col items-start gap-2"
+      // Bottom-left, as wide as the page list column (200/260 px), over the page list's legend: not over the preview, player or timeline clips.
+      className="pointer-events-none fixed bottom-4 left-4 z-[60] flex max-w-[184px] flex-col items-start gap-2 min-[1360px]:max-w-[244px]"
     >
       {toasts.map((toast) => (
         <div

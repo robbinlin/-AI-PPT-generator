@@ -83,7 +83,7 @@ export class ProviderNotConfiguredError extends Error {
     public readonly providerId: string,
   ) {
     super(
-      `${PROVIDER_KIND_LABEL[kind] ?? kind}服務「${providerLabel(providerId)}」還沒有設定 API 金鑰，請到「設定 → 服務提供者」新增金鑰`,
+      `${PROVIDER_KIND_LABEL[kind] ?? kind}服務「${providerLabel(providerId)}」還沒有設定 API 金鑰，請到右上角「進階設定」貼上金鑰`,
     );
     this.name = "ProviderNotConfiguredError";
   }
