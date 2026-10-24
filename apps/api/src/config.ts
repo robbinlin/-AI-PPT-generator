@@ -41,6 +41,7 @@ const EnvSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   ELEVENLABS_API_KEY: z.string().optional(),
+  YATING_API_KEY: z.string().optional(),
   HEYGEN_API_KEY: z.string().optional(),
   /** base64, 32 bytes. Random per process (with a warning) if unset. */
   PROVIDER_KEY_ENCRYPTION_KEY: z.string().optional(),

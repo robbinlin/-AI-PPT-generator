@@ -30,6 +30,7 @@ const ENV_KEYS: Record<string, keyof Config> = {
   gemini: "GEMINI_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
   elevenlabs: "ELEVENLABS_API_KEY",
+  yating: "YATING_API_KEY",
   heygen: "HEYGEN_API_KEY",
 };
 
@@ -71,7 +72,7 @@ const PROVIDER_KIND_LABEL: Record<string, string> = { llm: "AI 講稿", tts: "�
 
 /** Display name for a provider id in user-facing messages ("HeyGen 產生失敗：…"). */
 export function providerLabel(id: string): string {
-  const known: Record<string, string> = { gemini: "Gemini", anthropic: "Claude", elevenlabs: "ElevenLabs", heygen: "HeyGen", local: "本機", mock: "Mock", render: "影片合成" };
+  const known: Record<string, string> = { gemini: "Gemini", anthropic: "Claude", elevenlabs: "ElevenLabs", yating: "雅婷", heygen: "HeyGen", local: "本機", mock: "Mock", render: "影片合成" };
   return known[id] ?? id;
 }
 

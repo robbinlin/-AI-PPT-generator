@@ -234,6 +234,7 @@ export const zhTW = {
     price: {
       heygen: "約 US$1–3／分鐘",
       elevenlabs: "付費",
+      yating: "約 NT$3／千字",
       gemini: "幾乎免費",
       local: "免費",
       cosyvoice: "免費",

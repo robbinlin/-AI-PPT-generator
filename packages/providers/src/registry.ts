@@ -4,6 +4,7 @@ import { geminiLlmFactory } from "./llm/gemini.js";
 import { mockLlmFactory } from "./llm/mock.js";
 import { elevenLabsTtsFactory } from "./tts/elevenlabs.js";
 import { geminiTtsFactory } from "./tts/gemini.js";
+import { yatingTtsFactory } from "./tts/yating.js";
 import { localTtsFactory } from "./tts/local.js";
 import { mockTtsFactory } from "./tts/mock.js";
 import { heyGenAvatarFactory } from "./avatar/heygen.js";
@@ -77,6 +78,7 @@ export const defaultRegistry = new ProviderRegistry()
   .registerLlm(mockLlmFactory(() => ({})))
   .registerTts(geminiTtsFactory)
   .registerTts(elevenLabsTtsFactory)
+  .registerTts(yatingTtsFactory)
   .registerTts(localTtsFactory)
   .registerTts(mockTtsFactory)
   .registerAvatar(heyGenAvatarFactory)

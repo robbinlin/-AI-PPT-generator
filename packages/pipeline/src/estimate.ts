@@ -14,6 +14,8 @@ export const DEFAULT_PRICE_TABLE: PriceTable = {
   tts: {
     gemini: { charsPer1k: 0.02 },
     elevenlabs: { charsPer1k: 0.18 },
+    // 雅婷: NT$298 per 100,000 characters (developer.yating.tw/pricing, 2026-10) ≈ US$0.093 per 1k.
+    yating: { charsPer1k: 0.093 },
     mock: { charsPer1k: 0 },
   },
   avatar: {
