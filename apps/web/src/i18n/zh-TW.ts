@@ -155,6 +155,7 @@ export const zhTW = {
     offline: "與伺服器的連線中斷，正在重新連線…這段期間的修改暫時無法儲存，也無法開始新的工作。",
     reconnected: "已重新連上伺服器，畫面已更新。",
     parseFailedPanel: "這份簡報沒能打開。請在中間重新上傳（建議另存成 PPTX 或 PDF）。",
+    parseStoppedPanel: "簡報解析已停止。請在中間重新上傳簡報。",
   },
   steps: {
     label: "製作步驟",

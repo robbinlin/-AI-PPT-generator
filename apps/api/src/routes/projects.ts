@@ -56,8 +56,13 @@ function deepMerge<T extends Record<string, unknown>>(base: T, patch: Record<str
 }
 
 /** Job types that work page by page and cost money: at most one at a time per page. */
-/** Projects with a deck upload in progress (one server process). */
-const uploading = new Set<string>();
+/**
+ * Projects with a deck upload in progress (one server process), with when it started. A lock older
+ * than UPLOAD_LOCK_MS is ignored: a connection that died without closing (Wi-Fi dropped, laptop
+ * asleep) must not block the project until a restart.
+ */
+const uploading = new Map<string, number>();
+const UPLOAD_LOCK_MS = 15 * 60_000;
 
 const PAGE_JOBS = new Set(["generate_script", "synthesize_speech", "generate_avatar", "translate_script"]);
 /** Jobs that write the same thing: a presenter job also makes missing narration. */
@@ -173,8 +178,10 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     if (busy) throw conflict(`「${JOB_LABEL[busy.type] ?? (busy.type === "parse_document" ? "解析簡報" : "匯出影片")}」正在進行，請等它完成（或在「工作」停止）後再替換簡報。`);
     // The parse job only exists once the file has arrived: hold the project for the whole upload, so a
     // second upload (another tab, a quick re-drop) can't slip in meanwhile.
-    if (uploading.has(project.id)) throw conflict("另一份簡報正在上傳，請等它完成後再替換。");
-    uploading.add(project.id);
+    const since = uploading.get(project.id);
+    if (since !== undefined && Date.now() - since < UPLOAD_LOCK_MS) throw conflict("另一份簡報正在上傳，請等它完成後再替換。");
+    const lockedAt = Date.now();
+    uploading.set(project.id, lockedAt);
     try {
     const part = await req.file();
     if (!part) throw badRequest("multipart field `file` is required");
@@ -230,7 +237,8 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
       await rm(scratch, { recursive: true, force: true });
     }
     } finally {
-      uploading.delete(project.id);
+      // Only our own lock (a stale one may have been taken over meanwhile).
+      if (uploading.get(project.id) === lockedAt) uploading.delete(project.id);
     }
   });
 

@@ -346,6 +346,12 @@ export function createEditorStore(): StoreApi<EditorState> {
       upsertJob(job) {
         const state = get();
         if (!state.detail) return;
+        // A response can arrive after the job's own events: never put a finished job back to
+        // 「queued」, nor a running one back to queued.
+        const finished = state.recentJobs.find((j) => j.id === job.id);
+        if (finished && isActiveJob(job)) return;
+        const live = state.detail.activeJobs.find((j) => j.id === job.id);
+        if (live && live.status === "running" && job.status === "queued") return;
         set({
           detail: applyJob(state.detail, job),
           ...(isActiveJob(job) ? {} : { recentJobs: rememberJob(state.recentJobs, job) }),

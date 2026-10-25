@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { Job, JobPayload, JobType, ProjectEvent } from "@lvs/shared";
 import type { Config } from "../config.js";
 import type { Db } from "../db/client.js";
@@ -37,6 +37,8 @@ export interface EnqueueOptions {
  */
 export class JobRunner {
   private running = false;
+  /** Set by stop(): handlers aborted by a shutdown are re-queued, not cancelled. */
+  private stopping = false;
   private timer: NodeJS.Timeout | undefined;
   private active = new Map<string, AbortController>();
   private readonly concurrency: number;
@@ -73,7 +75,9 @@ export class JobRunner {
     const gaveUp = await db
       .update(jobs)
       .set({ status: "failed", error: "這項工作進行時伺服器中斷了好幾次，已停止。請重新開始；若是簡報，可改存成 PDF 再上傳。", finishedAt: new Date() })
-      .where(and(eq(jobs.status, "running"), sql`${jobs.attempts} >= ${jobs.maxAttempts}`))
+      // Not a job with a provider task under way (a HeyGen clip): resuming its poll costs nothing,
+      // starting over would pay again.
+      .where(and(eq(jobs.status, "running"), sql`${jobs.attempts} >= ${jobs.maxAttempts}`, isNull(jobs.providerTaskId)))
       .returning();
     for (const row of gaveUp) {
       if (row.type === "parse_document") {
@@ -95,6 +99,7 @@ export class JobRunner {
 
   async stop(): Promise<void> {
     this.running = false;
+    this.stopping = true;
     if (this.timer) clearTimeout(this.timer);
     this.wake?.();
     for (const ctrl of this.active.values()) ctrl.abort();
@@ -280,7 +285,15 @@ export class JobRunner {
       const retryable = !cancelled && !(e instanceof NonRetryableJobError) && row.attempts < row.maxAttempts;
       // The stored error is shown to the user in the editor; keep the stack in the log only.
       const message = providerErrorMessage(err).slice(0, 2000);
-      if (cancelled) {
+      if (cancelled && this.stopping) {
+        // The server is shutting down (Ctrl+C, a reload), not the user stopping it: back in the queue,
+        // with the attempt given back and the provider task kept, so a presenter clip already paid
+        // for is picked up again instead of bought twice.
+        await db
+          .update(jobs)
+          .set({ status: "queued", progress: 0, progressMessage: "伺服器重新啟動，重新排隊", startedAt: null, attempts: sql`GREATEST(${jobs.attempts} - 1, 0)` })
+          .where(eq(jobs.id, row.id));
+      } else if (cancelled) {
         await db.update(jobs).set({ status: "cancelled", finishedAt: new Date(), error: null }).where(eq(jobs.id, row.id));
       } else if (retryable) {
         const delay = this.backoffBaseMs * 2 ** (row.attempts - 1);

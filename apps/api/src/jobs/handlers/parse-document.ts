@@ -139,7 +139,11 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
           // Matched only by position (content changed): carry 「hidden」 over only when it is plausibly
           // the same slide (same title), or a slide inserted early would shift the flag onto real content.
           const titleOf = (c: unknown) => ((c as { title?: string } | null)?.title ?? "").trim();
-          const sameSlide = m.kind === "same" || (!!titleOf(was?.content) && titleOf(was?.content) === titleOf(slide.content));
+          // Untitled pages (pictures, PDFs without a detectable title): same page count means nothing
+          // was inserted or removed, so position is trustworthy.
+          const titled = !!titleOf(was?.content) || !!titleOf(slide.content);
+          const sameSlide =
+            m.kind === "same" || (titled ? titleOf(was?.content) === titleOf(slide.content) : created.length === oldSlides.filter((o) => o.pageNumber < KEPT_PAGE_BASE).length);
           if (was?.hidden && was.pageNumber < KEPT_PAGE_BASE && sameSlide) {
             const [h] = await tx.update(slides).set({ hidden: true }).where(eq(slides.id, slide.id)).returning();
             insertedSlides[i] = h!;

@@ -37,6 +37,26 @@ function makeRunner(handler: JobHandler, overrides: { concurrency?: number } = {
 const read = async (id: string) => (await t.ctx.db.select().from(jobs).where(eq(jobs.id, id)))[0]!;
 
 describe("JobRunner", () => {
+  it("re-queues a job the server stops for shutdown (not 「cancelled」, attempt given back)", async () => {
+    let started = false;
+    const runner = makeRunner(
+      (ctx) =>
+        new Promise((_resolve, reject) => {
+          started = true;
+          ctx.signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+        }),
+    );
+    const job = await runner.enqueue(projectId, { type: "generate_outline", force: false });
+    runner.start();
+    for (let i = 0; i < 100 && !started; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(started).toBe(true);
+    await runner.stop();
+    const row = await read(job.id);
+    expect(row.status).toBe("queued");
+    expect(row.attempts).toBe(0);
+    await t.ctx.db.delete(jobs).where(eq(jobs.id, job.id)); // the other tests share this project's queue
+  });
+
   it("claims the oldest queued job and runs the handler to success", async () => {
     let seen = 0;
     const runner = makeRunner(async (ctx) => {

@@ -92,6 +92,21 @@ export async function latestSourceDocument(db: Db, projectId: string): Promise<S
   return row ? toSourceDocument(row) : undefined;
 }
 
+/**
+ * The deck the editor shows: the latest one, unless reading it was stopped or failed while an
+ * earlier deck is still in place (its slides are what the project has), so the header names the
+ * right file and the page count stays.
+ */
+export async function shownSourceDocument(db: Db, projectId: string): Promise<SourceDocument | undefined> {
+  const rows = await db.select().from(sourceDocuments).where(eq(sourceDocuments.projectId, projectId)).orderBy(desc(sourceDocuments.version)).limit(10);
+  const latest = rows[0];
+  if (latest && (latest.parseStatus === "cancelled" || latest.parseStatus === "failed")) {
+    const kept = rows.find((r) => r.parseStatus === "succeeded");
+    if (kept) return toSourceDocument(kept);
+  }
+  return latest ? toSourceDocument(latest) : undefined;
+}
+
 export async function listSlidesInOrder(db: Db, projectId: string): Promise<Slide[]> {
   const rows = await db.select().from(slides).where(eq(slides.projectId, projectId)).orderBy(asc(slides.index));
   return rows.map(toSlide);
@@ -196,7 +211,7 @@ export function withEffectiveStatuses(
 export async function getProjectDetail(db: Db, ownerId: string, projectId: string): Promise<ProjectDetail> {
   const projectRow = await requireProject(db, ownerId, projectId);
   const [sourceDocument, slideList, sceneList, outline, active] = await Promise.all([
-    latestSourceDocument(db, projectId),
+    shownSourceDocument(db, projectId),
     listSlidesInOrder(db, projectId),
     listScenesInOrder(db, projectId),
     latestOutline(db, projectId),

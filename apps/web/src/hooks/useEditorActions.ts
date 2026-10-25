@@ -304,7 +304,9 @@ export function useEditorActions() {
           });
           // Job first: the preview treats a 「parsing」 document without a parse job as stopped.
           store().upsertJob(job);
-          store().setSourceDocument(sourceDocument);
+          // The parse may already have finished (its events came first): keep that outcome.
+          const done = store().recentJobs.find((j) => j.id === job.id);
+          store().setSourceDocument(done ? { ...sourceDocument, parseStatus: done.status } : sourceDocument);
           store().setUpload({ progress: null, error: null });
         } catch (err) {
           report(fmt(t.upload.failed, { message: errorMessage(err) }), () => void this.upload(file));

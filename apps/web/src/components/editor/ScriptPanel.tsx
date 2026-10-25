@@ -42,8 +42,14 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const paidAvatarReady = !!scene && !!av && av.enabled && !!av.avatarId && av.providerId !== "local" && !scene.muted && scene.avatar.status === "ready";
   const serverRedo = usePendingEstimate(paidAvatarReady ? detail?.project.id : undefined, "generate_avatar", `${av?.avatarId}:${scene?.durationSec}`, "all", scene ? [scene.id] : undefined);
   if (!detail || !scene) {
-    const parseFailed = detail?.sourceDocument?.parseStatus === "failed";
-    return <p className="p-4 text-sm text-neutral-400">{detail && detail.slides.length === 0 ? (parseFailed ? t.editor.parseFailedPanel : t.editor.waitForSlides) : t.editor.selectPage}</p>;
+    const status = detail?.sourceDocument?.parseStatus;
+    const parseJob = detail?.activeJobs.some((j) => j.type === "parse_document");
+    const notParsing = status === "failed" || status === "cancelled" || ((status === "queued" || status === "running") && !parseJob);
+    return (
+      <p className="p-4 text-sm text-neutral-400">
+        {detail && detail.slides.length === 0 ? (status === "failed" ? t.editor.parseFailedPanel : notParsing ? t.editor.parseStoppedPanel : t.editor.waitForSlides) : t.editor.selectPage}
+      </p>
+    );
   }
 
   const text = currentScript({ detail, drafts }, scene.id);
