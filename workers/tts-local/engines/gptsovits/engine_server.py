@@ -1,4 +1,5 @@
-"""GPT-SoVITS v2 engine (zero-shot, no training) inside engines/gptsovits/.venv.
+"""GPT-SoVITS v2 engine inside engines/gptsovits/.venv: zero-shot with the pretrained weights, or a
+voice's own fine-tuned weights (`weights` in the request; see lvs_tts/train_voice.py).
 
 Uses the same TTS pipeline as upstream api_v2.py. Protocol: GET /health, POST /synthesize.
 """
@@ -47,13 +48,30 @@ config = {
 print(f"loading GPT-SoVITS {VERSION} on {device}", flush=True)
 tts_config = TTS_Config(config)
 pipeline = TTS(tts_config)
+PRETRAINED_WEIGHTS = {"gpt": str(PRETRAINED / t2s), "sovits": str(PRETRAINED / vits)}
+loaded = dict(PRETRAINED_WEIGHTS)
 print("ready", flush=True)
+
+
+def use_weights(weights: dict | None) -> None:
+    """Switch to a voice's fine-tuned weights (or back to the pretrained ones) when they differ."""
+    want = {**PRETRAINED_WEIGHTS, **{k: v for k, v in (weights or {}).items() if k in ("gpt", "sovits") and v}}
+    if want["sovits"] != loaded["sovits"]:
+        print(f"loading SoVITS weights {want['sovits']}", flush=True)
+        pipeline.init_vits_weights(want["sovits"])
+        loaded["sovits"] = want["sovits"]
+    if want["gpt"] != loaded["gpt"]:
+        print(f"loading GPT weights {want['gpt']}", flush=True)
+        pipeline.init_t2s_weights(want["gpt"])
+        loaded["gpt"] = want["gpt"]
 
 LANG = {"zh": "zh", "en": "en", "mixed": "auto"}
 
 
 def synthesize(req: dict) -> dict:
     text, ref_wav, ref_text = req["text"], req["ref_wav"], req.get("ref_text") or ""
+    trained = bool(req.get("weights"))
+    use_weights(req.get("weights"))
     lang = LANG.get(req.get("language", "zh"), "zh")
     prompt_lang = "zh" if any("一" <= c <= "鿿" for c in ref_text) else "en"
     params = {
@@ -66,15 +84,18 @@ def synthesize(req: dict) -> dict:
         "top_k": 15,
         "top_p": 1.0,
         "temperature": 1.0,
-        "text_split_method": "cut5",
+        # A fine-tuned SoVITS skipped whole clauses with punctuation-sized batches read in parallel;
+        # ~50-character pieces read one at a time lowered misreads from ~21% to ~13% on a 10-page
+        # lecture. The pretrained voice does slightly better with the original settings.
+        "text_split_method": "cut2" if trained else "cut5",
         "batch_size": 1,
         "speed_factor": float(req.get("speed") or 1.0),
-        "split_bucket": True,
+        "split_bucket": not trained,
         "return_fragment": False,
         "streaming_mode": False,
         "fragment_interval": 0.3,
         "seed": -1,
-        "parallel_infer": True,
+        "parallel_infer": not trained,
         "repetition_penalty": 1.35,
         "sample_steps": 32,
         "super_sampling": False,

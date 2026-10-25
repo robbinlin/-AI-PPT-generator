@@ -43,6 +43,8 @@ export interface LocalVoice {
   transcript: string;
   language: "zh" | "en" | "mixed";
   previewUrl: string;
+  /** Present when a model was fine-tuned on this speaker (`python -m lvs_tts.train_voice`). */
+  trained?: { engine: LocalTtsEngine; minutes?: number | null };
 }
 
 export interface LocalSynthResponse {
@@ -73,8 +75,22 @@ export function mapLocalVoices(
   );
   const langs: Language[] = ["zh-TW", "en", "mixed"];
   const out: Voice[] = [];
+  // A trained voice is offered once, with the engine its model belongs to, ahead of the others:
+  // the other engines would only imitate its short reference clip.
+  for (const v of voices) {
+    const e = v.trained && engines.find((x) => x.id === v.trained!.engine);
+    if (!e) continue;
+    out.push({
+      id: `${e.id}/${v.id}`,
+      name: `我的聲音・${v.name}（訓練版）`,
+      languages: langs,
+      previewUrl: `${baseUrl}${v.previewUrl}`,
+      tags: [e.displayName, "已訓練"],
+    });
+  }
   for (const e of engines) {
     for (const v of voices) {
+      if (v.trained) continue;
       out.push({
         id: `${e.id}/${v.id}`,
         name: `我的聲音・${v.name}（${e.displayName}）`,

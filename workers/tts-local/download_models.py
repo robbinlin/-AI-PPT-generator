@@ -38,6 +38,8 @@ def gptsovits() -> None:
         allow_patterns=[
             "gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt",
             "gsv-v2final-pretrained/s2G2333k.pth",
+            "gsv-v2final-pretrained/s2D2333k.pth",  # discriminator, for fine-tuning a voice
+            "sv/pretrained_eres2netv2w24s4ep4.ckpt",  # speaker embedding, picks the speaker's clips
             "chinese-roberta-wwm-ext-large/*",
             "chinese-hubert-base/*",
             "s1v3.ckpt",

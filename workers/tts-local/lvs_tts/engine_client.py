@@ -130,8 +130,12 @@ class EngineProcess:
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
 
-    def synthesize(self, text: str, ref_wav: Path, ref_text: str, language: str, speed: float, out_wav: Path) -> SynthResult:
+    def synthesize(
+        self, text: str, ref_wav: Path, ref_text: str, language: str, speed: float, out_wav: Path, weights: Optional[dict] = None
+    ) -> SynthResult:
         payload = {"text": text, "ref_wav": str(ref_wav), "ref_text": ref_text, "language": language, "speed": speed, "out_wav": str(out_wav)}
+        if weights:
+            payload["weights"] = weights  # a voice's fine-tuned model files (engines that support it)
         try:
             r = requests.post(f"{self.base}/synthesize", json=payload, timeout=1800)
         except requests.RequestException as e:

@@ -131,11 +131,91 @@ def test_whisper_transcribes_mandarin_as_traditional(tmp_path):
     assert all(w["endSec"] >= w["startSec"] for w in words)
 
 
-def test_short_cutoff_uses_word_boundaries():
-    from lvs_tts.store import short_cutoff
+def test_pick_cut_ends_in_a_pause():
+    from lvs_tts.store import pick_cut
 
-    ts = [{"text": c, "startSec": i * 1.0, "endSec": i * 1.0 + 0.9} for i, c in enumerate("大家好歡迎來到課程今天")]
-    cut, text = short_cutoff(ts, 12.0, "大家好歡迎來到課程今天", limit=9.5)
-    assert 8.9 < cut <= 9.5 and text == "大家好歡迎來到課程"
-    assert short_cutoff(None, 12.0, "x" * 120, limit=9.5) == (9.5, "x" * 95)
-    assert short_cutoff(None, 8.0, "short", limit=9.5) == (8.0, "short")
+    assert pick_cut([(1.0, 1.5), (4.0, 4.6), (8.0, 8.6), (9.8, 10.2)], 12.0, limit=9.5) == 8.15
+    assert pick_cut([(2.0, 2.5)], 12.0, limit=9.5) == 9.5  # a pause before 3 s would leave too little
+    assert pick_cut([(9.4, 9.9)], 12.0, limit=9.5) == 9.5
+    assert pick_cut([], 8.0, limit=9.5) == 8.0
+
+
+def test_matching_prefix_follows_what_was_heard():
+    from lvs_tts.store import matching_prefix
+
+    full = "大家好，歡迎來到課程。今天我們講機率。"
+    assert matching_prefix(full, "大家好歡迎來到課程") == "大家好，歡迎來到課程。"
+    # Whisper's homophone errors still map onto the given transcript.
+    assert matching_prefix(full, "大家好歡迎來到課成今天") == "大家好，歡迎來到課程。今天"
+    assert matching_prefix(full, "大家好歡迎來到課程今天我們講機率") == full
+    assert matching_prefix("Hello world, this is VO2 max.", "hello world this") == "Hello world, this"
+    # Nothing in common, or heard text starting somewhere else: no prefix.
+    assert matching_prefix(full, "完全不同的句子") is None
+    assert matching_prefix(full, "今天我們講機率") is None
+
+
+def _speech_with_pauses(path: Path, sr: int = 16000) -> None:
+    """Tone 0-4 s, pause, tone 4.5-8 s, pause 8.0-8.6 s, tone to 12 s."""
+    t = np.arange(int(sr * 12.0)) / sr
+    a = 0.3 * np.sin(2 * np.pi * 220 * t)
+    a[(t >= 4.0) & (t < 4.5)] = 0
+    a[(t >= 8.0) & (t < 8.6)] = 0
+    sf.write(path, a.astype(np.float32), sr)
+
+
+def test_long_reference_prompt_matches_the_cut_audio(tmp_path):
+    from lvs_tts.store import SHORT_REF_REV, Voice, VoiceStore
+
+    heard: list[float] = []
+
+    def fake_whisper(wav16k: Path, language: str) -> str:
+        d = duration(wav16k)
+        heard.append(d)
+        return "大家好歡迎來到課程" if d < 9 else "大家好歡迎來到課程今天我們講機率"
+
+    store = VoiceStore(tmp_path, fake_whisper)
+    clip = tmp_path / "ref.wav"
+    _speech_with_pauses(clip)
+    v = store.create("ref.wav", clip.read_bytes(), "t", lambda _p: "大家好，歡迎來到課程。今天我們講機率。")
+    assert 8.0 < v.short_duration_sec < 8.6 and abs(duration(store.short(v.id)) - v.short_duration_sec) < 0.05
+    assert v.transcript_short == "大家好，歡迎來到課程。" and v.short_rev == SHORT_REF_REV
+    assert heard and all(d < 8.7 for d in heard)  # Whisper only listened to the cut part
+    assert store.reference_for(store.get(v.id), 9.5) == (store.short(v.id), "大家好，歡迎來到課程。")
+
+    # A voice shortened by the old rule is rebuilt once, on first use.
+    old = store.get(v.id)
+    old.short_rev, old.transcript_short = 1, "來到課程今天我們講"
+    store._save(old)
+    wav, text = store.reference_for(store.get(v.id), 9.5)
+    assert text == "大家好，歡迎來到課程。" and store.get(v.id).short_rev == SHORT_REF_REV
+    assert store.reference_for(store.get(v.id), None) == (store.sample(v.id), "大家好，歡迎來到課程。今天我們講機率。")
+
+    # Without Whisper the transcript is shared out by length.
+    plain = VoiceStore(tmp_path / "plain")
+    p = plain.create("ref.wav", clip.read_bytes(), "t", lambda _p: "一二三四五六七八九十一二")
+    assert p.transcript_short == "一二三四五六七八"
+
+
+def test_trained_voice_carries_its_model(tmp_path, client):
+    from lvs_tts.store import VoiceStore
+
+    store = VoiceStore(tmp_path)
+    clip = tmp_path / "ref.wav"
+    make_wav(clip, 6.0)
+    v = store.create("ref.wav", clip.read_bytes(), "林老師", lambda _p: "大家好")
+    assert "trained" not in v.to_json() and store.model_weights(v, "gptsovits") is None
+    gpt, sovits = tmp_path / "a.ckpt", tmp_path / "b.pth"
+    gpt.write_bytes(b"g")
+    sovits.write_bytes(b"s")
+    v = store.attach_model(v.id, "gptsovits", gpt, sovits, 33.04)
+    assert v.to_json()["trained"] == {"engine": "gptsovits", "minutes": 33.0}
+    w = store.model_weights(store.get(v.id), "gptsovits")
+    assert Path(w["gpt"]).read_bytes() == b"g" and Path(w["sovits"]).parent == store.dir(v.id)
+    assert store.model_weights(store.get(v.id), "cosyvoice2") is None  # other engines stay zero-shot
+    (store.dir(v.id) / "gptsovits-sovits.pth").unlink()
+    assert store.model_weights(store.get(v.id), "gptsovits") is None  # missing files: pretrained weights
+    # Only SoVITS fine-tuned: the engine keeps its pretrained GPT.
+    v = store.attach_model(v.id, "gptsovits", None, sovits, 20)
+    assert set(store.model_weights(store.get(v.id), "gptsovits")) == {"sovits"}
+
+    assert client.post("/engines/unload").json() == {"ok": True}

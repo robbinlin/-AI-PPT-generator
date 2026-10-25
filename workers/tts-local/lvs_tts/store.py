@@ -9,7 +9,8 @@ import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from difflib import SequenceMatcher
+from typing import Callable, Optional
 
 from . import ffmpeg
 
@@ -41,26 +42,49 @@ def detect_language(text: str) -> str:
 SHORT_REF_SECONDS = 9.5  # GPT-SoVITS rejects references outside 3–10 s
 
 
-def short_cutoff(timestamps: Optional[list[dict]], duration: float, transcript: str, limit: float = SHORT_REF_SECONDS) -> tuple[float, str]:
-    """Where to cut a long reference clip so the prompt text still matches the audio.
+# Bump to rebuild every stored shortened reference (rev 1 took its prompt text from Whisper word
+# timings over the whole clip, which can skip the first sentences: text and audio then disagreed).
+SHORT_REF_REV = 2
 
-    Returns (seconds, transcript_of_that_part): the end of the last Whisper word that finishes
-    before `limit`, or a proportional character cut when no timings are available.
-    """
+
+def pick_cut(silences: list[tuple[float, float]], duration: float, limit: float = SHORT_REF_SECONDS) -> float:
+    """Where a long reference clip ends: inside the last pause that starts between MIN_SECONDS and
+    `limit` (never mid-word), else at `limit`."""
     if duration <= limit:
-        return duration, transcript
-    words = [w for w in (timestamps or []) if w.get("endSec", 0) <= limit and w.get("text")]
-    if len(words) >= 3:
-        cut = min(limit, words[-1]["endSec"] + 0.15)
-        parts: list[str] = []
-        for w in words:
-            t = w["text"]
-            if parts and t[:1].isascii() and parts[-1][-1:].isascii():
-                parts.append(" ")
-            parts.append(t)
-        return round(cut, 3), "".join(parts)
-    n = max(1, int(len(transcript) * limit / duration))
-    return limit, transcript[:n]
+        return duration
+    cut = None
+    for start, end in silences:
+        if MIN_SECONDS <= start < limit:
+            cut = min(start + 0.15, end, limit)
+    return round(cut if cut is not None else limit, 3)
+
+
+def _spoken(c: str) -> bool:
+    return c.isalnum()  # letters, digits and CJK characters; not punctuation or spaces
+
+
+def matching_prefix(transcript: str, heard: str) -> Optional[str]:
+    """The start of `transcript` that Whisper `heard` in the cut clip, or None when they disagree.
+
+    The given transcript is kept (it is usually more accurate than Whisper) and ends where the heard
+    text ends, plus the punctuation right after it.
+    """
+    keep = [(i, c.lower()) for i, c in enumerate(transcript) if _spoken(c)]
+    t = "".join(c for _, c in keep)
+    h = "".join(c.lower() for c in heard if _spoken(c))
+    if not t or not h:
+        return None
+    blocks = [b for b in SequenceMatcher(None, t, h, autojunk=False).get_matching_blocks() if b.size]
+    if not blocks or sum(b.size for b in blocks) < 0.6 * len(h) or blocks[0].a > 3:
+        return None
+    last = blocks[-1]
+    end = min(len(t), last.a + last.size + (len(h) - (last.b + last.size)))
+    if end >= len(t):
+        return transcript.strip()
+    idx = keep[end - 1][0] + 1
+    while idx < len(transcript) and not _spoken(transcript[idx]) and not transcript[idx].isspace():
+        idx += 1
+    return transcript[:idx].strip()
 
 
 @dataclass
@@ -73,9 +97,14 @@ class Voice:
     # Shortened reference (≤ SHORT_REF_SECONDS) for engines with a 10 s cap; None when the clip is short enough.
     short_duration_sec: Optional[float] = None
     transcript_short: Optional[str] = None
+    short_rev: int = 1
+    # A model fine-tuned on this speaker (lvs_tts/train_voice.py): {"engine", "sovits", "gpt"?, "minutes"},
+    # file names relative to the voice folder (no "gpt": the pretrained one). The reference clip above
+    # is still the prompt.
+    model: Optional[dict] = None
 
     def to_json(self) -> dict:
-        return {
+        out = {
             "id": self.id,
             "name": self.name,
             "durationSec": round(self.duration_sec, 3),
@@ -83,14 +112,19 @@ class Voice:
             "language": self.language,
             "previewUrl": f"/voices/{self.id}/sample.wav",
         }
+        if self.model:
+            out["trained"] = {"engine": self.model["engine"], "minutes": self.model.get("minutes")}
+        return out
 
 
 class VoiceStore:
     """Each voice: sample.wav (24 kHz, for engines), sample16k.wav (for Whisper), voice.json."""
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, transcribe_clip: Optional[Callable[[Path, str], str]] = None):
         self.root = root / "voices"
         self.root.mkdir(parents=True, exist_ok=True)
+        # (16 kHz wav, voice language) -> transcript; None when Whisper is not available.
+        self.transcribe_clip = transcribe_clip
 
     def dir(self, vid: str) -> Path:
         return self.root / vid
@@ -109,12 +143,71 @@ class VoiceStore:
         if not max_seconds or voice.duration_sec <= max_seconds:
             return self.sample(voice.id), voice.transcript
         short = self.short(voice.id)
-        if short.is_file() and voice.transcript_short:
-            return short, voice.transcript_short
-        # Voices created before shortening existed: cut now, proportional transcript.
-        cut, text = short_cutoff(None, voice.duration_sec, voice.transcript, max_seconds)
-        ffmpeg.to_wav(self.sample(voice.id), short, rate=24000, max_seconds=cut)
-        return short, text
+        if not (short.is_file() and voice.transcript_short and voice.short_rev == SHORT_REF_REV):
+            self._shorten(voice)  # voices from before rev 2 are rebuilt once, on first use
+        return short, voice.transcript_short or voice.transcript
+
+    def _shorten(self, voice: Voice) -> None:
+        """Cut sample.wav at a pause before SHORT_REF_SECONDS and give it the text spoken in that part.
+
+        The cut clip itself is transcribed, so the prompt text always matches the prompt audio; the
+        given transcript is preferred where it agrees with what Whisper heard.
+        """
+        try:
+            silences = ffmpeg.silences(self.sample16k(voice.id))
+        except Exception as e:  # best effort: a cut at the limit still works
+            log.warning("pause detection failed for %s: %s", voice.id, e)
+            silences = []
+        cut = pick_cut(silences, voice.duration_sec)
+        ffmpeg.to_wav(self.sample(voice.id), self.short(voice.id), rate=24000, max_seconds=cut)
+        text = None
+        if self.transcribe_clip:
+            clip16k = self.dir(voice.id) / "short16k.wav"
+            try:
+                ffmpeg.to_wav(self.sample16k(voice.id), clip16k, rate=16000, max_seconds=cut)
+                heard = (self.transcribe_clip(clip16k, voice.language) or "").strip()
+                if heard:
+                    text = matching_prefix(voice.transcript, heard) or heard
+            except Exception as e:
+                log.warning("could not transcribe the shortened reference of %s: %s", voice.id, e)
+            finally:
+                clip16k.unlink(missing_ok=True)
+        if not text:  # no Whisper: proportional share of the transcript
+            text = voice.transcript[: max(1, int(len(voice.transcript) * cut / voice.duration_sec))]
+        voice.short_duration_sec = cut
+        voice.transcript_short = text
+        voice.short_rev = SHORT_REF_REV
+        self._save(voice)
+
+    def _save(self, voice: Voice) -> None:
+        (self.dir(voice.id) / "voice.json").write_text(json.dumps(voice.__dict__, ensure_ascii=False, indent=2), "utf-8")
+
+    def attach_model(self, vid: str, engine: str, gpt: Optional[Path], sovits: Path, minutes: Optional[float] = None) -> Voice:
+        """Store fine-tuned weights with the voice; synthesis with `engine` then uses them.
+
+        `gpt` None keeps the engine's pretrained GPT (only SoVITS was fine-tuned)."""
+        voice = self.get(vid)
+        if not voice:
+            raise LookupError(f"voice {vid} not found")
+        files = {"sovits": f"{engine}-sovits{sovits.suffix}"}
+        shutil.copyfile(sovits, self.dir(vid) / files["sovits"])
+        if gpt:
+            files["gpt"] = f"{engine}-gpt{gpt.suffix}"
+            shutil.copyfile(gpt, self.dir(vid) / files["gpt"])
+        voice.model = {"engine": engine, **files, "minutes": round(minutes, 1) if minutes else None}
+        self._save(voice)
+        return voice
+
+    def model_weights(self, voice: Voice, engine: str) -> Optional[dict]:
+        """Absolute paths of the voice's fine-tuned weights for `engine`, if it has them."""
+        m = voice.model
+        if not m or m.get("engine") != engine:
+            return None
+        paths = {k: self.dir(voice.id) / m[k] for k in ("gpt", "sovits") if m.get(k)}
+        if "sovits" not in paths or not all(p.is_file() for p in paths.values()):
+            log.warning("voice %s lists a %s model but its files are missing; using the pretrained one", voice.id, engine)
+            return None
+        return {k: str(p) for k, p in paths.items()}
 
     def list(self) -> list[Voice]:
         out = []
@@ -130,7 +223,7 @@ class VoiceStore:
             return None
         return Voice(**json.loads(meta.read_text("utf-8")))
 
-    def create(self, filename: str, data: bytes, name: Optional[str], transcribe, align=None) -> Voice:
+    def create(self, filename: str, data: bytes, name: Optional[str], transcribe) -> Voice:
         ext = Path(filename).suffix.lower()
         if ext not in AUDIO_EXT:
             raise ValueError(f"unsupported file type {ext or '(none)'}; use wav/mp3/m4a/webm")
@@ -157,18 +250,9 @@ class VoiceStore:
                 transcript=transcript,
                 language=detect_language(transcript),
             )
+            self._save(voice)
             if duration > SHORT_REF_SECONDS:
-                timestamps = None
-                if align:
-                    try:
-                        timestamps = align(self.sample16k(vid), transcript)
-                    except Exception as e:  # alignment is best effort
-                        log.warning("reference alignment failed: %s", e)
-                cut, text = short_cutoff(timestamps, duration, transcript)
-                ffmpeg.to_wav(src, self.short(vid), rate=24000, max_seconds=cut)
-                voice.short_duration_sec = cut
-                voice.transcript_short = text
-            (d / "voice.json").write_text(json.dumps(voice.__dict__, ensure_ascii=False, indent=2), "utf-8")
+                self._shorten(voice)
             return voice
         except Exception:
             shutil.rmtree(d, ignore_errors=True)
@@ -179,7 +263,7 @@ class VoiceStore:
         if not voice:
             return None
         voice.name = name.strip()[:80] or voice.name
-        (self.dir(vid) / "voice.json").write_text(json.dumps(voice.__dict__, ensure_ascii=False, indent=2), "utf-8")
+        self._save(voice)
         return voice
 
     def delete(self, vid: str) -> bool:

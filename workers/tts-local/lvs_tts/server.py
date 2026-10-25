@@ -54,7 +54,13 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     root.mkdir(parents=True, exist_ok=True)
     device = detect_device()
     engines = EngineManager(device)
-    voices = VoiceStore(root)
+
+    def transcribe_clip(wav16k: Path, language: str) -> str:
+        if not whisper_align.available():
+            return ""
+        return whisper_align.transcribe(wav16k, "en" if language == "en" else "zh")
+
+    voices = VoiceStore(root, transcribe_clip)
     results = ResultStore(root)
     synth_lock = threading.Lock()  # engines are not re-entrant; one synthesis at a time
     allowed_engines = set(ENGINE_IDS) | ({"mock"} if os.environ.get("LVS_TTS_ENGINE") == "mock" or os.environ.get("LVS_TTS_ALLOW_MOCK") else set())
@@ -87,6 +93,13 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     def list_engines():
         return [{"id": e, "displayName": DISPLAY_NAMES[e], "installed": is_installed(e), "notes": NOTES[e]} for e in ENGINE_IDS]
 
+    @app.post("/engines/unload")
+    def unload_engine():
+        """Stop the loaded engine (frees GPU memory, e.g. before training); the next synthesis starts it again."""
+        with synth_lock:
+            engines.shutdown()
+        return {"ok": True}
+
     @app.get("/voices")
     def list_voices():
         return [v.to_json() for v in voices.list()]
@@ -102,8 +115,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             return given or whisper_align.transcribe(wav16k)
 
         try:
-            align = whisper_align.word_timestamps if whisper_align.available() else None
-            return voices.create(file.filename or "upload", data, name, transcribe, align).to_json()
+            return voices.create(file.filename or "upload", data, name, transcribe).to_json()
         except ValueError as e:
             raise HTTPException(415, str(e))
         except RuntimeError as e:
@@ -150,7 +162,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             ref_wav, ref_text = voices.reference_for(voice, MAX_REF_SECONDS.get(req.engine))
             if req.engine in NEEDS_SIMPLIFIED:
                 ref_text = _to_simplified(ref_text)
-            out = proc.synthesize(engine_text, ref_wav, ref_text, lang, req.speed if native_speed else 1.0, raw)
+            out = proc.synthesize(engine_text, ref_wav, ref_text, lang, req.speed if native_speed else 1.0, raw, voices.model_weights(voice, req.engine))
         # Normalise every engine's output to 24 kHz mono 16-bit, stretching if the engine has no speed control.
         if not native_speed and abs(req.speed - 1.0) > 1e-3:
             stretched = final.with_name(f"{sid}.tempo.wav")

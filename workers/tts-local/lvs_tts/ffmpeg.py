@@ -50,3 +50,24 @@ def change_tempo(src: Path, out: Path, speed: float) -> None:
     """Time-stretch without pitch change for engines that have no native speed control."""
     # atempo accepts 0.5..100 per stage; chain two stages for anything below 0.5 (we clamp at 0.5 anyway).
     run([_bin("ffmpeg"), "-y", "-v", "error", "-i", str(src), "-filter:a", f"atempo={speed:.4f}", str(out)])
+
+
+def silences(path: Path, *, noise_db: float = -35.0, min_seconds: float = 0.2) -> list[tuple[float, float]]:
+    """(start, end) of the pauses in `path` (ffmpeg silencedetect)."""
+    proc = subprocess.run(
+        [_bin("ffmpeg"), "-hide_banner", "-nostats", "-i", str(path), "-af", f"silencedetect=noise={noise_db}dB:d={min_seconds}", "-f", "null", "-"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg silencedetect failed: {proc.stderr.strip()[-400:]}")
+    out: list[tuple[float, float]] = []
+    start: float | None = None
+    for line in proc.stderr.splitlines():
+        if "silence_start:" in line:
+            start = max(0.0, float(line.rsplit("silence_start:", 1)[1].split()[0]))
+        elif "silence_end:" in line and start is not None:
+            out.append((start, float(line.rsplit("silence_end:", 1)[1].split()[0])))
+            start = None
+    return out

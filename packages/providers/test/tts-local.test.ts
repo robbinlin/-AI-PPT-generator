@@ -45,6 +45,21 @@ describe("local tts provider", () => {
       voiceId: "abc",
     });
   });
+  it("offers a trained voice once, with its own engine, first", () => {
+    const base = { durationSec: 8, transcript: "你好", language: "zh" as const };
+    const voices = mapLocalVoices(
+      [
+        { ...base, id: "v1", name: "阿光", previewUrl: "/voices/v1/sample.wav" },
+        { ...base, id: "t1", name: "林老師", previewUrl: "/voices/t1/sample.wav", trained: { engine: "gptsovits", minutes: 33 } },
+        { ...base, id: "t2", name: "沒裝引擎", previewUrl: "/voices/t2/sample.wav", trained: { engine: "fishspeech" } },
+      ],
+      { ...health, engines: { ...health.engines, gptsovits: { installed: true, ready: false }, fishspeech: { installed: false, ready: false } } },
+      "http://t",
+    );
+    expect(voices.map((v) => v.id)).toEqual(["gptsovits/t1", "cosyvoice2/v1", "gptsovits/v1"]);
+    expect(voices[0]!.name).toBe("我的聲音・林老師（訓練版）");
+    expect(voices[0]!.tags).toEqual(["GPT-SoVITS", "已訓練"]);
+  });
   it("explains service state", () => {
     expect(localTtsHint(null)).toMatch(/pnpm dev:tts/);
     expect(

@@ -8,7 +8,7 @@
 | 引擎 | 模型 | 參考錄音 | 授權 |
 |---|---|---|---|
 | CosyVoice 2 | FunAudioLLM/CosyVoice2-0.5B | 3–30 秒 | Apache-2.0 |
-| GPT-SoVITS | v2 預訓練（零樣本，不訓練） | 3–10 秒 | MIT |
+| GPT-SoVITS | v2 預訓練（零樣本），或用你的長錄音訓練（見下方） | 3–10 秒 | MIT |
 | Fish Speech | OpenAudio S1-mini | 3–30 秒 | CC-BY-NC-SA 4.0（非商業；下載需 Hugging Face 帳號同意條款並設定 `HF_TOKEN`） |
 
 ## 安裝（Windows）
@@ -35,6 +35,24 @@ pnpm dev:tts        # 127.0.0.1:8766
 
 在專案設定的「語音」區把供應商選成「本機語音」，上傳一段 3–30 秒你本人的錄音（安靜環境、單人、
 語速自然），Whisper 會自動聽寫內容，之後「產生語音」就會用這個聲音。引擎可在聲音旁邊切換。
+GPT-SoVITS 只吃 10 秒內的參考錄音：較長的錄音會在 9.5 秒前的停頓處切開，並重新聽寫切下來的那段當提示文字。
+
+## 訓練自己的聲音（GPT-SoVITS）
+
+上傳短錄音只是讓引擎「模仿」你的聲音；用一段 10 分鐘以上、只有你在說話的長錄音（例如一堂課）訓練，
+聲音會像很多。8 GB 顯示卡上 30 分鐘的語音約需 20 分鐘（同一段錄音再訓練時會沿用上次的聽寫）：
+
+```powershell
+cd C:\Users\user\-AI-PPT-generator\workers\tts-local
+.\.venv\Scripts\python -m lvs_tts.train_voice D:\錄音\上課.m4a --name "林老師"
+```
+
+程式會用 Whisper 聽寫、挑出清楚的句子（最多 `--max-minutes`，預設 40 分鐘）、用聲紋排除別人的聲音
+（例如學生發問），再訓練 GPT-SoVITS 的音色（SoVITS；負責「怎麼念」的 GPT 沿用預訓練版，念錯字少很多，
+要一起訓練加 `--gpt-epochs 15`）。最後用 8 段候選參考錄音各念一段試聽稿，Whisper 聽寫後挑念得最準的那段當參考，
+把聲音加進清單。App 的語音選單會出現
+「我的聲音・林老師（訓練版）」。本機語音服務可以開著：訓練前會先關掉它載入的引擎，讓出顯示記憶體。
+聽寫用的 Whisper 預設是 large-v3-turbo（第一次會下載約 1.6 GB），可用 `LVS_TRAIN_WHISPER_MODEL` 改。
 
 ## 環境變數
 
@@ -49,7 +67,7 @@ pnpm dev:tts        # 127.0.0.1:8766
 
 ## HTTP 介面
 
-`GET /health`、`GET /engines`、`GET /voices`、`POST /voices`（multipart `file` + `name` + `transcript`）、
+`GET /health`、`GET /engines`、`POST /engines/unload`、`GET /voices`（訓練過的聲音多一個 `trained: {engine, minutes}`）、`POST /voices`（multipart `file` + `name` + `transcript`）、
 `GET /voices/{id}/sample.wav`、`DELETE /voices/{id}`、`POST /synthesize`（JSON：`text, voiceId, engine, language, speed, timestamps`）
 → `{id, durationSec, audioUrl, sampleRate, timestamps}`、`GET /synth/{id}.wav`。錯誤為 `{"error":{"code","message"}}`。
 

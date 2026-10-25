@@ -1,4 +1,5 @@
-# GPT-SoVITS inference subset of upstream requirements.txt (no WebUI / training / ASR tools).
+# GPT-SoVITS subset of upstream requirements.txt: inference + fine-tuning (no WebUI / ASR tools;
+# train_engine.py puts a gradio stand-in from ./train_shims on the path).
 # torch / torchaudio / torchcodec are installed separately with the right CUDA/CPU index.
 numpy<2.0
 scipy
@@ -36,3 +37,6 @@ soundfile
 huggingface_hub
 matplotlib
 resampy
+# fine-tuning (train_engine.py)
+tensorboard
+pandas<3
