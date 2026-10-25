@@ -170,11 +170,11 @@ describe("retried forced jobs", () => {
 });
 
 describe("renderInputHash", () => {
-  it("changes when a page's slide content changes (deck replaced with an edited slide)", () => {
+  it("changes when a page's slide picture changes (deck replaced with an edited slide)", () => {
     const settings = ProjectSettings.parse({});
     const scene = { id: "c1", slideId: "s1", muted: false, tailPauseSec: 0.5, audio: { status: "ready", assetId: "a" }, avatar: { status: "missing" }, subtitle: { status: "ready", assetId: "srt" } } as never as import("@lvs/shared").Scene;
     const hash = (contentHash: string) =>
-      renderInputHash({ scenesInOrder: [scene], settings, preset: "hd_1080p", burnSubtitles: true, slidesById: new Map([["s1", { id: "s1", contentHash } as never]]) });
+      renderInputHash({ scenesInOrder: [scene], settings, preset: "hd_1080p", burnSubtitles: true, slidesById: new Map([["s1", { id: "s1", imageAssetId: "img", contentHash: "text" } as never]]), assets: { img: { inputHash: contentHash } } });
     expect(hash("v1")).toBe(hash("v1"));
     expect(hash("v1")).not.toBe(hash("v2"));
   });

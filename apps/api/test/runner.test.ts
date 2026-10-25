@@ -174,4 +174,21 @@ describe("orphan recovery", () => {
       await t.close();
     }
   });
+
+  it("gives up on a job interrupted as many times as it may be tried (no endless re-queue)", async () => {
+    const t = await _cts();
+    try {
+      const created = await t.app.inject({ method: "POST", url: "/projects", payload: { name: "crashy" } });
+      const projectId = created.json().id as string;
+      const res = await t.app.inject({ method: "POST", url: `/projects/${projectId}/jobs`, payload: { type: "export_script", format: "md" } });
+      const jobId = res.json().job.id as string;
+      await t.ctx.db.update(jobs).set({ status: "running", attempts: 3, maxAttempts: 3 }).where(eq(jobs.id, jobId));
+      await t.ctx.runner.recoverOrphans();
+      const [row] = await t.ctx.db.select().from(jobs).where(eq(jobs.id, jobId));
+      expect(row?.status).toBe("failed");
+      expect(row?.error).toContain("伺服器中斷");
+    } finally {
+      await t.close();
+    }
+  });
 });

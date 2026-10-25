@@ -302,8 +302,9 @@ export function useEditorActions() {
           const { sourceDocument, job } = await api.uploadSource(projectId(), file, {
             onProgress: (progress) => store().setUpload({ progress, error: null }),
           });
-          store().setSourceDocument(sourceDocument);
+          // Job first: the preview treats a 「parsing」 document without a parse job as stopped.
           store().upsertJob(job);
+          store().setSourceDocument(sourceDocument);
           store().setUpload({ progress: null, error: null });
         } catch (err) {
           report(fmt(t.upload.failed, { message: errorMessage(err) }), () => void this.upload(file));

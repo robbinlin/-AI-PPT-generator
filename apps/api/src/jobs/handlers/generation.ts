@@ -317,6 +317,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
       preset: ctx.job.payload.preset,
       burnSubtitles: burn,
       slidesById: new Map(detail.slides.map((sl) => [sl.id, sl])),
+      assets: detail.assets,
     });
     await ctx.emit(0.05, "準備合成影片");
     const out = await seams.renderVideo({ ctx, scenesInOrder: visibleScenes, settings: detail.project.settings, inputHash, preset: ctx.job.payload.preset, burnSubtitles: burn });

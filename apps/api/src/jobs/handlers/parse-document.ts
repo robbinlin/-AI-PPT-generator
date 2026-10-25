@@ -76,7 +76,9 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
           sizeBytes: page.image.buffer.length,
           width: page.image.width,
           height: page.image.height,
-          inputHash: page.contentHash,
+          // What the page looks like (a swapped photo or recoloured chart changes it; notes don't):
+          // the render fingerprint uses this to tell whether a video still shows the current slides.
+          inputHash: sha256Hex(page.image.buffer),
           producedBy: { jobId: job.id },
         },
         {
@@ -134,7 +136,11 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
           // footer must not bring 13 hidden pages back). A page kept from an earlier replacement
           // (page number past KEPT_PAGE_BASE) that is back in the deck shows again.
           const was = m.scene.slideId ? oldSlideById.get(m.scene.slideId) : undefined;
-          if (was?.hidden && was.pageNumber < KEPT_PAGE_BASE) {
+          // Matched only by position (content changed): carry 「hidden」 over only when it is plausibly
+          // the same slide (same title), or a slide inserted early would shift the flag onto real content.
+          const titleOf = (c: unknown) => ((c as { title?: string } | null)?.title ?? "").trim();
+          const sameSlide = m.kind === "same" || (!!titleOf(was?.content) && titleOf(was?.content) === titleOf(slide.content));
+          if (was?.hidden && was.pageNumber < KEPT_PAGE_BASE && sameSlide) {
             const [h] = await tx.update(slides).set({ hidden: true }).where(eq(slides.id, slide.id)).returning();
             insertedSlides[i] = h!;
           }
@@ -176,7 +182,8 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
           const [copy] = await tx
             .insert(slides)
             // Page numbers past KEPT_PAGE_BASE: never matched by position against a later deck.
-            .values({ ...old, id: randomUUID(), sourceDocumentId: docId, index, hidden: true, pageNumber: KEPT_PAGE_BASE + (old.pageNumber % KEPT_PAGE_BASE) })
+            // Hidden when first kept; a kept page the user turned back on stays on.
+            .values({ ...old, id: randomUUID(), sourceDocumentId: docId, index, hidden: old.hidden || old.pageNumber < KEPT_PAGE_BASE, pageNumber: KEPT_PAGE_BASE + (old.pageNumber % KEPT_PAGE_BASE) })
             .returning();
           insertedSlides.push(copy!);
           const [row] = await tx.update(scenes).set({ slideId: copy!.id, index }).where(eq(scenes.id, id)).returning();

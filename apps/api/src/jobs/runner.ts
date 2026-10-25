@@ -4,7 +4,7 @@ import type { Job, JobPayload, JobType, ProjectEvent } from "@lvs/shared";
 import type { Config } from "../config.js";
 import type { Db } from "../db/client.js";
 import { toJob } from "../db/mappers.js";
-import { jobs, type JobRow } from "../db/schema.js";
+import { jobs, sourceDocuments, type JobRow } from "../db/schema.js";
 import { NonRetryableJobError, providerErrorMessage } from "../errors.js";
 import type { EventBus } from "../events/bus.js";
 import type { StorageService } from "../storage/types.js";
@@ -67,10 +67,23 @@ export class JobRunner {
    */
   async recoverOrphans(): Promise<void> {
     const { db } = this.deps;
+    // Each interruption counts as an attempt: a job that takes the server down with it (a deck that
+    // runs it out of memory) must end as 「failed」 instead of being re-queued after every restart —
+    // a stuck parse would also block replacing the deck forever.
+    const gaveUp = await db
+      .update(jobs)
+      .set({ status: "failed", error: "這項工作進行時伺服器中斷了好幾次，已停止。請重新開始；若是簡報，可改存成 PDF 再上傳。", finishedAt: new Date() })
+      .where(and(eq(jobs.status, "running"), sql`${jobs.attempts} >= ${jobs.maxAttempts}`))
+      .returning();
+    for (const row of gaveUp) {
+      if (row.type === "parse_document") {
+        await db.update(sourceDocuments).set({ parseStatus: "failed" }).where(eq(sourceDocuments.parseJobId, row.id));
+      }
+      this.deps.bus.publish(row.projectId, { kind: "job", job: toJob(row) });
+    }
     const rows = await db
       .update(jobs)
-      // A restart is not the job's fault: give the attempt back (the next claim adds one again).
-      .set({ status: "queued", progress: 0, progressMessage: "伺服器重新啟動，重新排隊", startedAt: null, attempts: sql`GREATEST(${jobs.attempts} - 1, 0)` })
+      .set({ status: "queued", progress: 0, progressMessage: "伺服器重新啟動，重新排隊", startedAt: null })
       .where(eq(jobs.status, "running"))
       .returning();
     for (const row of rows) {
@@ -142,6 +155,11 @@ export class JobRunner {
       return existing ? toJob(existing) : null;
     }
     const job = toJob(row);
+    // A deck stopped while still waiting: the handler never ran, so mark the document here too
+    // (else the editor would show 「正在解析」 forever).
+    if (job.type === "parse_document") {
+      await db.update(sourceDocuments).set({ parseStatus: "cancelled" }).where(and(eq(sourceDocuments.parseJobId, jobId), inArray(sourceDocuments.parseStatus, ["queued", "running"])));
+    }
     this.deps.bus.publish(job.projectId, { kind: "job", job });
     return job;
   }

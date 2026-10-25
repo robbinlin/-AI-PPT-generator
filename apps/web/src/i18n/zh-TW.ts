@@ -772,7 +772,7 @@ export const zhTW = {
     thesePages: "這幾頁",
     fixAvatar: "先產生人像",
     exportAnyway: "照樣匯出",
-    outdated: "需重新匯出（內容已修改）",
+    outdated: "需重新匯出（內容或匯出方式有更新）",
     downloadOld: "下載舊版影片",
     chooseLocation: "點一下可選擇存檔位置與檔名",
     saving: "正在儲存「{name}」…",

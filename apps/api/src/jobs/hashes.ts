@@ -54,20 +54,26 @@ export function avatarInputHash(args: { audioAssetId: string; settings: ProjectS
   });
 }
 
+function slideImageHash(slide: Slide | undefined, assets: Readonly<Record<string, { inputHash?: string } | undefined>>): string | undefined {
+  if (!slide) return undefined;
+  return (slide.imageAssetId ? assets[slide.imageAssetId]?.inputHash : undefined) ?? slide.contentHash;
+}
+
 export function renderInputHash(args: {
   scenesInOrder: Scene[];
   settings: ProjectSettings;
   preset: string;
   burnSubtitles: boolean;
-  /** Slide content per scene: a deck replaced with an edited slide 5 makes the old video outdated. */
   slidesById: Map<string, Slide>;
+  /** Slide pictures by asset id: a deck replaced with a changed slide 5 makes the old video outdated. */
+  assets: Readonly<Record<string, { inputHash?: string } | undefined>>;
 }): string {
   return pipeline.renderInputHash({
     scenes: args.scenesInOrder.map((s) => ({
       sceneId: s.id,
-      // The slide's content hash, not its image id: every replacement makes new image ids, and an
-      // unchanged slide must not make the video outdated.
-      imageAssetId: args.slidesById.get(s.slideId)?.contentHash,
+      // The picture's hash, not its id: every replacement makes new image ids, and an unchanged
+      // slide must not make the video outdated. (Older uploads hashed the slide text instead.)
+      imageAssetId: slideImageHash(args.slidesById.get(s.slideId), args.assets),
       audioAssetId: s.audio.assetId,
       avatarVideoAssetId: s.avatar.assetId,
       subtitleAssetId: s.subtitle.assetId,

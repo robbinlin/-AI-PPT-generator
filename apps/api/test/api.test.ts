@@ -402,6 +402,22 @@ describe("replacing the deck", () => {
   });
 });
 
+describe("stopping a deck that is still waiting", () => {
+  it("marks the document stopped, so the editor offers the upload again", async () => {
+    const t = await createTestServer();
+    try {
+      const id = (await t.app.inject({ method: "POST", url: "/projects", payload: { name: "stop-parse" } })).json().id as string;
+      const up = await t.app.inject({ method: "POST", url: `/projects/${id}/source`, ...multipart("deck.pdf", TINY_PDF, "application/pdf") });
+      const jobId = up.json().job.id as string;
+      await t.app.inject({ method: "POST", url: `/projects/${id}/jobs/${jobId}/cancel` });
+      const d = (await t.app.inject({ method: "GET", url: `/projects/${id}` })).json() as ProjectDetail;
+      expect(d.sourceDocument?.parseStatus).toBe("cancelled");
+    } finally {
+      await t.close();
+    }
+  });
+});
+
 describe("duplicate jobs", () => {
   it("refuses a second job of the same kind for the same pages while one is queued (double click, two tabs)", async () => {
     const t = await createTestServer();

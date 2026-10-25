@@ -57,12 +57,12 @@ export function CenterPane({
   commitRef.current = commitLayout;
 
   const source = detail.sourceDocument;
+  // 「Parsing」 with no parse job left (stopped while waiting, or lost) is not parsing: offer the upload again.
+  const parseJobActive = detail.activeJobs.some((j) => j.type === "parse_document");
+  const parsing = !!source && (source.parseStatus === "queued" || source.parseStatus === "running") && parseJobActive;
   if (
     !source ||
-    (detail.slides.length === 0 &&
-      source.parseStatus !== "queued" &&
-      source.parseStatus !== "running" &&
-      source.parseStatus !== "failed")
+    (detail.slides.length === 0 && !parsing && source.parseStatus !== "failed")
   ) {
     return (
       <section className="flex min-h-0 items-center justify-center bg-neutral-950 p-8">

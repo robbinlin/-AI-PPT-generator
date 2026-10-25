@@ -22,11 +22,16 @@ export const RENDER_PRESETS = ["preview_540p", "hd_1080p"] as const;
  * Render input hashes the project would produce right now, computed exactly like the
  * render_video handler does (visible scenes in order, current settings).
  */
-export function currentRenderHashes(scenesInOrder: Scene[], slidesById: Map<string, Slide>, settings: ProjectDetail["project"]["settings"]): string[] {
+export function currentRenderHashes(
+  scenesInOrder: Scene[],
+  slidesById: Map<string, Slide>,
+  settings: ProjectDetail["project"]["settings"],
+  assets: Readonly<Record<string, { inputHash?: string } | undefined>>,
+): string[] {
   const visible = scenesInOrder.filter((sc) => !slidesById.get(sc.slideId)?.hidden);
   const out: string[] = [];
   for (const preset of RENDER_PRESETS) {
-    for (const burnSubtitles of [true, false]) out.push(renderInputHash({ scenesInOrder: visible, settings, preset, burnSubtitles, slidesById }));
+    for (const burnSubtitles of [true, false]) out.push(renderInputHash({ scenesInOrder: visible, settings, preset, burnSubtitles, slidesById, assets }));
   }
   return out;
 }
@@ -272,6 +277,6 @@ export async function getProjectDetail(db: Db, ownerId: string, projectId: strin
     assets: assetMap,
     activeJobs: active,
     totalDurationSec: Math.round(totalDurationSec * 100) / 100,
-    currentRenderHashes: currentRenderHashes(sceneListEffective, slidesById, project.settings),
+    currentRenderHashes: currentRenderHashes(sceneListEffective, slidesById, project.settings, assetMap),
   };
 }
