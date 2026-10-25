@@ -8,7 +8,7 @@ import { toScene, toSlide } from "../../db/mappers.js";
 import { assets, scenes, scriptRevisions, slides, sourceDocuments, type SceneRow, type SlideRow } from "../../db/schema.js";
 import { NonRetryableJobError } from "../../errors.js";
 import type { JobHandler } from "../context.js";
-import { throwIfAborted } from "../context.js";
+import { abortedByShutdown, throwIfAborted } from "../context.js";
 
 export const slideContentHash = (plainText: string, notes: string | undefined) => sha256Hex(`${plainText}\n${notes ?? ""}`);
 
@@ -211,9 +211,11 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
     return { pageCount: newSlides.length, warnings: manifest.meta.warnings, converter: manifest.meta.converter };
   } catch (err) {
     const cancelled = ctx.signal.aborted || (err as Error).name === "AbortError";
+    // A server shutdown re-queues the job: the deck is waiting again, not stopped.
+    const shutdown = abortedByShutdown(ctx.signal);
     await db
       .update(sourceDocuments)
-      .set({ parseStatus: cancelled ? "cancelled" : job.attempts >= job.maxAttempts || err instanceof NonRetryableJobError ? "failed" : "queued" })
+      .set({ parseStatus: shutdown ? "queued" : cancelled ? "cancelled" : job.attempts >= job.maxAttempts || err instanceof NonRetryableJobError ? "failed" : "queued" })
       .where(eq(sourceDocuments.id, docId));
     throw err;
   } finally {
@@ -230,7 +232,9 @@ async function loadPages(manifest: ParserManifest, outDir: string): Promise<Pars
     pages.push({
       pageNumber: entry.pageNumber,
       content,
-      contentHash: slideContentHash(content.plainText, content.notes),
+      // A page without text or notes (a picture, a scanned PDF) is told apart by its picture;
+      // otherwise every such page would share one hash and scripts could move between them.
+      contentHash: (content.plainText ?? "").trim() || (content.notes ?? "").trim() ? slideContentHash(content.plainText, content.notes) : sha256Hex(image),
       image: { buffer: image, width: entry.imageWidthPx, height: entry.imageHeightPx },
       thumbnail: { buffer: thumbnail },
     });

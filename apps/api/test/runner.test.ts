@@ -57,6 +57,29 @@ describe("JobRunner", () => {
     await t.ctx.db.delete(jobs).where(eq(jobs.id, job.id)); // the other tests share this project's queue
   });
 
+  it("keeps a user's stop as 「cancelled」 even if the server shuts down while it unwinds", async () => {
+    let started = false;
+    let reason: unknown;
+    const runner = makeRunner(
+      (ctx) =>
+        new Promise((_resolve, reject) => {
+          started = true;
+          ctx.signal.addEventListener("abort", () => {
+            reason = ctx.signal.reason;
+            // Unwinding takes a moment (e.g. a provider DELETE).
+            setTimeout(() => reject(Object.assign(new Error("aborted"), { name: "AbortError" })), 50);
+          });
+        }),
+    );
+    const job = await runner.enqueue(projectId, { type: "generate_outline", force: false });
+    runner.start();
+    for (let i = 0; i < 100 && !started; i++) await new Promise((r) => setTimeout(r, 10));
+    await runner.cancel(job.id);
+    await runner.stop();
+    expect(reason).toBe("user-cancel");
+    expect((await read(job.id)).status).toBe("cancelled");
+  });
+
   it("claims the oldest queued job and runs the handler to success", async () => {
     let seen = 0;
     const runner = makeRunner(async (ctx) => {

@@ -8,7 +8,7 @@ import { jobs, sourceDocuments, type JobRow } from "../db/schema.js";
 import { NonRetryableJobError, providerErrorMessage } from "../errors.js";
 import type { EventBus } from "../events/bus.js";
 import type { StorageService } from "../storage/types.js";
-import type { JobContext, JobHandler } from "./context.js";
+import { abortedByShutdown, SHUTDOWN_ABORT, type JobContext, type JobHandler } from "./context.js";
 import type { ParserRunner } from "./parser-runner.js";
 
 export interface RunnerDeps {
@@ -102,7 +102,7 @@ export class JobRunner {
     this.stopping = true;
     if (this.timer) clearTimeout(this.timer);
     this.wake?.();
-    for (const ctrl of this.active.values()) ctrl.abort();
+    for (const ctrl of this.active.values()) ctrl.abort(SHUTDOWN_ABORT);
     // Give handlers a moment to observe the abort.
     const deadline = Date.now() + 5000;
     while (this.active.size > 0 && Date.now() < deadline) await sleep(20);
@@ -145,7 +145,7 @@ export class JobRunner {
     const { db } = this.deps;
     const ctrl = this.active.get(jobId);
     if (ctrl) {
-      ctrl.abort();
+      ctrl.abort("user-cancel");
       // The running loop finalises the row as `cancelled` when the handler returns.
       const [row] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
       return row ? toJob(row) : null;
@@ -228,6 +228,14 @@ export class JobRunner {
 
   private async execute(row: JobRow): Promise<void> {
     const { db, bus, handlers, logger } = this.deps;
+    // Claimed just as the server began to stop: put it straight back, don't start paid work now.
+    if (this.stopping) {
+      await db
+        .update(jobs)
+        .set({ status: "queued", startedAt: null, attempts: sql`GREATEST(${jobs.attempts} - 1, 0)` })
+        .where(eq(jobs.id, row.id));
+      return;
+    }
     const ctrl = new AbortController();
     this.active.set(row.id, ctrl);
     logger?.info({ jobId: row.id, type: row.type, projectId: row.projectId, attempt: row.attempts }, "job started");
@@ -285,7 +293,7 @@ export class JobRunner {
       const retryable = !cancelled && !(e instanceof NonRetryableJobError) && row.attempts < row.maxAttempts;
       // The stored error is shown to the user in the editor; keep the stack in the log only.
       const message = providerErrorMessage(err).slice(0, 2000);
-      if (cancelled && this.stopping) {
+      if (cancelled && abortedByShutdown(ctrl.signal)) {
         // The server is shutting down (Ctrl+C, a reload), not the user stopping it: back in the queue,
         // with the attempt given back and the provider task kept, so a presenter clip already paid
         // for is picked up again instead of bought twice.

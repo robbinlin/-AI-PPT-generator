@@ -95,7 +95,8 @@ export function EditorPage() {
       }
       editorStore.getState().applyEvent(event);
       // There is no SourceDocument event: after a parse finishes, take a fresh snapshot.
-      if (event.kind === "job" && event.job.type === "parse_document" && event.job.status === "succeeded") {
+      // Also when it failed or was stopped: the server then shows the deck still in place.
+      if (event.kind === "job" && event.job.type === "parse_document" && ["succeeded", "failed", "cancelled"].includes(event.job.status)) {
         void refresh().catch(() => undefined);
       }
       // A failed job otherwise only shows in the jobs drawer, which reads as "nothing happened".

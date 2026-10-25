@@ -61,8 +61,9 @@ function deepMerge<T extends Record<string, unknown>>(base: T, patch: Record<str
  * than UPLOAD_LOCK_MS is ignored: a connection that died without closing (Wi-Fi dropped, laptop
  * asleep) must not block the project until a restart.
  */
-const uploading = new Map<string, number>();
-const UPLOAD_LOCK_MS = 15 * 60_000;
+const uploading = new Map<string, { seen: number }>();
+/** No bytes for this long: the upload is dead (a slow but live upload keeps refreshing it). */
+const UPLOAD_LOCK_MS = 2 * 60_000;
 
 const PAGE_JOBS = new Set(["generate_script", "synthesize_speech", "generate_avatar", "translate_script"]);
 /** Jobs that write the same thing: a presenter job also makes missing narration. */
@@ -178,10 +179,10 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     if (busy) throw conflict(`「${JOB_LABEL[busy.type] ?? (busy.type === "parse_document" ? "解析簡報" : "匯出影片")}」正在進行，請等它完成（或在「工作」停止）後再替換簡報。`);
     // The parse job only exists once the file has arrived: hold the project for the whole upload, so a
     // second upload (another tab, a quick re-drop) can't slip in meanwhile.
-    const since = uploading.get(project.id);
-    if (since !== undefined && Date.now() - since < UPLOAD_LOCK_MS) throw conflict("另一份簡報正在上傳，請等它完成後再替換。");
-    const lockedAt = Date.now();
-    uploading.set(project.id, lockedAt);
+    const held = uploading.get(project.id);
+    if (held && Date.now() - held.seen < UPLOAD_LOCK_MS) throw conflict("另一份簡報正在上傳，請等它完成後再替換。");
+    const lock = { seen: Date.now() };
+    uploading.set(project.id, lock);
     try {
     const part = await req.file();
     if (!part) throw badRequest("multipart field `file` is required");
@@ -194,6 +195,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     let size = 0;
     const tap = new Transform({
       transform(chunk: Buffer, _enc, cb) {
+        lock.seen = Date.now(); // still alive
         hash.update(chunk);
         size += chunk.length;
         if (headLen < HEAD_BYTES) {
@@ -209,6 +211,13 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
       const kind = sniffSourceKind(Buffer.concat(headChunks), part.filename);
       if (!kind) throw badRequest("unsupported file type; upload a .pptx, .ppt or .pdf");
 
+      // Checked again now the file is here (the upload may have taken minutes): never two parses.
+      const [parsing] = await db
+        .select()
+        .from(jobs)
+        .where(and(eq(jobs.projectId, project.id), eq(jobs.type, "parse_document"), inArray(jobs.status, ["queued", "running"])))
+        .limit(1);
+      if (parsing) throw conflict("另一份簡報正在解析，請等它完成後再替換。");
       const previous = await latestSourceDocument(db, project.id);
       const docId = randomUUID();
       const safeName = part.filename.replace(/[^\w.\-一-鿿]+/g, "_").slice(0, 120) || `deck.${kind}`;
@@ -238,7 +247,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     }
     } finally {
       // Only our own lock (a stale one may have been taken over meanwhile).
-      if (uploading.get(project.id) === lockedAt) uploading.delete(project.id);
+      if (uploading.get(project.id) === lock) uploading.delete(project.id);
     }
   });
 

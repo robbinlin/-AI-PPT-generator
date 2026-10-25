@@ -40,7 +40,7 @@ import { toAsset, toOutline, toScene } from "../db/mappers.js";
 import { assets, outlineRevisions, projects, scenes, scriptRevisions, timelineRevisions, type SceneRow } from "../db/schema.js";
 import { NonRetryableJobError, providerErrorMessage } from "../errors.js";
 import type { JobContext } from "../jobs/context.js";
-import { throwIfAborted } from "../jobs/context.js";
+import { abortedByShutdown, throwIfAborted } from "../jobs/context.js";
 import { AVATAR_NOT_SELECTED, type GenerationSeams } from "../jobs/handlers/generation.js";
 import { scriptInputHash, subtitleBuiltWidth, subtitleInputHash } from "../jobs/hashes.js";
 import { ProviderNotConfiguredError, providerLabel, type ProviderService } from "./providers.js";
@@ -406,6 +406,8 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         .update(scenes)
         .set({ avatar: { status: "ready", assetId: asset.id, inputHash, jobId: ctx.job.id } })
         .where(eq(scenes.id, scene.id));
+      // The clip is stored: no provider task left to resume (crash recovery may give up again).
+      await ctx.setProviderTaskId(null);
       await publishScene(ctx, scene.id);
     },
 
@@ -537,7 +539,9 @@ async function pollAvatar(provider: AvatarProvider, taskId: string, ctx: JobCont
   let delay = intervalMs;
   for (;;) {
     if (ctx.signal.aborted) {
-      await provider.cancelTask(taskId).catch(() => undefined);
+      // Stopped by the user: cancel the task. Shutting down: leave it running at the provider,
+      // the re-queued job resumes polling the same (already paid) task after the restart.
+      if (!abortedByShutdown(ctx.signal)) await provider.cancelTask(taskId).catch(() => undefined);
       throwIfAborted(ctx.signal);
     }
     const st = await provider.getTask(taskId);
