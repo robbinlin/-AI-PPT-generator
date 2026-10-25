@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../src/config.js";
 import { describe, expect, it } from "vitest";
-import { ProjectSettings } from "@lvs/shared";
+import { ProjectSettings, type Scene } from "@lvs/shared";
 import type { SceneRow, SlideRow } from "../src/db/schema.js";
 import { matchScenes, slideContentHash } from "../src/jobs/handlers/parse-document.js";
 import { mergeGlossary } from "../src/services/glossary.js";
@@ -149,6 +149,20 @@ describe("matchScenes", () => {
     const m3 = matchScenes(n, [o1, o2], { new: pics.new, old: new Map() });
     expect(m3.get(n[0]!.id)).toEqual({ scene: o1.scene, kind: "same" });
     expect(m3.get(n[1]!.id)).toEqual({ scene: o2.scene, kind: "same" });
+  });
+});
+
+describe("renderInputHash", () => {
+  it("changes with what the video really shows: presenter layout and on/off, background, subtitles on/off", () => {
+    const settings = ProjectSettings.parse({ avatar: { enabled: true, providerId: "mock", avatarId: "a" } });
+    const scene = { id: "s1", slideId: "x", audio: { status: "ready", assetId: "au" }, avatar: { status: "ready", assetId: "av" }, subtitle: { status: "ready", assetId: "sb" }, muted: false, tailPauseSec: 0 } as unknown as Scene;
+    const h = (s: typeof settings) => renderInputHash({ scenesInOrder: [scene], settings: s, preset: "hd_1080p", burnSubtitles: true, slidesById: new Map(), assets: {} });
+    const base = h(settings);
+    expect(h({ ...settings, avatar: { ...settings.avatar, layout: { ...settings.avatar.layout, size: 0.5 } } })).not.toBe(base);
+    expect(h({ ...settings, avatar: { ...settings.avatar, enabled: false } })).not.toBe(base);
+    expect(h({ ...settings, backgroundColor: "#ffffff" })).not.toBe(base);
+    expect(h({ ...settings, subtitles: { ...settings.subtitles, enabled: false } })).not.toBe(base);
+    expect(h(settings)).toBe(base);
   });
 });
 

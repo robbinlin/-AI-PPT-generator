@@ -109,6 +109,18 @@ export function useEditorActions() {
         toast(t.upload.uploadingBusy, "info");
         return null;
       }
+      // Voices and a new outline never overlap (the readings could change under the voices): say so
+      // before any price is shown (the server refuses too).
+      const active = store().detail?.activeJobs ?? [];
+      const voicing = active.find((j) => j.type === "synthesize_speech" || j.type === "generate_avatar");
+      if ((req.type === "synthesize_speech" || req.type === "generate_avatar") && active.some((j) => j.type === "generate_outline")) {
+        toast(t.jobs.waitForOutline, "info");
+        return null;
+      }
+      if (req.type === "generate_outline" && voicing) {
+        toast(fmt(t.jobs.waitForVoices, { job: t.jobs.types[voicing.type] }), "info");
+        return null;
+      }
       if (ESTIMATED_TYPES.has(req.type) && options.confirm !== false) {
         const type = req.type as EstimateType;
         let estimate: CostEstimate | null = null;
@@ -116,6 +128,10 @@ export function useEditorActions() {
           estimate = await api.getEstimate(pid, type, { scope: isForced(req) ? "all" : "pending", sceneIds: requestedScenes(req) });
         } catch {
           estimate = null;
+        }
+        if (estimate?.replansOutline && voicing) {
+          toast(fmt(t.jobs.waitForVoices, { job: t.jobs.types[voicing.type] }), "info");
+          return null;
         }
         if (estimate?.sceneCount === 0) {
           toast(fmt(t.paid.nothingToDo, { job: t.jobs.types[type] }), "info");

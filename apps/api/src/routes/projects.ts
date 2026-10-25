@@ -22,7 +22,7 @@ import {
 import { z } from "zod";
 import type { AppContext } from "../context.js";
 import { toJob, toProject, toScene, toScriptRevision, toSlide, toSourceDocument } from "../db/mappers.js";
-import { jobs, projects, scenes, scriptRevisions, slides, sourceDocuments } from "../db/schema.js";
+import { assets, jobs, projects, scenes, scriptRevisions, slides, sourceDocuments } from "../db/schema.js";
 import { badRequest, conflict, notFound } from "../errors.js";
 import { renderScriptDocument } from "../jobs/handlers/export-script.js";
 import { outlineNeedsRegeneration, scriptJobReplansOutline } from "../jobs/plan.js";
@@ -163,8 +163,20 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const project = await requireProject(db, ownerId, req.params.id);
     const active = await db.select().from(jobs).where(and(eq(jobs.projectId, project.id), inArray(jobs.status, ["queued", "running"])));
     for (const j of active) await ctx.runner.cancel(j.id);
+    // The files go too (the dialog promises it): this project's own keys, never one another project's
+    // rows still point at.
+    const prefix = `projects/${project.id}/`;
+    const own = [
+      ...(await db.select({ key: assets.storageKey }).from(assets).where(eq(assets.projectId, project.id))),
+      ...(await db.select({ key: sourceDocuments.storageKey }).from(sourceDocuments).where(eq(sourceDocuments.projectId, project.id))),
+    ]
+      .map((r) => r.key)
+      .filter((k) => k.startsWith(prefix));
     await db.delete(projects).where(eq(projects.id, project.id));
-    // Storage objects are left for a sweeper; keys are prefixed by project id.
+    const shared = own.length ? new Set((await db.select({ key: assets.storageKey }).from(assets).where(inArray(assets.storageKey, own))).map((r) => r.key)) : new Set<string>();
+    for (const key of new Set(own)) {
+      if (!shared.has(key)) await ctx.storage.delete(key).catch((err: unknown) => req.log.warn({ err, key }, "could not delete a file of a deleted project"));
+    }
     reply.code(204);
     return null;
   });
@@ -438,7 +450,13 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
         payload.type === "generate_outline" || (payload.type === "generate_script" && scriptJobReplansOutline(detail, { sceneIds: sel.sceneIds, force: !!sel.force }));
       if (voicing && replans) throw conflict(`「${JOB_LABEL[voicing.type]}」正在進行；這項工作會先重新規劃大綱（讀音可能改變），請等它完成後再開始。`);
       if (payload.type === "synthesize_speech" || payload.type === "generate_avatar") {
-        const planning = active.find((j) => j.type === "generate_outline" || (j.type === "generate_script" && outlineNeedsRegeneration(detail)));
+        const planning = active.find((j) => {
+          if (j.type === "generate_outline") return true;
+          if (j.type !== "generate_script") return false;
+          // Only a script job that will plan a new outline (judged with its own pages).
+          const p = j.payload as { sceneIds?: string[]; force?: boolean };
+          return outlineNeedsRegeneration(detail) && scriptJobReplansOutline(detail, { sceneIds: p.sceneIds, force: !!p.force });
+        });
         if (planning) throw conflict(`「${planning.type === "generate_outline" ? "產生大綱" : "產生講稿"}」正在規劃大綱（讀音可能改變），請等它完成後再產生語音或人像。`);
       }
     }

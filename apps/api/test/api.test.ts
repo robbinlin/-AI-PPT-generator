@@ -440,6 +440,24 @@ describe("outline vs. deck replacement", () => {
   });
 });
 
+describe("deleting a project", () => {
+  it("removes its files too", async () => {
+    const t = await createTestServer();
+    try {
+      const id = (await t.app.inject({ method: "POST", url: "/projects", payload: { name: "gone" } })).json().id as string;
+      await t.app.inject({ method: "POST", url: `/projects/${id}/source`, ...multipart("deck.pdf", TINY_PDF, "application/pdf") });
+      await t.ctx.runner.drain();
+      const d = (await t.app.inject({ method: "GET", url: `/projects/${id}` })).json() as ProjectDetail;
+      const key = d.sourceDocument!.storageKey;
+      expect(await t.ctx.storage.stat(key)).not.toBeNull();
+      expect((await t.app.inject({ method: "DELETE", url: `/projects/${id}` })).statusCode).toBe(204);
+      expect(await t.ctx.storage.stat(key)).toBeNull();
+    } finally {
+      await t.close();
+    }
+  });
+});
+
 describe("readings vs. voices being made", () => {
   it("refuses a new outline or a reading change while voices are being made, and voices while an outline is planned", async () => {
     const t = await createTestServer();

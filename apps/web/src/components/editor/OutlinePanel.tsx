@@ -158,7 +158,7 @@ function Glossary({ glossary, onEditingChange }: { glossary: GlossaryEntry[]; on
     if (!editing) {
       setRows(glossary);
       setBase(glossary);
-    } else if (glossary !== base && !saving) {
+    } else if (JSON.stringify(glossary) !== JSON.stringify(base) && !saving) {
       // (Our own save reloads the outline too: that is not someone else's update.)
       setRows((r) => rebaseRows(base, r, glossary));
       setBase(glossary);

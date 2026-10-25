@@ -1,0 +1,1 @@
+ALTER TABLE "outline_revisions" ADD COLUMN "removed_terms" jsonb DEFAULT '[]'::jsonb NOT NULL;

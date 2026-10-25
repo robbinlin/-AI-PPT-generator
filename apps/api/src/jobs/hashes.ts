@@ -68,18 +68,21 @@ export function renderInputHash(args: {
   /** Slide pictures by asset id: a deck replaced with a changed slide 5 makes the old video outdated. */
   assets: Readonly<Record<string, { inputHash?: string } | undefined>>;
 }): string {
+  const av = args.settings.avatar;
   return pipeline.renderInputHash({
+    // What the render really draws (services/generation.ts renderVideo): the presenter clip only
+    // when the presenter is on and the clip is ready, and the layout every page uses.
     scenes: args.scenesInOrder.map((s) => ({
       sceneId: s.id,
       // The picture's hash, not its id: every replacement makes new image ids, and an unchanged
       // slide must not make the video outdated. (Older uploads hashed the slide text instead.)
       imageAssetId: slideImageHash(args.slidesById.get(s.slideId), args.assets),
       audioAssetId: s.audio.assetId,
-      avatarVideoAssetId: s.avatar.assetId,
+      avatarVideoAssetId: av.enabled && !s.muted && s.avatar.status === "ready" ? s.avatar.assetId : undefined,
       subtitleAssetId: s.subtitle.assetId,
       muted: s.muted,
       tailPauseSec: s.tailPauseSec,
-      avatarLayout: s.avatarLayout,
+      avatarLayout: av.enabled ? (s.avatarLayout ?? av.layout) : undefined,
       transitionIn: s.transitionIn,
     })),
     subtitleStyle: args.settings.subtitles.style,
@@ -87,6 +90,8 @@ export function renderInputHash(args: {
     transition: args.settings.transition,
     preset: args.preset,
     aspectRatio: args.settings.aspectRatio,
+    backgroundColor: args.settings.backgroundColor,
+    subtitlesEnabled: args.settings.subtitles.enabled,
   });
 }
 

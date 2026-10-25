@@ -100,16 +100,24 @@ export async function saveFileAs(
   }
   const writable = await handle.createWritable();
   onStart?.();
-  const data = typeof source === "function" ? await source() : source;
-  if (typeof data === "string") {
-    const res = await fetch(data);
+  let data: Blob | string;
+  let res: Response | undefined;
+  try {
+    data = typeof source === "function" ? await source() : source;
+    if (typeof data === "string") res = await fetch(data);
+  } catch (err) {
+    // Nothing written: discard, so no empty file is left under the chosen name.
+    await writable.abort().catch(() => undefined);
+    throw err;
+  }
+  if (res) {
     if (!res.ok || !res.body) {
-      await writable.abort();
+      await writable.abort().catch(() => undefined);
       throw new Error(`下載失敗（HTTP ${res.status}）`);
     }
-    await res.body.pipeTo(writable);
+    await res.body.pipeTo(writable); // aborts the file itself if the transfer breaks
   } else {
-    await data.stream().pipeTo(writable);
+    await (data as Blob).stream().pipeTo(writable);
   }
   return "saved";
 }

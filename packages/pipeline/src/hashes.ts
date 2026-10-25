@@ -102,6 +102,10 @@ export function renderInputHash(input: {
   transition: Transition;
   preset: string;
   aspectRatio: AspectRatio;
+  /** Frame colour around the slide. */
+  backgroundColor?: string;
+  /** Subtitles on at all (off: no cues burnt in, no SRT). */
+  subtitlesEnabled?: boolean;
 }): string {
   return contentHash({
     kind: "render",
@@ -110,8 +114,10 @@ export function renderInputHash(input: {
     // (v2: lip-synced avatars play once and hold their last frame instead of looping;
     // v3: pages without a clip keep the presenter pages' slide frame;
     // v4: subtitles move beside the presenter instead of running across it;
-    // v5: the slide picture itself counts, so a deck replaced with a changed slide reads outdated).
-    recipe: 5,
+    // v5: the slide picture itself counts, so a deck replaced with a changed slide reads outdated;
+    // v6: the presenter layout every page really uses, presenter on/off, background colour and
+    // subtitles on/off count, so moving the presenter after an export makes the video outdated).
+    recipe: 6,
     scenes: input.scenes.map((s) => ({
       id: s.sceneId,
       image: s.imageAssetId ?? null,
@@ -124,7 +130,9 @@ export function renderInputHash(input: {
       transitionIn: s.transitionIn ?? null,
     })),
     subtitleStyle: input.subtitleStyle,
-    burnSubtitles: input.burnSubtitles,
+    burnSubtitles: input.burnSubtitles && input.subtitlesEnabled !== false,
+    subtitlesEnabled: input.subtitlesEnabled ?? true,
+    backgroundColor: input.backgroundColor ?? "#000000",
     transition: input.transition,
     preset: input.preset,
     aspectRatio: input.aspectRatio,

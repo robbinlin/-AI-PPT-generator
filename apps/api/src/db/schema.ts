@@ -167,6 +167,8 @@ export const outlineRevisions = pgTable(
     sections: jsonb("sections").$type<OutlineSection[]>().notNull().default([]),
     glossary: jsonb("glossary").$type<GlossaryEntry[]>().notNull().default([]),
     timeAllocation: jsonb("time_allocation").$type<Record<string, number>>().notNull().default({}),
+    /** Glossary terms the lecturer deleted: a new plan must not bring them back. */
+    removedTerms: jsonb("removed_terms").$type<string[]>().notNull().default([]),
     inputHash: text("input_hash").notNull(),
     createdAt: ts("created_at").notNull().defaultNow(),
   },

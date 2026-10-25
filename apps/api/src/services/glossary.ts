@@ -44,6 +44,8 @@ export async function updateGlossary(
   const previous = detail.outline;
   if (!previous) throw conflict("還沒有大綱，請先產生大綱");
   const next = normalise(glossary);
+  const [prevRow] = await db.select({ removedTerms: outlineRevisions.removedTerms }).from(outlineRevisions).where(eq(outlineRevisions.id, previous.id)).limit(1);
+  const previousRemoved = prevRow?.removedTerms;
 
   const [row] = await db
     .insert(outlineRevisions)
@@ -56,6 +58,10 @@ export async function updateGlossary(
       sections: previous.sections,
       glossary: next,
       timeAllocation: previous.timeAllocation,
+      // Deleted here (and not added back): a new plan must not bring them back.
+      removedTerms: [
+        ...new Set([...(previousRemoved ?? []), ...previous.glossary.map((e) => e.term).filter((term) => !next.some((e) => e.term === term))]),
+      ].filter((term) => !next.some((e) => e.term === term)),
       inputHash: previous.inputHash,
     })
     .returning();

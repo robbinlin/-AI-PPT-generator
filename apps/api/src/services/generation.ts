@@ -216,18 +216,16 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       const still = ids.length ? await ctx.db.select({ id: slidesTable.id }).from(slidesTable).where(inArray(slidesTable.id, ids)) : [];
       if (still.length !== ids.length) throw new Error("簡報在規劃大綱時被替換了，將以新的簡報重新規劃");
       const [latest] = await ctx.db
-        .select({ version: outlineRevisions.version, glossary: outlineRevisions.glossary })
+        .select({ version: outlineRevisions.version, glossary: outlineRevisions.glossary, removedTerms: outlineRevisions.removedTerms })
         .from(outlineRevisions)
         .where(eq(outlineRevisions.projectId, ctx.job.projectId))
         .orderBy(desc(outlineRevisions.version))
         .limit(1);
       // The readings the lecturer corrected survive a new plan (and pages whose narration doesn't
       // change keep their voice and presenter: re-stamped below).
-      // Terms in earlier outlines but not the current one were deleted by the lecturer: keep them out.
-      const history = latest ? await ctx.db.select({ glossary: outlineRevisions.glossary }).from(outlineRevisions).where(eq(outlineRevisions.projectId, ctx.job.projectId)) : [];
-      const current = new Set((latest?.glossary ?? []).map((e) => e.term));
-      const removed = new Set(history.flatMap((r) => r.glossary.map((e) => e.term)).filter((term) => !current.has(term)));
-      const glossary = latest ? mergeGlossary(latest.glossary, outline.glossary, removed) : outline.glossary;
+      // Terms the lecturer deleted stay out (recorded when the glossary was saved).
+      const removedTerms = latest?.removedTerms ?? [];
+      const glossary = latest ? mergeGlossary(latest.glossary, outline.glossary, new Set(removedTerms)) : outline.glossary;
       // Read before the new outline is stored: statuses are judged against the glossary in use, so
       // read afterwards every page would already look 需更新 and nothing would be carried over.
       const before = latest ? await getProjectDetail(ctx.db, ownerId, ctx.job.projectId) : undefined;
@@ -242,6 +240,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
           sections: outline.sections,
           glossary,
           timeAllocation: outline.timeAllocation,
+          removedTerms,
           inputHash,
         })
         .returning();
