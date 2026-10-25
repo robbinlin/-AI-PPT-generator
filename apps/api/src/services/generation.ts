@@ -9,6 +9,8 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { desc, eq, inArray } from "drizzle-orm";
+import { applyGlossaryChange, mergeGlossary } from "./glossary.js";
+import { getProjectDetail } from "./projects.js";
 import type {
   Asset,
   AvatarProvider,
@@ -214,11 +216,14 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       const still = ids.length ? await ctx.db.select({ id: slidesTable.id }).from(slidesTable).where(inArray(slidesTable.id, ids)) : [];
       if (still.length !== ids.length) throw new Error("簡報在規劃大綱時被替換了，將以新的簡報重新規劃");
       const [latest] = await ctx.db
-        .select({ version: outlineRevisions.version })
+        .select({ version: outlineRevisions.version, glossary: outlineRevisions.glossary })
         .from(outlineRevisions)
         .where(eq(outlineRevisions.projectId, ctx.job.projectId))
         .orderBy(desc(outlineRevisions.version))
         .limit(1);
+      // The readings the lecturer corrected survive a new plan (and pages whose narration doesn't
+      // change keep their voice and presenter: re-stamped below).
+      const glossary = latest ? mergeGlossary(latest.glossary, outline.glossary) : outline.glossary;
       const [row] = await ctx.db
         .insert(outlineRevisions)
         .values({
@@ -228,11 +233,15 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
           objectives: outline.objectives,
           summary: outline.summary,
           sections: outline.sections,
-          glossary: outline.glossary,
+          glossary,
           timeAllocation: outline.timeAllocation,
           inputHash,
         })
         .returning();
+      if (latest) {
+        const detail = await getProjectDetail(ctx.db, ownerId, ctx.job.projectId);
+        await applyGlossaryChange({ db: ctx.db, publish: ctx.publish }, detail, latest.glossary, glossary, row!.id);
+      }
       await ctx.emit(1, "大綱完成");
       return toOutline(row!);
     },

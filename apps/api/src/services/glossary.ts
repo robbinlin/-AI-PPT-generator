@@ -1,7 +1,7 @@
 import { usesGlossaryTerm } from "@lvs/shared";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import type { GlossaryEntry, OutlineRevision, ProjectDetail, ScriptRevision } from "@lvs/shared";
+import type { GlossaryEntry, OutlineRevision, ProjectDetail, ProjectEvent, ScriptRevision } from "@lvs/shared";
 import type { AppContext } from "../context.js";
 import { toOutline, toScene } from "../db/mappers.js";
 import { outlineRevisions, scenes } from "../db/schema.js";
@@ -44,8 +44,6 @@ export async function updateGlossary(
   const previous = detail.outline;
   if (!previous) throw conflict("還沒有大綱，請先產生大綱");
   const next = normalise(glossary);
-  const changed = changedTerms(previous.glossary, next);
-  const settings = detail.project.settings;
 
   const [row] = await db
     .insert(outlineRevisions)
@@ -63,7 +61,45 @@ export async function updateGlossary(
     .returning();
   const outline = toOutline(row!);
   ctx.bus.publish(projectId, { kind: "outline", outline });
+  const affectedSceneIds = await applyGlossaryChange(
+    { db, deriveTexts: ctx.deriveTexts, publish: (e) => ctx.bus.publish(projectId, e) },
+    detail,
+    previous.glossary,
+    next,
+    outline.id,
+  );
+  return { outline, affectedSceneIds };
+}
 
+/**
+ * A new outline (re-planned by AI) keeps the readings the user corrected: terms in both keep the old
+ * reading, and terms the new plan dropped that had a reading stay (the user may rely on them).
+ */
+export function mergeGlossary(previous: GlossaryEntry[], next: GlossaryEntry[]): GlossaryEntry[] {
+  const old = new Map(previous.map((e) => [e.term, e]));
+  const merged = next.map((e) => {
+    const was = old.get(e.term);
+    return was?.reading ? { ...e, reading: was.reading } : e;
+  });
+  const kept = new Set(merged.map((e) => e.term));
+  return [...merged, ...previous.filter((e) => e.reading && !kept.has(e.term))];
+}
+
+/**
+ * After the glossary changed (edited, or a new outline): pages that use a changed term get their
+ * narration re-derived (their audio becomes 需更新); every other page's finished audio/subtitles are
+ * re-stamped to the new glossary's hashes, since nothing they say changed. Returns the re-derived pages.
+ */
+export async function applyGlossaryChange(
+  ctx: { db: AppContext["db"]; deriveTexts?: AppContext["deriveTexts"]; publish: (e: ProjectEvent) => void },
+  detail: ProjectDetail,
+  before: GlossaryEntry[],
+  next: GlossaryEntry[],
+  outlineRevisionId: string,
+): Promise<string[]> {
+  const { db } = ctx;
+  const changed = changedTerms(before, next);
+  const settings = detail.project.settings;
   const uses = (rev: ScriptRevision) => changed.some((term) => usesGlossaryTerm(rev.script, term));
   const affectedSceneIds: string[] = [];
   for (const scene of detail.scenes) {
@@ -80,13 +116,13 @@ export async function updateGlossary(
         subtitleText: rev.subtitleText,
         source: rev.source,
         language: settings.language,
-        outlineRevisionId: outline.id,
+        outlineRevisionId,
         inputHash: sceneRow.script.inputHash,
         estimatedDurationSec: rev.estimatedDurationSec,
       });
       if (created) {
         affectedSceneIds.push(scene.id);
-        ctx.bus.publish(projectId, { kind: "script", script: revision });
+        ctx.publish({ kind: "script", script: revision });
       }
     } else {
       // Same words spoken: carry finished audio and subtitles over to the new glossary's hashes.
@@ -106,7 +142,7 @@ export async function updateGlossary(
       await db.update(scenes).set(set).where(eq(scenes.id, scene.id));
     }
     const [fresh] = await db.select().from(scenes).where(eq(scenes.id, scene.id)).limit(1);
-    if (fresh) ctx.bus.publish(projectId, { kind: "scene", scene: toScene(fresh) });
+    if (fresh) ctx.publish({ kind: "scene", scene: toScene(fresh) });
   }
-  return { outline, affectedSceneIds };
+  return affectedSceneIds;
 }

@@ -310,6 +310,7 @@ export function useEditorActions() {
         // in its own project (else that project reads 「上傳中」 and refuses its jobs).
         const pid = projectId();
         const here = () => store().detail?.project.id === pid;
+        const projectName = store().detail?.project.name ?? "";
         store().setUpload({ progress: 0, error: null });
         try {
           const { sourceDocument, job } = await api.uploadSource(pid, file, {
@@ -327,6 +328,8 @@ export function useEditorActions() {
           store().setUpload({ progress: null, error: null });
         } catch (err) {
           if (here()) report(fmt(t.upload.failed, { message: errorMessage(err) }), () => void this.upload(file));
+          // Another project is open by now: still say it, naming the project.
+          else toast(fmt(t.upload.failedElsewhere, { project: projectName, message: errorMessage(err) }), "error");
         }
       },
     };

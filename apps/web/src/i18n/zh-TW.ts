@@ -685,8 +685,8 @@ export const zhTW = {
     removed: "已刪除「{term}」",
     shortTermWarn: "很短的英文詞也會換掉其他字裡的同樣字母（例如 Two 會影響 Two-way），確認一下是否需要。",
     regenerateTitle: "重新產生大綱？",
-    regenerateBody: "AI 會重新規劃大綱與術語表，取代目前的版本（包括你修正過的讀音）。",
-    regenerateNote: "已寫好的講稿不會自動重寫，但之後產生的講稿會依新大綱。",
+    regenerateBody: "AI 會重新規劃大綱與術語表，取代目前的版本；你修正過的讀音會保留。",
+    regenerateNote: "已寫好的講稿不會自動重寫；AI 寫的講稿會標成「需更新」，重新產生時才依新大綱（語音與人像只有在講稿改了之後才需要重做）。",
     regenerateConfirm: "重新產生",
   },
   upload: {
@@ -699,6 +699,7 @@ export const zhTW = {
     badType: "只支援 PowerPoint（.pptx、.ppt）和 PDF。Keynote 或 Google 簡報請先匯出成 PPTX 或 PDF 再上傳。",
     tooLarge: "檔案超過 200 MB",
     failed: "上傳失敗：{message}",
+    failedElsewhere: "「{project}」的簡報上傳失敗：{message}",
     parseFailed: "解析失敗：{message}",
     replaceConfirm: "新檔案會取代目前的簡報：內容相同的頁面保留講稿與隱藏設定，內容有變的頁面需要重新產生；新簡報裡找不到、但有你寫的或翻譯的講稿的頁面，會保留為最後面的隱藏頁，不會刪掉。",
     replaceTitle: "替換簡報？",

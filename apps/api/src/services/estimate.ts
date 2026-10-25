@@ -6,6 +6,7 @@ import {
   avatarTargets,
   narrationSeconds,
   outlineNeedsRegeneration,
+  scriptJobReplansOutline,
   scriptTargets,
   speechTargets,
   visibleScenesOf,
@@ -65,7 +66,7 @@ export function estimateJob(detail: ProjectDetail, type: JobType, opts: Estimate
       const targets = scriptTargets(detail, opts);
       const parts: CostEstimate[] = [];
       // The handler plans the outline first when it is missing or out of date.
-      if (outlineNeedsRegeneration(detail)) parts.push(outlineEstimate(visibleScenesOf(detail)));
+      if (scriptJobReplansOutline(detail, opts)) parts.push(outlineEstimate(visibleScenesOf(detail)));
       const n = targets.length;
       // `chars` is per call in estimateCost, so the total scales with the number of pending pages.
       const charsPerCall = n ? SCRIPT_PROMPT_OVERHEAD_CHARS + targets.reduce((a, sc) => a + slideChars(sc.slideId), 0) / n : 0;

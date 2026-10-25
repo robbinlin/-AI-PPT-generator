@@ -801,7 +801,7 @@ function VoiceSection({
               <button
                 type="button"
                 aria-label={`${t.settings.previewVoice} ${v.name}`}
-                onClick={() => void player.toggle(v.id, () => api.previewVoice(s.providerId, v.id, language))}
+                onClick={() => void player.toggle(v.id, () => api.previewVoice(s.providerId, v.id, language, { speed: s.speed, sentencePauseSec: s.sentencePauseSec }))}
                 className="flex size-7 shrink-0 items-center justify-center rounded-full border border-neutral-600 text-neutral-200 hover:border-accent-400"
               >
                 {state === "loading" ? <Loader2 className="size-3.5 animate-spin" /> : state === "playing" ? <Square className="size-3" /> : <Play className="size-3.5" />}

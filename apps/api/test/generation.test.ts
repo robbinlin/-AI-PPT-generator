@@ -439,4 +439,21 @@ describe("generation handlers", () => {
     expect(scriptCalls).toEqual([{ sceneId: sc.id, instruction: "更口語；縮短到 30 秒", currentScript: d.scripts[sc.id]!.script }]);
     expect((await detail()).scripts[sc.id]!.script).toBe("改寫後的講稿。");
   });
+
+  it("rewriting one page after a page was shown again keeps the outline (no re-plan, other pages untouched)", async () => {
+    const d = await detail();
+    // Page 1 back on: the stored outline no longer matches the visible pages.
+    await t.app.inject({ method: "PATCH", url: `/projects/${projectId}/slides/${d.slides[0]!.id}`, payload: { hidden: false } });
+    const before = await detail();
+    const sc = before.scenes[2]!;
+    // The fake seams can't plan an outline: a re-plan would fail this job.
+    const { row } = await run({ type: "generate_script", sceneIds: [sc.id], force: true });
+    expect(row.status).toBe("succeeded");
+    const after = await detail();
+    expect(after.outline?.version).toBe(before.outline?.version);
+    for (const other of after.scenes.filter((s) => s.id !== sc.id)) {
+      expect(other.script.status).toBe(before.scenes.find((s) => s.id === other.id)!.script.status);
+      expect(other.audio.status).toBe(before.scenes.find((s) => s.id === other.id)!.audio.status);
+    }
+  });
 });

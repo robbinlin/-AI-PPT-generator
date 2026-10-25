@@ -13,7 +13,7 @@ import { getProjectDetail } from "../../services/projects.js";
 import { createScriptRevision } from "../../services/scripts.js";
 import { throwIfAborted, type JobContext, type JobHandler } from "../context.js";
 import { audioInputHash, avatarInputHash, outlineInputHash, renderInputHash, scriptInputHash } from "../hashes.js";
-import { audioReady, avatarTargets, doneBy, narratedCandidates, pageList, pageNo, scriptTargets, speechTargets, visibleScenesOf } from "../plan.js";
+import { audioReady, avatarTargets, doneBy, narratedCandidates, pageList, pageNo, scriptJobReplansOutline, scriptTargets, speechTargets, visibleScenesOf } from "../plan.js";
 
 async function loadDetail(ctx: JobContext) {
   const [project] = await ctx.db.select().from(projects).where(eq(projects.id, ctx.job.projectId)).limit(1);
@@ -181,7 +181,7 @@ export function makeGenerationHandlers(seams: GenerationSeams) {
     const slidesInOrder = visibleScenes.map((sc) => slidesById.get(sc.slideId)!).filter(Boolean);
     if (slidesInOrder.length === 0) throw new NonRetryableJobError(NO_SLIDES);
     const outlineHash = outlineInputHash(slidesInOrder, detail.project.settings);
-    if (!detail.outline || detail.outline.inputHash !== outlineHash) {
+    if (scriptJobReplansOutline(detail, { sceneIds: ctx.job.payload.sceneIds })) {
       await ctx.emit(0.02, "規劃全篇大綱");
       const outline = await seams.generateOutline({ ctx, slidesInOrder, settings: detail.project.settings, inputHash: outlineHash });
       ctx.publish({ kind: "outline", outline });

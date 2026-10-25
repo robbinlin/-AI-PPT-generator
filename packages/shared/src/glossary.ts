@@ -26,12 +26,22 @@ export function usesGlossaryTerm(text: string, term: string): boolean {
  * such words fine, so keep them. Names (Smith → 史密斯), acronyms (ANOVA) and anything with digits
  * or symbols (VO₂max, η²) keep their readings; the outline shows which pages each one changes.
  */
+const UNITS = new Set(
+  "ml l dl kg g mg μg µg mcg min s sec h hr d wk yr km m cm mm kcal cal j kj w bpm beat beats mmol mol mmhg rep reps set sets lb lbs".split(" "),
+);
+
+/** 「mL/kg/min」, 「L/min」, 「m/s²」: every slash-separated part a unit. */
+function isUnit(term: string): boolean {
+  return term.split("/").every((part) => UNITS.has(part.replace(/[0-9²³⁻¹]+$/u, "").toLowerCase()));
+}
+
 export function isTranslationNotReading(term: string, reading: string): boolean {
   const w = term.trim();
   const chineseOnly = /^[\p{Script=Han}\s，、]+$/u.test(reading.trim());
   if (!chineseOnly) return false;
   const plainWord = /^[a-z][a-z]*(?:[ '-][a-z]+)*$/.test(w);
-  const path = /^[\w.-]+(?:\/[\w.-]+)+$/.test(w) || /^https?:/i.test(w);
+  // Units (mL/kg/min → 毫升每公斤每分鐘, km/h) are said, not translated: not a path.
+  const path = (/^[\w.-]+(?:\/[\w.-]+)+$/.test(w) && !isUnit(w)) || /^https?:/i.test(w);
   const numberWord = /^(?:one|two|three|four|five|six|seven|eight|nine|ten)$/i.test(w);
   return plainWord || path || numberWord;
 }

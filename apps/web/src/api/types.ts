@@ -109,7 +109,8 @@ export interface ApiClient {
   deleteProviderKey(providerId: string): Promise<ProviderInfo>;
   listVoices(providerId: string): Promise<VoiceOption[]>;
   /** Audio blob of a short sample sentence in the given voice. */
-  previewVoice(providerId: string, voiceId: string, language: "zh-TW" | "en"): Promise<Blob>;
+  /** `pace`: the project's 語速 and 句間停頓, so the sample sounds like the lecture will. */
+  previewVoice(providerId: string, voiceId: string, language: "zh-TW" | "en", pace?: { speed?: number; sentencePauseSec?: number }): Promise<Blob>;
   /** Providers with customVoices: upload a reference clip of the user's own voice. */
   uploadVoice(providerId: string, file: File, options?: UploadOptions & { name?: string; transcript?: string }): Promise<VoiceOption>;
   deleteVoice(providerId: string, voiceId: string): Promise<void>;

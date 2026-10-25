@@ -43,10 +43,20 @@ export function outlineNeedsRegeneration(detail: ProjectDetail): boolean {
   return !detail.outline || detail.outline.inputHash !== outlineInputHash(slidesInOrder, detail.project.settings);
 }
 
+/**
+ * True when this generate_script job re-plans the outline first: when there is none, or for a whole-deck
+ * run after pages/settings changed. Rewriting chosen pages (「AI 重寫本頁」) keeps the stored outline —
+ * a new one would make every other AI page 需更新 (and, through new readings, their voice and presenter).
+ */
+export function scriptJobReplansOutline(detail: ProjectDetail, opts: SelectionOptions = {}): boolean {
+  if (!outlineNeedsRegeneration(detail)) return false;
+  return !detail.outline || !opts.sceneIds?.length;
+}
+
 export function scriptTargets(detail: ProjectDetail, opts: SelectionOptions = {}): Scene[] {
   const visible = visibleScenesOf(detail);
   // A new outline changes every AI script's input hash, so they all become stale.
-  const replan = outlineNeedsRegeneration(detail);
+  const replan = scriptJobReplansOutline(detail, opts);
   return selectScenesToProcess(visible, opts.sceneIds, !!opts.force, (s) =>
     replan && detail.scripts[s.id]?.source === "ai" && s.script.status === "ready" ? "stale" : s.script.status,
   ).filter((s) => !doneBy(opts.jobId, s.script));

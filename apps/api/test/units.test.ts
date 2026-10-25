@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { ProjectSettings } from "@lvs/shared";
 import type { SceneRow, SlideRow } from "../src/db/schema.js";
 import { matchScenes, slideContentHash } from "../src/jobs/handlers/parse-document.js";
+import { mergeGlossary } from "../src/services/glossary.js";
 import { audioInputHash, effectiveStatus, outlineInputHash, renderInputHash, scriptInputHash, selectScenesToProcess } from "../src/jobs/hashes.js";
 import { withEffectiveStatuses } from "../src/services/projects.js";
 import { speechTargets } from "../src/jobs/plan.js";
@@ -148,6 +149,21 @@ describe("matchScenes", () => {
     const m3 = matchScenes(n, [o1, o2], { new: pics.new, old: new Map() });
     expect(m3.get(n[0]!.id)).toEqual({ scene: o1.scene, kind: "same" });
     expect(m3.get(n[1]!.id)).toEqual({ scene: o2.scene, kind: "same" });
+  });
+});
+
+describe("mergeGlossary", () => {
+  it("keeps the lecturer's readings through a new plan", () => {
+    const merged = mergeGlossary(
+      [{ term: "VO₂max", reading: "最大攝氧量" }, { term: "HIIT", reading: "高強度間歇訓練" }, { term: "RPE" }],
+      [{ term: "VO₂max", reading: "V O 2 max" }, { term: "RPE", reading: "自覺強度" }, { term: "乳酸閾值" }],
+    );
+    expect(merged).toEqual([
+      { term: "VO₂max", reading: "最大攝氧量" }, // corrected reading wins
+      { term: "RPE", reading: "自覺強度" }, // no old reading: the new one
+      { term: "乳酸閾值" },
+      { term: "HIIT", reading: "高強度間歇訓練" }, // dropped by the plan, but had a reading: kept
+    ]);
   });
 });
 

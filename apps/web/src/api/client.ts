@@ -188,11 +188,12 @@ export class HttpApiClient implements ApiClient {
     providerId: string,
     voiceId: string,
     language: "zh-TW" | "en",
+    pace?: { speed?: number; sentencePauseSec?: number },
   ): Promise<Blob> {
-    const res = await this.send(
-      "POST",
-      `/providers/${enc(providerId)}/voices/${enc(voiceId)}/preview?language=${language}`,
-    );
+    const q = new URLSearchParams({ language });
+    if (pace?.speed !== undefined) q.set("speed", String(pace.speed));
+    if (pace?.sentencePauseSec !== undefined) q.set("sentencePauseSec", String(pace.sentencePauseSec));
+    const res = await this.send("POST", `/providers/${enc(providerId)}/voices/${enc(voiceId)}/preview?${q}`);
     return res.blob();
   }
 

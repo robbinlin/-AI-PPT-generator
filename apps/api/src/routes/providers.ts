@@ -4,6 +4,9 @@ import type { AppContext } from "../context.js";
 import { parse } from "../util/validate.js";
 import { badRequest, notFound, upstream } from "../errors.js";
 
+/** Voice samples already made (per owner, voice, language and pace), newest last. */
+const previewCache = new Map<string, { audio: Buffer; mimeType: string }>();
+
 export async function providerRoutes(
   app: FastifyInstance,
   ctx: AppContext,
@@ -146,21 +149,37 @@ export async function providerRoutes(
   /** Short sample so the user can hear a voice before committing to it. */
   app.post<{
     Params: { providerId: string; voiceId: string };
-    Querystring: { language?: string };
+    Querystring: { language?: string; speed?: string; sentencePauseSec?: string };
   }>("/providers/:providerId/voices/:voiceId/preview", async (req, reply) => {
     const { ownerId } = ctx.auth.resolve(req);
     const tts = await ctx.providers.requireTts(ownerId, req.params.providerId);
     const language = req.query.language === "en" ? "en" : "zh-TW";
+    // At the project's pace, so 1.2× sounds like 1.2×.
+    const num = (v: string | undefined, lo: number, hi: number) => {
+      const n = v === undefined ? NaN : Number(v);
+      return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : undefined;
+    };
+    const speed = num(req.query.speed, 0.5, 2);
+    const sentencePauseSec = num(req.query.sentencePauseSec, 0, 3);
     const text =
       language === "en"
-        ? "Hello, this is a sample of my voice. Today we will look at how high intensity interval training changes VO two max."
-        : "各位同學好，這是我的聲音示範。今天我們要看高強度間歇訓練對最大攝氧量的影響。";
+        ? "Hello everyone, this is a sample of my voice. In today's lesson we will go through the key ideas step by step."
+        : "各位同學好，這是我的聲音示範。今天這堂課，我們會一步一步把重點講清楚。";
+    // The same sample again is replayed, not bought again (vendor voices cost per character).
+    const key = [ownerId, req.params.providerId, req.params.voiceId, language, speed ?? "", sentencePauseSec ?? ""].join("|");
+    const cached = previewCache.get(key);
+    if (cached) {
+      reply.header("Cache-Control", "no-store");
+      return reply.type(cached.mimeType).send(cached.audio);
+    }
     let res;
     try {
       res = await tts.synthesize({
         text,
         voiceId: req.params.voiceId,
         language,
+        ...(speed !== undefined ? { speed } : {}),
+        ...(sentencePauseSec !== undefined ? { sentencePauseSec } : {}),
       });
     } catch (err) {
       req.log.warn(
@@ -169,8 +188,11 @@ export async function providerRoutes(
       );
       throw upstream(req.params.providerId, err);
     }
+    const audio = Buffer.from(res.data.audio);
+    previewCache.set(key, { audio, mimeType: res.data.mimeType });
+    if (previewCache.size > 60) previewCache.delete(previewCache.keys().next().value!);
     reply.header("Cache-Control", "no-store");
-    return reply.type(res.data.mimeType).send(Buffer.from(res.data.audio));
+    return reply.type(res.data.mimeType).send(audio);
   });
 
   /** Upload the user's own photo/video as a character (providers with customCharacters). */

@@ -22,6 +22,10 @@ describe("glossary matching", () => {
 
   it("treats words, paths and number words with Chinese 'readings' as translations, names not", () => {
     expect(isTranslationNotReading("org/mrsc", "網址路徑")).toBe(true);
+    // Units are read out, not paths.
+    expect(isTranslationNotReading("mL/kg/min", "毫升每公斤每分鐘")).toBe(false);
+    expect(isTranslationNotReading("L/min", "公升每分鐘")).toBe(false);
+    expect(isTranslationNotReading("m/s²", "公尺每平方秒")).toBe(false);
     expect(isTranslationNotReading("Two", "二")).toBe(true);
     expect(isTranslationNotReading("mean", "平均數")).toBe(true);
     expect(isTranslationNotReading("Smith", "史密斯")).toBe(false);
