@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import { sha256Hex, SlideContent, type ParserManifest, type SceneAssetState } from "@lvs/shared";
 import { toScene, toSlide } from "../../db/mappers.js";
-import { assets, scenes, scriptRevisions, slides, sourceDocuments, type SceneRow, type SlideRow } from "../../db/schema.js";
+import { assets, outlineRevisions, scenes, scriptRevisions, slides, sourceDocuments, type SceneRow, type SlideRow } from "../../db/schema.js";
 import { NonRetryableJobError } from "../../errors.js";
 import type { JobHandler } from "../context.js";
 import { abortedByShutdown, throwIfAborted } from "../context.js";
@@ -128,6 +128,17 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
       const oldImageIds = oldSlides.map((s) => s.imageAssetId).filter((id): id is string => !!id);
       const oldImages = oldImageIds.length ? await tx.select().from(assets).where(inArray(assets.id, oldImageIds)) : [];
       const hashByAsset = new Map(oldImages.map((a) => [a.id, a.inputHash]));
+      // Text-less pages uploaded before pictures were hashed: hash the stored picture now, else they
+      // would only match in order (one inserted picture page would shift every later script).
+      for (const s of oldSlides) {
+        const a = oldImages.find((x) => x.id === s.imageAssetId);
+        if (!a || s.contentHash !== EMPTY_TEXT_HASH || (a.inputHash && a.inputHash !== s.contentHash)) continue;
+        try {
+          hashByAsset.set(a.id, sha256Hex(await streamToBuffer((await storage.getStream(a.storageKey)).stream)));
+        } catch {
+          /* picture gone: matched in order as before */
+        }
+      }
       const imageHashes = {
         new: new Map(insertedSlides.map((s, i) => [s.id, created[i]!.imageHash])),
         old: new Map(
@@ -212,6 +223,25 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
         orphanScenes = orphanScenes.filter((id) => !keep.includes(id));
       }
       if (orphanScenes.length) await tx.delete(scenes).where(inArray(scenes.id, orphanScenes));
+      // The outline refers to pages by slide id, and every slide just got a new one: point it at the
+      // new slides (its hash is text-only, so an unchanged deck keeps it), or the 大綱 shows 「?」 and
+      // scripts lose their section and their time share.
+      const oldSceneById = new Map(oldScenes.map((s) => [s.id, s]));
+      const slideIdMap = new Map<string, string>();
+      for (const sc of resultScenes) {
+        const before = oldSceneById.get(sc.id)?.slideId;
+        if (before) slideIdMap.set(before, sc.slideId);
+      }
+      const outlines = await tx.select().from(outlineRevisions).where(eq(outlineRevisions.projectId, projectId));
+      for (const o of outlines) {
+        await tx
+          .update(outlineRevisions)
+          .set({
+            sections: o.sections.map((sec) => ({ ...sec, slideIds: sec.slideIds.flatMap((id) => (slideIdMap.has(id) ? [slideIdMap.get(id)!] : [])) })),
+            timeAllocation: Object.fromEntries(Object.entries(o.timeAllocation).flatMap(([id, sec]) => (slideIdMap.has(id) ? [[slideIdMap.get(id)!, sec]] : []))),
+          })
+          .where(eq(outlineRevisions.id, o.id));
+      }
       // Old slides of THIS project (previous document versions) are no longer referenced by any scene.
       // The project filter is essential: without it every other project's slides would be wiped.
       await tx.delete(slides).where(and(eq(slides.projectId, projectId), ne(slides.sourceDocumentId, docId)));

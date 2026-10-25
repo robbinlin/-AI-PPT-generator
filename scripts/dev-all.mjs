@@ -13,7 +13,9 @@ const win = process.platform === "win32";
 const venvPython = (worker) => join(root, "workers", worker, ".venv", win ? "Scripts/python.exe" : "bin/python");
 
 const services = [
-  { name: "A - API", cmd: "pnpm dev:api", health: "http://127.0.0.1:4000/health" },
+  // One process, no file watcher: tsx watch kills the API at once on Ctrl+C (on Windows), before
+  // running jobs are put back in the queue and the database is closed.
+  { name: "A - API", cmd: "pnpm serve:api", health: "http://127.0.0.1:4000/health" },
   { name: "B - 網頁", cmd: "pnpm --filter @lvs/web dev", health: "http://127.0.0.1:5173/" },
   { name: "C - 本機人像", cmd: "pnpm dev:avatar", health: "http://127.0.0.1:8765/health", needs: venvPython("avatar-local") },
   { name: "D - 本機語音", cmd: "pnpm dev:tts", health: "http://127.0.0.1:8766/health", needs: venvPython("tts-local") },

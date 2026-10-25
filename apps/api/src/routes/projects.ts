@@ -75,6 +75,11 @@ const JOB_LABEL: Record<string, string> = { generate_script: "產生講稿", syn
 
 export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   const { db } = ctx;
+  // A chained export (「全部做完再匯出」) must not start while a new deck is arriving.
+  ctx.runner.isUploading = (pid) => {
+    const held = uploading.get(pid);
+    return !!held && Date.now() - held.seen < UPLOAD_LOCK_MS;
+  };
 
   app.get("/projects", async (req) => {
     const { ownerId } = ctx.auth.resolve(req);

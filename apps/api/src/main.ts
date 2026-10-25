@@ -29,11 +29,13 @@ const shutdown = async (signal: string) => {
   server.app.log.info({ signal }, "shutting down (press Ctrl+C again to force)");
   // Never hang on a provider call or an open SSE stream: exit after a bounded grace period — longer
   // than the job runner waits for a presenter task being created, so its id is stored first.
+  // Closing the window: Windows ends the process about 5 s later, so wind down within that.
+  const maxWaitMs = signal === "SIGHUP" ? 3500 : STOP_CRITICAL_MS;
   setTimeout(() => {
     console.error("[api] shutdown timed out; exiting");
     process.exit(0);
-  }, STOP_CRITICAL_MS + 3000).unref();
-  await server.close();
+  }, maxWaitMs + 3000).unref();
+  await server.close({ maxWaitMs });
   process.exit(0);
 };
 process.on("SIGINT", () => void shutdown("SIGINT"));

@@ -13,6 +13,7 @@
     "test": "pnpm build:libs && pnpm -r test",
     "dev": "node scripts/dev-all.mjs",
     "dev:api": "pnpm build:libs && pnpm --filter @lvs/api dev",
+    "serve:api": "pnpm build:libs && pnpm --filter @lvs/api serve",
     "dev:web": "pnpm --filter @lvs/shared build && pnpm --filter @lvs/web dev",
     "dev:avatar": "node workers/avatar-local/start.mjs",
     "dev:tts": "node workers/tts-local/start.mjs",

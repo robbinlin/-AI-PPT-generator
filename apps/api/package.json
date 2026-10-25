@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.scripts.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "dev": "tsx watch src/main.ts",
+    "serve": "node --import tsx src/main.ts",
     "start": "node dist/main.js",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",

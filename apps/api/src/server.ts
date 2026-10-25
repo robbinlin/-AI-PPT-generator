@@ -45,7 +45,8 @@ export interface BuiltServer {
   app: FastifyInstance;
   ctx: AppContext;
   dbHandle: DbHandle;
-  close(): Promise<void>;
+  /** `maxWaitMs`: cap on how long running jobs get to wind down (closing the window leaves ~5 s). */
+  close(opts?: { maxWaitMs?: number }): Promise<void>;
 }
 
 export async function buildServer(opts: BuildServerOptions = {}): Promise<BuiltServer> {
@@ -137,8 +138,8 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<BuiltS
     app,
     ctx,
     dbHandle,
-    close: async () => {
-      await runner.stop();
+    close: async (closeOpts) => {
+      await runner.stop(closeOpts?.maxWaitMs);
       await app.close();
       if (!opts.dbHandle) await dbHandle.close();
     },

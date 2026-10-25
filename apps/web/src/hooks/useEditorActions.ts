@@ -31,7 +31,10 @@ export type SettingsImpact = "audio" | "avatar" | "none";
 
 type SettingsPatch = NonNullable<UpdateProjectRequest["settings"]>;
 
-export const ACCEPTED_EXTENSIONS = [".pptx", ".ppt", ".pdf"];
+/** Jobs on the deck's pages (and the export), refused while a new deck is uploading. */
+const UPLOAD_BLOCKED: ReadonlySet<string> = new Set(["generate_script", "synthesize_speech", "generate_avatar", "translate_script", "render_video"]);
+
+export const ACCEPTED_EXTENSIONS =[".pptx", ".ppt", ".pdf"];
 export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 
 export function validateUpload(file: File): string | null {
@@ -100,6 +103,12 @@ export function useEditorActions() {
       // The project this click belongs to: a confirmation can outlive the page (browser Back), and
       // must never start the job on whatever project is open by then.
       const pid = projectId();
+      // A new deck still uploading: its pages are about to change (the server refuses too) — say so
+      // before showing a price for the old pages.
+      if (UPLOAD_BLOCKED.has(req.type) && store().upload.progress !== null) {
+        toast(t.upload.uploadingBusy, "info");
+        return null;
+      }
       if (ESTIMATED_TYPES.has(req.type) && options.confirm !== false) {
         const type = req.type as EstimateType;
         let estimate: CostEstimate | null = null;

@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Job, ProjectDetail, ProjectEvent, ScriptRevision } from "@lvs/shared";
-import { jobs } from "../src/db/schema.js";
+import { jobs, outlineRevisions } from "../src/db/schema.js";
 import { createTestServer, FakeParserRunner, multipart, TINY_PDF, type TestServer } from "./helpers.js";
 
 let t: TestServer;
@@ -512,6 +513,19 @@ describe("project isolation", () => {
       da = (await t.app.inject({ method: "GET", url: `/projects/${a}` })).json() as ProjectDetail;
       expect(da.slides.length).toBe(slidesA);
       expect(Object.values(da.scripts).some((s) => s.script === "A 專案第一頁的講稿")).toBe(true);
+
+      // The outline follows the pages to their new slide ids (else 大綱 shows 「?」 and time shares fall back).
+      const before = da.slides[0]!.id;
+      await t.ctx.db.insert(outlineRevisions).values({
+        id: randomUUID(), projectId: a, version: 1, sections: [{ title: "一", slideIds: [before] }] as never, timeAllocation: { [before]: 42 }, inputHash: "x",
+      });
+      await upload(a);
+      da = (await t.app.inject({ method: "GET", url: `/projects/${a}` })).json() as ProjectDetail;
+      const after = da.slides[0]!.id;
+      expect(after).not.toBe(before);
+      const [o] = await t.ctx.db.select().from(outlineRevisions).where(eq(outlineRevisions.projectId, a));
+      expect(o!.sections[0]!.slideIds).toEqual([after]);
+      expect(o!.timeAllocation).toEqual({ [after]: 42 });
     } finally {
       await t.close();
     }

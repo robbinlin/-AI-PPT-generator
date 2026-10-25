@@ -707,6 +707,7 @@ export const zhTW = {
     replaceNoUndo: "替換後無法復原；需要的話請先保留原本的簡報檔。",
     replaceBusy: "「{job}」正在進行，請等它完成（或在「工作」停止）後再替換簡報。",
     replaceAction: "選擇新檔案",
+    uploadingBusy: "新的簡報正在上傳，完成後再開始這項工作。",
   },
   batch: {
     button: "批次產生",

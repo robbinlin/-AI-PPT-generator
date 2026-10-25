@@ -49,6 +49,8 @@ export class JobRunner {
   private readonly pollIntervalMs: number;
   private readonly backoffBaseMs: number;
   private wake: (() => void) | undefined;
+  /** Set by the upload route: a new deck is arriving for this project (its pages are about to change). */
+  isUploading: (projectId: string) => boolean = () => false;
 
   constructor(private readonly deps: RunnerDeps) {
     this.concurrency = deps.concurrency ?? deps.config.JOB_CONCURRENCY;
@@ -101,7 +103,7 @@ export class JobRunner {
     }
   }
 
-  async stop(): Promise<void> {
+  async stop(maxWaitMs = STOP_CRITICAL_MS): Promise<void> {
     this.running = false;
     this.stopping = true;
     if (this.timer) clearTimeout(this.timer);
@@ -110,7 +112,8 @@ export class JobRunner {
     // Give handlers a moment to observe the abort; a provider task being created gets longer, so
     // its id is stored and the restarted job resumes it instead of paying for a second one.
     const start = Date.now();
-    while (this.active.size > 0 && (Date.now() - start < STOP_GRACE_MS || (this.critical > 0 && Date.now() - start < STOP_CRITICAL_MS))) await sleep(20);
+    const grace = Math.min(STOP_GRACE_MS, maxWaitMs);
+    while (this.active.size > 0 && (Date.now() - start < grace || (this.critical > 0 && Date.now() - start < maxWaitMs))) await sleep(20);
   }
 
   /** Trigger an immediate poll (called after enqueue). */
@@ -306,8 +309,16 @@ export class JobRunner {
       // 「全部做完再匯出」: chain the export server-side (the user may have closed the tab).
       const then = "thenRender" in row.payload ? row.payload.thenRender : undefined;
       if (then) {
+        // Not while a new deck is arriving or being read (the export would show pages about to go);
+        // the user exports after the replacement, with its own confirmation.
+        const [parsing] = await db
+          .select({ id: jobs.id })
+          .from(jobs)
+          .where(and(eq(jobs.projectId, row.projectId), eq(jobs.type, "parse_document"), inArray(jobs.status, ["queued", "running"])))
+          .limit(1);
+        if (parsing || this.isUploading(row.projectId)) logger?.warn({ jobId: row.id }, "chained export skipped: the deck is being replaced");
         // The finished job stays finished even if queueing the export fails.
-        await this.enqueue(row.projectId, { type: "render_video", preset: then.preset, ...(then.burnSubtitles !== undefined ? { burnSubtitles: then.burnSubtitles } : {}) }).catch(
+        else await this.enqueue(row.projectId, { type: "render_video", preset: then.preset, ...(then.burnSubtitles !== undefined ? { burnSubtitles: then.burnSubtitles } : {}) }).catch(
           (err: unknown) => logger?.error({ jobId: row.id, err: (err as Error).message }, "chained export could not be queued"),
         );
       }
