@@ -316,7 +316,11 @@ export class JobRunner {
           .from(jobs)
           .where(and(eq(jobs.projectId, row.projectId), eq(jobs.type, "parse_document"), inArray(jobs.status, ["queued", "running"])))
           .limit(1);
-        if (parsing || this.isUploading(row.projectId)) logger?.warn({ jobId: row.id }, "chained export skipped: the deck is being replaced");
+        if (parsing || this.isUploading(row.projectId)) {
+          // Said in 工作 too (the user may come back expecting a video).
+          await db.update(jobs).set({ result: { ...result, exportSkipped: true } }).where(eq(jobs.id, row.id));
+          logger?.warn({ jobId: row.id }, "chained export skipped: the deck is being replaced");
+        }
         // The finished job stays finished even if queueing the export fails.
         else await this.enqueue(row.projectId, { type: "render_video", preset: then.preset, ...(then.burnSubtitles !== undefined ? { burnSubtitles: then.burnSubtitles } : {}) }).catch(
           (err: unknown) => logger?.error({ jobId: row.id, err: (err as Error).message }, "chained export could not be queued"),

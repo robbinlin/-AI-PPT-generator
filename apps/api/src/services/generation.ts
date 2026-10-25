@@ -37,7 +37,7 @@ import { render } from "@lvs/render";
 import type { Config } from "../config.js";
 import type { Db } from "../db/client.js";
 import { toAsset, toOutline, toScene } from "../db/mappers.js";
-import { assets, outlineRevisions, projects, scenes, scriptRevisions, timelineRevisions, type SceneRow } from "../db/schema.js";
+import { assets, outlineRevisions, projects, scenes, scriptRevisions, slides as slidesTable, timelineRevisions, type SceneRow } from "../db/schema.js";
 import { NonRetryableJobError, providerErrorMessage } from "../errors.js";
 import type { JobContext } from "../jobs/context.js";
 import { abortedByShutdown, throwIfAborted } from "../jobs/context.js";
@@ -208,6 +208,11 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       );
       ctx.log.info("outline received", { sections: outline.sections.length, glossary: outline.glossary.length });
       await usage(ctx, llm.id, used);
+      // The deck was replaced while the outline was being planned: its slide ids are gone, and an
+      // outline stored now would point at nothing (「?」 in 大綱, no sections or time shares).
+      const ids = slidesInOrder.map((s) => s.id);
+      const still = ids.length ? await ctx.db.select({ id: slidesTable.id }).from(slidesTable).where(inArray(slidesTable.id, ids)) : [];
+      if (still.length !== ids.length) throw new Error("簡報在規劃大綱時被替換了，將以新的簡報重新規劃");
       const [latest] = await ctx.db
         .select({ version: outlineRevisions.version })
         .from(outlineRevisions)

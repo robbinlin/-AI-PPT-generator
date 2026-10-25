@@ -10,7 +10,7 @@ const fatal = (kind: string) => (err: unknown) => {
   const msg = err instanceof Error ? (err.stack ?? err.message) : String(err);
   console.error(`[api] ${kind}:`, msg);
   if (/Aborted\(\)|RuntimeError/.test(msg)) console.error(`[api] ${PGLITE_HINT}`);
-  console.error("[api] exited. If this window shows no prompt (the dev watcher is still running), press Ctrl+C, then run `pnpm dev:api` again.");
+  console.error("[api] exited. If this window shows no prompt, press Ctrl+C, then run `pnpm serve:api` again (or `pnpm dev` from the project folder).");
   process.exit(1);
 };
 process.on("uncaughtException", fatal("uncaught exception"));
@@ -40,7 +40,7 @@ const shutdown = async (signal: string) => {
 };
 process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
-// Windows: closing the console window (SIGHUP; Windows ends the process about 10 s later) and Ctrl+Break.
+// Windows: closing the console window (SIGHUP; Windows ends the process about 5 s later) and Ctrl+Break.
 process.on("SIGHUP", () => void shutdown("SIGHUP"));
 process.on("SIGBREAK", () => void shutdown("SIGBREAK"));
 

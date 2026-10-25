@@ -419,6 +419,27 @@ describe("stopping a deck that is still waiting", () => {
   });
 });
 
+describe("outline vs. deck replacement", () => {
+  it("refuses an outline while a deck is being read, and a deck while an outline is planned", async () => {
+    const t = await createTestServer();
+    try {
+      const mk = async (name: string) => (await t.app.inject({ method: "POST", url: "/projects", payload: { name } })).json().id as string;
+      const a = await mk("outline-a");
+      await t.app.inject({ method: "POST", url: `/projects/${a}/source`, ...multipart("deck.pdf", TINY_PDF, "application/pdf") });
+      const outline = await t.app.inject({ method: "POST", url: `/projects/${a}/jobs`, payload: { type: "generate_outline", force: true } });
+      expect(outline.statusCode).toBe(409);
+
+      const b = await mk("outline-b");
+      expect((await t.app.inject({ method: "POST", url: `/projects/${b}/jobs`, payload: { type: "generate_outline", force: true } })).statusCode).toBe(202);
+      const up = await t.app.inject({ method: "POST", url: `/projects/${b}/source`, ...multipart("deck.pdf", TINY_PDF, "application/pdf") });
+      expect(up.statusCode).toBe(409);
+      expect(up.json().error.message).toContain("產生大綱");
+    } finally {
+      await t.close();
+    }
+  });
+});
+
 describe("duplicate jobs", () => {
   it("refuses a second job of the same kind for the same pages while one is queued (double click, two tabs)", async () => {
     const t = await createTestServer();

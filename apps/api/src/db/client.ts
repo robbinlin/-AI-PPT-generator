@@ -97,7 +97,7 @@ async function acquireDirLock(dir: string): Promise<() => void> {
     if (Date.now() > deadline) {
       throw new Error(
         `PGlite data directory ${dir} is in use by another API process (pid ${holder}, heartbeat ${Math.round(ageMs / 1000)}s ago). ` +
-          "Stop it first (close the other terminal running pnpm dev:api), or point this instance at a different PGLITE_DIR / DATABASE_URL.",
+          "Stop it first (close the other terminal running the API: pnpm serve:api / pnpm dev:api), or point this instance at a different PGLITE_DIR / DATABASE_URL.",
       );
     }
     await new Promise((r) => setTimeout(r, 250));

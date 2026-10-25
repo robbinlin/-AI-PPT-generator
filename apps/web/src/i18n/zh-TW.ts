@@ -853,6 +853,7 @@ export const zhTW = {
     detailPartialForced: "其中 {n} 頁已重做，其餘頁面仍是舊版本（可再按一次「全部重新產生」）",
     detailReused: "{n} 頁沿用不另收費",
     detailThenRender: "完成後自動匯出",
+    detailExportSkipped: "沒有自動匯出：簡報正在替換，替換完成後請再按「匯出影片」",
     showOlder: "顯示較早的 {n} 筆",
     announceStart: "已開始{type}",
     announceProgress: "{type}進行到 {pct}%",

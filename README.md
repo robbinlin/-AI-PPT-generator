@@ -15,7 +15,8 @@ pnpm install
 cp .env.example .env            # add GEMINI_API_KEY (or ANTHROPIC_API_KEY)
 python3 -m pip install -r workers/parser/requirements.txt
 pnpm build                      # builds shared schemas first
-pnpm dev:api                    # builds the shared packages, then serves http://localhost:4000 (PGlite, no Docker needed)
+pnpm dev:api                    # builds the shared packages, then serves http://localhost:4000 (PGlite, no Docker needed; restarts on file changes)
+# or: pnpm serve:api            # same without the file watcher (what `pnpm dev` uses; Ctrl+C winds running jobs down first)
 pnpm dev:web                    # http://localhost:5173
 ```
 
@@ -40,7 +41,7 @@ pnpm build
 pnpm dev
 ```
 
-瀏覽器開 http://localhost:5173 。要停止就關掉對應的視窗。
+瀏覽器開 http://localhost:5173 。要停止：先在「A - API」視窗按 Ctrl+C，等它回到提示字元（有人像影片正在建立時最多等 20 秒）再關視窗；其他視窗直接關掉即可。直接關掉 API 視窗時，正在向 HeyGen 建立的人像影片可能沒記下來，重新啟動後會再建立一次（另外計費）。
 
 | 視窗 | 服務 | 什麼時候需要 |
 |---|---|---|

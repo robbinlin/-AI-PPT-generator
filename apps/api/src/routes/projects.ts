@@ -179,10 +179,10 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
       const [busy] = await db
         .select()
         .from(jobs)
-        .where(and(eq(jobs.projectId, project.id), inArray(jobs.type, [...PAGE_JOBS, "render_video", "parse_document"]), inArray(jobs.status, ["queued", "running"])))
+        .where(and(eq(jobs.projectId, project.id), inArray(jobs.type, [...PAGE_JOBS, "generate_outline", "render_video", "parse_document"]), inArray(jobs.status, ["queued", "running"])))
         .limit(1);
       // Two decks read at once would delete each other's pages (and the scripts on them).
-      if (busy) throw conflict(`「${JOB_LABEL[busy.type] ?? (busy.type === "parse_document" ? "解析簡報" : "匯出影片")}」正在進行，請等它完成（或在「工作」停止）後再替換簡報。`);
+      if (busy) throw conflict(`「${JOB_LABEL[busy.type] ?? (busy.type === "parse_document" ? "解析簡報" : busy.type === "generate_outline" ? "產生大綱" : "匯出影片")}」正在進行，請等它完成（或在「工作」停止）後再替換簡報。`);
     };
     await refuseIfBusy();
     // The parse job only exists once the file has arrived: hold the project for the whole upload, so a
@@ -389,7 +389,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     // A double click or a second tab must not start the same paid work twice: refuse a job of the
     // same kind while one is queued or running for any of the same pages.
     // While a new deck is being read, its pages are about to change: no page work or export yet.
-    if (PAGE_JOBS.has(payload.type) || payload.type === "render_video") {
+    if (PAGE_JOBS.has(payload.type) || payload.type === "render_video" || payload.type === "generate_outline") {
       const [parsing] = await db
         .select()
         .from(jobs)

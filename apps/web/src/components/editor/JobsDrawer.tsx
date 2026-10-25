@@ -48,7 +48,7 @@ function JobDetail({ job }: { job: Job }) {
     if (done > 0) parts.push(fmt(forced ? t.jobs.detailPartialForced : t.jobs.detailPartial, { n: done }));
   }
   const ids = "sceneIds" in job.payload ? job.payload.sceneIds : undefined;
-  const result = job.result as { processed?: number; reused?: number } | undefined;
+  const result = job.result as { processed?: number; reused?: number; exportSkipped?: boolean } | undefined;
   if (ids?.length && scenes) {
     const pages = ids.map((id) => scenes.find((s) => s.id === id)?.index).filter((i): i is number => i !== undefined).map((i) => i + 1).sort((a, b) => a - b);
     if (pages.length) parts.push(fmt(t.jobs.detailPages, { pages: pageRanges(pages) }));
@@ -56,7 +56,7 @@ function JobDetail({ job }: { job: Job }) {
     parts.push(fmt(t.jobs.detailCount, { n: result.processed }));
   }
   if (result?.reused) parts.push(fmt(t.jobs.detailReused, { n: result.reused }));
-  if ("thenRender" in job.payload && job.payload.thenRender) parts.push(t.jobs.detailThenRender);
+  if ("thenRender" in job.payload && job.payload.thenRender) parts.push(result?.exportSkipped ? t.jobs.detailExportSkipped : t.jobs.detailThenRender);
   if (parts.length === 0) return null;
   return <span className="ml-1 text-xs font-normal text-neutral-400">・{parts.join("・")}</span>;
 }

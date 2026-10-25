@@ -32,9 +32,9 @@ export type SettingsImpact = "audio" | "avatar" | "none";
 type SettingsPatch = NonNullable<UpdateProjectRequest["settings"]>;
 
 /** Jobs on the deck's pages (and the export), refused while a new deck is uploading. */
-const UPLOAD_BLOCKED: ReadonlySet<string> = new Set(["generate_script", "synthesize_speech", "generate_avatar", "translate_script", "render_video"]);
+const UPLOAD_BLOCKED: ReadonlySet<string> = new Set(["generate_outline", "generate_script", "synthesize_speech", "generate_avatar", "translate_script", "render_video"]);
 
-export const ACCEPTED_EXTENSIONS =[".pptx", ".ppt", ".pdf"];
+export const ACCEPTED_EXTENSIONS = [".pptx", ".ppt", ".pdf"];
 export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 
 export function validateUpload(file: File): string | null {
@@ -306,11 +306,19 @@ export function useEditorActions() {
           report(invalid);
           return;
         }
+        // The upload keeps going if the user opens another project meanwhile: only ever show it
+        // in its own project (else that project reads 「上傳中」 and refuses its jobs).
+        const pid = projectId();
+        const here = () => store().detail?.project.id === pid;
         store().setUpload({ progress: 0, error: null });
         try {
-          const { sourceDocument, job } = await api.uploadSource(projectId(), file, {
-            onProgress: (progress) => store().setUpload({ progress, error: null }),
+          const { sourceDocument, job } = await api.uploadSource(pid, file, {
+            onProgress: (progress) => {
+              if (here()) store().setUpload({ progress, error: null });
+            },
           });
+          // Opened again later, the project loads the new deck and its parse from the server.
+          if (!here()) return;
           // Job first: the preview treats a 「parsing」 document without a parse job as stopped.
           store().upsertJob(job);
           // The parse may already have finished (its events came first): keep that outcome.
@@ -318,7 +326,7 @@ export function useEditorActions() {
           store().setSourceDocument(done ? { ...sourceDocument, parseStatus: done.status } : sourceDocument);
           store().setUpload({ progress: null, error: null });
         } catch (err) {
-          report(fmt(t.upload.failed, { message: errorMessage(err) }), () => void this.upload(file));
+          if (here()) report(fmt(t.upload.failed, { message: errorMessage(err) }), () => void this.upload(file));
         }
       },
     };
