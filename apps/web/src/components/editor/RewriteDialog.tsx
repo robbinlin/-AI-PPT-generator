@@ -16,6 +16,7 @@ export function RewriteDialog({
   userEdited,
   fresh = false,
   avatarCost,
+  replansOutline = false,
   onClose,
   onRewrite,
 }: {
@@ -26,6 +27,8 @@ export function RewriteDialog({
   fresh?: boolean;
   /** Set when this page has a finished paid avatar (e.g. 「約 NT$40」). */
   avatarCost?: string;
+  /** The job plans a new outline first (settings or slides changed since): other pages may be affected. */
+  replansOutline?: boolean;
   onClose: () => void;
   onRewrite: (instruction: string | undefined) => void;
 }) {
@@ -88,6 +91,12 @@ export function RewriteDialog({
         <ul className="flex flex-col gap-1 text-xs text-neutral-400">
           {!fresh && <li>{t.rewrite.noteReplace}</li>}
           {userEdited && <li className="text-amber-200">{t.rewrite.noteUserEdited}</li>}
+          {replansOutline && (
+            <li className="flex gap-1.5 text-amber-200" data-testid="rewrite-replan">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              {t.rewrite.noteReplan}
+            </li>
+          )}
           {avatarCost && (
             <li className="flex gap-1.5 text-amber-200">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />

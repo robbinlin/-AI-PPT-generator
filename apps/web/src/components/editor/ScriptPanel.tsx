@@ -41,6 +41,14 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const av = detail?.project.settings.avatar;
   const paidAvatarReady = !!scene && !!av && av.enabled && !!av.avatarId && av.providerId !== "local" && !scene.muted && scene.avatar.status === "ready";
   const serverRedo = usePendingEstimate(paidAvatarReady ? detail?.project.id : undefined, "generate_avatar", `${av?.avatarId}:${scene?.durationSec}`, "all", scene ? [scene.id] : undefined);
+  // Whether 「AI 重寫本頁」 would plan a new outline first (the server decides, as the job will).
+  const rewriteEstimate = usePendingEstimate(
+    rewriteOpen ? detail?.project.id : undefined,
+    "generate_script",
+    `${detail?.outline?.id}:${detail?.project.updatedAt}:${detail?.slides.map((s) => (s.hidden ? 1 : 0)).join("")}`,
+    "all",
+    scene ? [scene.id] : undefined,
+  );
   if (!detail || !scene) {
     const status = detail?.sourceDocument?.parseStatus;
     const parseJob = detail?.activeJobs.some((j) => j.type === "parse_document");
@@ -140,6 +148,7 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
           userEdited={revision?.source === "user"}
           fresh={noScript}
           avatarCost={paidAvatarReady ? redoCost : undefined}
+          replansOutline={!!rewriteEstimate?.replansOutline}
           onClose={() => setRewriteOpen(false)}
           onRewrite={(instruction) => void rewrite(instruction)}
         />

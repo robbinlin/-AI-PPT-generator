@@ -785,7 +785,13 @@ function VoiceSection({
 
   return (
     <Section title={t.studio.voice}>
-      <ProviderPills providers={providers} kind="tts" value={s.providerId} onChange={(providerId) => setVoice({ providerId })} />
+      <ProviderPills providers={providers} kind="tts" value={s.providerId} onChange={(providerId) => {
+          // Store a speed the new service really applies (the switch re-voices every page anyway); a
+          // service without speed control speaks at its own pace, so 1×.
+          const range = ttsSpeedRange(providerId);
+          const speed = range ? Math.min(range[1], Math.max(range[0], s.speed)) : 1;
+          void setVoice({ providerId, ...(speed !== s.speed ? { speed } : {}) });
+        }} />
       {provider?.hint && <p className="text-xs text-amber-300/90">{provider.hint}</p>}
       <ul ref={voiceList} className="max-h-64 overflow-y-auto rounded-md border border-neutral-800" aria-label={t.settings.voiceId} data-testid="voice-list">
         {shownVoices.map((v) => {

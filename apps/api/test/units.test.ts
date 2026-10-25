@@ -160,7 +160,7 @@ describe("mergeGlossary", () => {
     );
     expect(merged).toEqual([
       { term: "VO₂max", reading: "最大攝氧量" }, // corrected reading wins
-      { term: "RPE", reading: "自覺強度" }, // no old reading: the new one
+      { term: "RPE" }, // cleared by the lecturer (spelled out): stays cleared
       { term: "乳酸閾值" },
       { term: "HIIT", reading: "高強度間歇訓練" }, // dropped by the plan, but had a reading: kept
     ]);

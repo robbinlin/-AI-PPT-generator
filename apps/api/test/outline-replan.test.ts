@@ -43,26 +43,28 @@ afterAll(async () => {
 describe("re-planning the outline", () => {
   it("keeps corrected readings and re-voices only the pages that say a changed term", async () => {
     expect((await run({ type: "generate_outline", force: true })).status).toBe("succeeded");
-    // The lecturer corrects one reading and removes another.
+    // The lecturer corrects one reading, clears another (spelled out) and deletes a term.
     const put = await t.app.inject({
       method: "PUT",
       url: `/projects/${projectId}/outline/glossary`,
-      payload: { glossary: [{ term: "VO₂max", reading: "最大攝氧量" }, { term: "ANOVA", reading: "變異數分析" }, { term: "HIIT" }] },
+      payload: { glossary: [{ term: "VO₂max", reading: "最大攝氧量" }, { term: "HIIT" }] },
     });
     expect(put.statusCode).toBe(200);
     const d0 = await detail();
     const [p1, p2] = d0.scenes;
-    await t.app.inject({ method: "PUT", url: `/projects/${projectId}/scenes/${p1!.id}/script`, payload: { script: "今天談 HIIT。" } });
+    await t.app.inject({ method: "PUT", url: `/projects/${projectId}/scenes/${p1!.id}/script`, payload: { script: "今天談 HIIT 與 ANOVA。" } });
     await t.app.inject({ method: "PUT", url: `/projects/${projectId}/scenes/${p2!.id}/script`, payload: { script: "接著看 VO₂max。" } });
     expect((await run({ type: "synthesize_speech" })).status).toBe("succeeded");
     expect((await detail()).scenes.every((s) => s.audio.status === "ready")).toBe(true);
 
-    // The new plan reads HIIT again (高強度間歇訓練) and VO₂max its own way.
+    // The new plan reads VO₂max and HIIT its own way and brings ANOVA back (new to the glossary).
     expect((await run({ type: "generate_outline", force: true })).status).toBe("succeeded");
     const d1 = await detail();
     expect(d1.outline?.glossary.find((g) => g.term === "VO₂max")?.reading).toBe("最大攝氧量");
-    expect(d1.scenes.find((s) => s.id === p2!.id)!.audio.status).toBe("ready"); // never says HIIT
+    expect(d1.outline?.glossary.find((g) => g.term === "HIIT")?.reading).toBeUndefined(); // stays spelled out
+    expect(d1.scenes.find((s) => s.id === p2!.id)!.audio.status).toBe("ready"); // never says ANOVA
     expect(d1.scenes.find((s) => s.id === p1!.id)!.audio.status).toBe("stale");
-    expect(d1.scripts[p1!.id]!.pronunciationText).toContain("高強度間歇訓練");
+    expect(d1.scripts[p1!.id]!.pronunciationText).toContain("變異數分析");
+    expect(d1.scripts[p1!.id]!.pronunciationText).toContain("HIIT");
   });
 });

@@ -66,12 +66,13 @@ export function estimateJob(detail: ProjectDetail, type: JobType, opts: Estimate
       const targets = scriptTargets(detail, opts);
       const parts: CostEstimate[] = [];
       // The handler plans the outline first when it is missing or out of date.
-      if (scriptJobReplansOutline(detail, opts)) parts.push(outlineEstimate(visibleScenesOf(detail)));
+      const replans = scriptJobReplansOutline(detail, opts);
+      if (replans) parts.push(outlineEstimate(visibleScenesOf(detail)));
       const n = targets.length;
       // `chars` is per call in estimateCost, so the total scales with the number of pending pages.
       const charsPerCall = n ? SCRIPT_PROMPT_OVERHEAD_CHARS + targets.reduce((a, sc) => a + slideChars(sc.slideId), 0) / n : 0;
       parts.push(estimateCost("generate_script", { providerId: s.llmProviderId, chars: charsPerCall, calls: n, outputTokensPerCall: 600 }));
-      return merge(parts, n, secondsOf(targets));
+      return { ...merge(parts, n, secondsOf(targets)), ...(replans ? { replansOutline: true } : {}) };
     }
     case "synthesize_speech": {
       const targets = speechTargets(detail, opts);

@@ -54,7 +54,12 @@ function outlineOnlyLacksPageChanges(detail: ProjectDetail): boolean {
   const bySlide = new Map(detail.slides.map((s) => [s.id, s]));
   const planned = outline.sections.flatMap((sec) => sec.slideIds).map((id) => bySlide.get(id));
   if (!planned.length || planned.some((s) => !s)) return false;
-  return outlineInputHash(planned.map((s) => ({ ...s!, hidden: false })), detail.project.settings) === outline.inputHash;
+  const matches = (slides: typeof planned) => outlineInputHash(slides.map((s) => ({ ...s!, hidden: false })), detail.project.settings) === outline.inputHash;
+  // The plan was hashed in deck order; its sections may list pages otherwise (a model that leaves the
+  // cover out has it appended under 「其他」), so try the pages in deck order too.
+  const position = new Map(detail.scenes.map((sc) => [sc.slideId, sc.index]));
+  const inDeckOrder = [...planned].sort((a, b) => (position.get(a!.id) ?? 0) - (position.get(b!.id) ?? 0));
+  return matches(inDeckOrder) || matches(planned);
 }
 
 /**

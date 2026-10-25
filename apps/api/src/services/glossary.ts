@@ -72,14 +72,17 @@ export async function updateGlossary(
 }
 
 /**
- * A new outline (re-planned by AI) keeps the readings the user corrected: terms in both keep the old
- * reading, and terms the new plan dropped that had a reading stay (the user may rely on them).
+ * A new outline (re-planned by AI) keeps how every known term is read: a term in both keeps its old
+ * reading — or none, when the lecturer cleared it so it is spelled out — and a term the new plan
+ * dropped that had a reading stays. Only terms new to the glossary take the AI's reading.
  */
 export function mergeGlossary(previous: GlossaryEntry[], next: GlossaryEntry[]): GlossaryEntry[] {
   const old = new Map(previous.map((e) => [e.term, e]));
   const merged = next.map((e) => {
     const was = old.get(e.term);
-    return was?.reading ? { ...e, reading: was.reading } : e;
+    if (!was) return e;
+    const { reading: _ai, ...rest } = e;
+    return was.reading ? { ...rest, reading: was.reading } : rest;
   });
   const kept = new Set(merged.map((e) => e.term));
   return [...merged, ...previous.filter((e) => e.reading && !kept.has(e.term))];

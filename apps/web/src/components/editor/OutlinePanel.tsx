@@ -61,7 +61,7 @@ export function OutlinePanel({ actions }: { actions: Pick<EditorActions, "enqueu
         </Button>
       </div>
 
-      <Glossary key={outline.id} glossary={outline.glossary} />
+      <Glossary glossary={outline.glossary} />
 
       {outline.summary && (
         <section>
@@ -135,6 +135,12 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
   const [editing, setEditing] = useState(false);
   const [rows, setRows] = useState<GlossaryEntry[]>(glossary);
   const [saving, setSaving] = useState(false);
+  // Not remounted on a new outline (that would drop unsaved rows): follow it only while not editing.
+  useEffect(() => {
+    if (!editing) setRows(glossary);
+  }, [glossary, editing]);
+  // An outline or scripts being made would overwrite a save (the server refuses it too).
+  const planning = useEditor((s) => s.detail?.activeJobs.some((j) => j.type === "generate_outline" || j.type === "generate_script" || j.type === "translate_script") ?? false);
   const dirty = editing && JSON.stringify(rows) !== JSON.stringify(glossary);
   // Not autosaved like scripts: leaving the tab or the page asks first.
   useEffect(() => {
@@ -212,11 +218,12 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
       <div className="flex items-center justify-between">
         <SectionTitle>{t.outline.glossary}</SectionTitle>
         {!editing && (
-          <Button size="sm" variant="ghost" icon={Pencil} onClick={() => setEditing(true)} data-testid="glossary-edit">
+          <Button size="sm" variant="ghost" icon={Pencil} onClick={() => setEditing(true)} disabled={planning} title={planning ? t.outline.editWhilePlanning : undefined} data-testid="glossary-edit">
             {t.outline.edit}
           </Button>
         )}
       </div>
+      {planning && <p className="mb-2 text-xs text-amber-200">{t.outline.editWhilePlanning}</p>}
       <p className="mb-2 text-xs leading-relaxed text-neutral-400">{t.outline.glossaryHint}</p>
       {editing ? (
         // One term per block: the reading gets the full panel width so it can be read back.
@@ -304,7 +311,7 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
           >
             {t.common.cancel}
           </Button>
-          <Button size="sm" variant="primary" disabled={saving} onClick={() => void save()} data-testid="glossary-save">
+          <Button size="sm" variant="primary" disabled={saving || planning} onClick={() => void save()} data-testid="glossary-save">
             {t.outline.save}
           </Button>
         </div>

@@ -448,7 +448,8 @@ describe("generation handlers", () => {
       id: randomUUID(),
       projectId,
       version: (d.outline?.version ?? 0) + 1,
-      sections: [{ title: "一", slideIds: planned.map((s) => s.id) }] as never,
+      // Listed out of deck order (a model that puts one page under 「其他」 at the end).
+      sections: [{ title: "一", slideIds: [planned[1]!.id] }, { title: "其他", slideIds: [planned[0]!.id] }] as never,
       glossary: d.outline?.glossary ?? [],
       timeAllocation: {},
       inputHash: outlineInputHash(planned, d.project.settings),
