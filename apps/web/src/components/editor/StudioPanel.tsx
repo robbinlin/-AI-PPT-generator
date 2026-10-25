@@ -786,10 +786,10 @@ function VoiceSection({
   return (
     <Section title={t.studio.voice}>
       <ProviderPills providers={providers} kind="tts" value={s.providerId} onChange={(providerId) => {
-          // Store a speed the new service really applies (the switch re-voices every page anyway); a
-          // service without speed control speaks at its own pace, so 1×.
+          // Store a speed the new service really applies (the switch re-voices every page anyway). A
+          // service without speed control keeps the stored one, so switching back restores it.
           const range = ttsSpeedRange(providerId);
-          const speed = range ? Math.min(range[1], Math.max(range[0], s.speed)) : 1;
+          const speed = range ? Math.min(range[1], Math.max(range[0], s.speed)) : s.speed;
           void setVoice({ providerId, ...(speed !== s.speed ? { speed } : {}) });
         }} />
       {provider?.hint && <p className="text-xs text-amber-300/90">{provider.hint}</p>}

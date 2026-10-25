@@ -223,7 +223,11 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         .limit(1);
       // The readings the lecturer corrected survive a new plan (and pages whose narration doesn't
       // change keep their voice and presenter: re-stamped below).
-      const glossary = latest ? mergeGlossary(latest.glossary, outline.glossary) : outline.glossary;
+      // Terms in earlier outlines but not the current one were deleted by the lecturer: keep them out.
+      const history = latest ? await ctx.db.select({ glossary: outlineRevisions.glossary }).from(outlineRevisions).where(eq(outlineRevisions.projectId, ctx.job.projectId)) : [];
+      const current = new Set((latest?.glossary ?? []).map((e) => e.term));
+      const removed = new Set(history.flatMap((r) => r.glossary.map((e) => e.term)).filter((term) => !current.has(term)));
+      const glossary = latest ? mergeGlossary(latest.glossary, outline.glossary, removed) : outline.glossary;
       // Read before the new outline is stored: statuses are judged against the glossary in use, so
       // read afterwards every page would already look 需更新 and nothing would be carried over.
       const before = latest ? await getProjectDetail(ctx.db, ownerId, ctx.job.projectId) : undefined;

@@ -15,6 +15,8 @@ export function usePendingEstimate(
   scope: "pending" | "all" = "pending",
   /** Only these pages (e.g. redoing one page's avatar). */
   sceneIds?: string[],
+  /** Only the answer for exactly this `revision` (no older one while the new one loads). */
+  exact = false,
 ): CostEstimate | undefined {
   const api = useApi();
   const [estimate, setEstimate] = useState<{ key: string; base: string; value: CostEstimate }>();
@@ -35,5 +37,5 @@ export function usePendingEstimate(
       alive = false;
     };
   }, [api, projectId, type, scope, ids, key, base]);
-  return estimate?.key === key || estimate?.base === base ? estimate.value : undefined;
+  return estimate?.key === key || (!exact && estimate?.base === base) ? estimate.value : undefined;
 }

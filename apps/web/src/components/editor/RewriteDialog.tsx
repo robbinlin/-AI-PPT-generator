@@ -17,6 +17,7 @@ export function RewriteDialog({
   fresh = false,
   avatarCost,
   replansOutline = false,
+  checking = false,
   onClose,
   onRewrite,
 }: {
@@ -29,6 +30,8 @@ export function RewriteDialog({
   avatarCost?: string;
   /** The job plans a new outline first (settings or slides changed since): other pages may be affected. */
   replansOutline?: boolean;
+  /** Still asking the server what the rewrite involves: the button waits so the note is never missed. */
+  checking?: boolean;
   onClose: () => void;
   onRewrite: (instruction: string | undefined) => void;
 }) {
@@ -52,7 +55,7 @@ export function RewriteDialog({
       footer={
         <>
           <Button onClick={onClose}>{t.common.cancel}</Button>
-          <Button variant="primary" icon={WandSparkles} onClick={submit} data-testid="rewrite-submit">
+          <Button variant="primary" icon={WandSparkles} onClick={submit} disabled={checking} data-testid="rewrite-submit">
             {instruction ? t.rewrite.submit : t.rewrite.submitPlain}
           </Button>
         </>

@@ -76,9 +76,14 @@ export async function updateGlossary(
  * reading — or none, when the lecturer cleared it so it is spelled out — and a term the new plan
  * dropped that had a reading stays. Only terms new to the glossary take the AI's reading.
  */
-export function mergeGlossary(previous: GlossaryEntry[], next: GlossaryEntry[]): GlossaryEntry[] {
+export function mergeGlossary(
+  previous: GlossaryEntry[],
+  next: GlossaryEntry[],
+  /** Terms the lecturer deleted (in an earlier outline, not in the current one): not added back. */
+  removed: ReadonlySet<string> = new Set(),
+): GlossaryEntry[] {
   const old = new Map(previous.map((e) => [e.term, e]));
-  const merged = next.map((e) => {
+  const merged = next.filter((e) => old.has(e.term) || !removed.has(e.term)).map((e) => {
     const was = old.get(e.term);
     if (!was) return e;
     const { reading: _ai, ...rest } = e;

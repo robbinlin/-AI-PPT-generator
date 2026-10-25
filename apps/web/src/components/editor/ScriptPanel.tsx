@@ -1,4 +1,4 @@
-import { useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { avatarInVideo, effectiveReadings, usesGlossaryTerm } from "@lvs/shared";
 import type { ScriptRevision } from "@lvs/shared";
 import { AlertTriangle, ChevronRight, Redo2, Undo2, Volume2, VolumeX, WandSparkles } from "lucide-react";
@@ -34,6 +34,15 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const redo = useEditor((s) => s.redo);
   const [focused, setFocused] = useState(false);
   const [rewriteOpen, setRewriteOpen] = useState(false);
+  // Each opening asks the server afresh (settings may have changed since the last time).
+  const [rewriteAsk, setRewriteAsk] = useState(0);
+  // No answer (server unreachable): don't hold the button forever.
+  const [askGaveUp, setAskGaveUp] = useState(0);
+  useEffect(() => {
+    if (!rewriteOpen) return;
+    const id = setTimeout(() => setAskGaveUp(rewriteAsk), 5000);
+    return () => clearTimeout(id);
+  }, [rewriteOpen, rewriteAsk]);
 
   const scene = useMemo(() => detail?.scenes.find((s) => s.id === sceneId), [detail, sceneId]);
   // The server's price for redoing this page's avatar, so every screen shows the same number
@@ -45,9 +54,10 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
   const rewriteEstimate = usePendingEstimate(
     rewriteOpen ? detail?.project.id : undefined,
     "generate_script",
-    `${detail?.outline?.id}:${detail?.project.updatedAt}:${detail?.slides.map((s) => (s.hidden ? 1 : 0)).join("")}`,
+    `${rewriteAsk}:${detail?.outline?.id}:${detail?.project.updatedAt}:${detail?.slides.map((s) => (s.hidden ? 1 : 0)).join("")}`,
     "all",
     scene ? [scene.id] : undefined,
+    true,
   );
   if (!detail || !scene) {
     const status = detail?.sourceDocument?.parseStatus;
@@ -139,7 +149,10 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
       </div>
 
       <div className="flex items-center gap-1.5">
-        <Button size="sm" icon={WandSparkles} onClick={() => setRewriteOpen(true)} disabled={generating} data-testid="ai-rewrite">
+        <Button size="sm" icon={WandSparkles} onClick={() => {
+            setRewriteAsk((n) => n + 1);
+            setRewriteOpen(true);
+          }} disabled={generating} data-testid="ai-rewrite">
           {noScript ? t.script.aiWrite : t.script.aiRewrite}
         </Button>
         <RewriteDialog
@@ -149,6 +162,7 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
           fresh={noScript}
           avatarCost={paidAvatarReady ? redoCost : undefined}
           replansOutline={!!rewriteEstimate?.replansOutline}
+          checking={!rewriteEstimate && askGaveUp !== rewriteAsk}
           onClose={() => setRewriteOpen(false)}
           onRewrite={(instruction) => void rewrite(instruction)}
         />

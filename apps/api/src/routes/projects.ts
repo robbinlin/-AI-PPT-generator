@@ -25,6 +25,7 @@ import { toJob, toProject, toScene, toScriptRevision, toSlide, toSourceDocument 
 import { jobs, projects, scenes, scriptRevisions, slides, sourceDocuments } from "../db/schema.js";
 import { badRequest, conflict, notFound } from "../errors.js";
 import { renderScriptDocument } from "../jobs/handlers/export-script.js";
+import { outlineNeedsRegeneration, scriptJobReplansOutline } from "../jobs/plan.js";
 import { estimateJob } from "../services/estimate.js";
 import { getProjectDetail, latestOutline, latestSourceDocument, projectListExtras, requireProject } from "../services/projects.js";
 import { updateGlossary } from "../services/glossary.js";
@@ -366,9 +367,11 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const [planning] = await db
       .select()
       .from(jobs)
-      .where(and(eq(jobs.projectId, project.id), inArray(jobs.type, ["generate_outline", "generate_script", "translate_script"]), inArray(jobs.status, ["queued", "running"])))
+      .where(and(eq(jobs.projectId, project.id), inArray(jobs.type, ["generate_outline", "generate_script", "translate_script", "synthesize_speech", "generate_avatar"]), inArray(jobs.status, ["queued", "running"])))
       .limit(1);
-    if (planning) throw conflict(`「${planning.type === "generate_outline" ? "產生大綱" : planning.type === "translate_script" ? "翻譯講稿" : "產生講稿"}」正在進行，請等它完成後再修改讀音。`);
+    // Voices being made are stamped with the readings they started with: a change now would make
+    // them 需更新 (and paid for again) the moment they finish.
+    if (planning) throw conflict(`「${planning.type === "generate_outline" ? "產生大綱" : (JOB_LABEL[planning.type] ?? "產生講稿")}」正在進行，請等它完成後再修改讀音。`);
     const result = await updateGlossary(ctx, ownerId, project.id, body.glossary);
     await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, project.id));
     return result;
@@ -419,13 +422,29 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
       });
       if (clash) throw conflict(`「${JOB_LABEL[clash.type] ?? clash.type}」已經在進行中，請等它完成再開始（可按「工作」查看進度）。`);
     }
+    const sel = payload as { force?: boolean; sceneIds?: string[] };
+    const needsDetail = ["generate_outline", "generate_script", "synthesize_speech", "generate_avatar", "render_video"].includes(payload.type);
+    const detail = needsDetail ? await getProjectDetail(db, ownerId, project.id) : undefined;
+    // A new outline can bring new readings, and voices being made are stamped with the readings they
+    // started with: never let the two overlap, or finished voices (and presenters) would read
+    // 需更新 and be paid for again.
+    if (detail && ["generate_outline", "generate_script", "synthesize_speech", "generate_avatar"].includes(payload.type)) {
+      const active = await db
+        .select()
+        .from(jobs)
+        .where(and(eq(jobs.projectId, project.id), inArray(jobs.type, ["generate_outline", "generate_script", "synthesize_speech", "generate_avatar"]), inArray(jobs.status, ["queued", "running"])));
+      const voicing = active.find((j) => j.type === "synthesize_speech" || j.type === "generate_avatar");
+      const replans =
+        payload.type === "generate_outline" || (payload.type === "generate_script" && scriptJobReplansOutline(detail, { sceneIds: sel.sceneIds, force: !!sel.force }));
+      if (voicing && replans) throw conflict(`「${JOB_LABEL[voicing.type]}」正在進行；這項工作會先重新規劃大綱（讀音可能改變），請等它完成後再開始。`);
+      if (payload.type === "synthesize_speech" || payload.type === "generate_avatar") {
+        const planning = active.find((j) => j.type === "generate_outline" || (j.type === "generate_script" && outlineNeedsRegeneration(detail)));
+        if (planning) throw conflict(`「${planning.type === "generate_outline" ? "產生大綱" : "產生講稿"}」正在規劃大綱（讀音可能改變），請等它完成後再產生語音或人像。`);
+      }
+    }
     // Estimate before enqueueing (the runner may start the job right away) with the job's own
     // selection: force → everything, sceneIds respected.
-    let estimate;
-    if (["generate_outline", "generate_script", "synthesize_speech", "generate_avatar", "render_video"].includes(payload.type)) {
-      const sel = payload as { force?: boolean; sceneIds?: string[] };
-      estimate = estimateJob(await getProjectDetail(db, ownerId, project.id), payload.type, { force: !!sel.force, sceneIds: sel.sceneIds });
-    }
+    const estimate = detail ? estimateJob(detail, payload.type, { force: !!sel.force, sceneIds: sel.sceneIds }) : undefined;
     const job = await ctx.runner.enqueue(project.id, payload, { dedupeKey });
     reply.code(202);
     return { job, estimate };

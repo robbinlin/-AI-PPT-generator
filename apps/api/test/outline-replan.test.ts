@@ -2,10 +2,11 @@
  * Re-planning the outline (mock LLM, mock TTS, real generation services): readings the lecturer
  * corrected survive, and only pages whose narration changes need new audio.
  */
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Job, ProjectDetail } from "@lvs/shared";
-import { jobs } from "../src/db/schema.js";
+import { jobs, outlineRevisions } from "../src/db/schema.js";
 import { createTestServer, FakeParserRunner, multipart, TINY_PDF, type TestServer } from "./helpers.js";
 
 let t: TestServer;
@@ -42,8 +43,11 @@ afterAll(async () => {
 
 describe("re-planning the outline", () => {
   it("keeps corrected readings and re-voices only the pages that say a changed term", async () => {
-    expect((await run({ type: "generate_outline", force: true })).status).toBe("succeeded");
-    // The lecturer corrects one reading, clears another (spelled out) and deletes a term.
+    // A first plan that never mentioned ANOVA.
+    await t.ctx.db.insert(outlineRevisions).values({
+      id: randomUUID(), projectId, version: 1, sections: [], glossary: [{ term: "VO₂max", reading: "V O 2 max" }, { term: "HIIT", reading: "高強度間歇訓練" }], timeAllocation: {}, inputHash: "first",
+    });
+    // The lecturer corrects one reading and clears another (spelled out).
     const put = await t.app.inject({
       method: "PUT",
       url: `/projects/${projectId}/outline/glossary`,
@@ -66,5 +70,11 @@ describe("re-planning the outline", () => {
     expect(d1.scenes.find((s) => s.id === p1!.id)!.audio.status).toBe("stale");
     expect(d1.scripts[p1!.id]!.pronunciationText).toContain("變異數分析");
     expect(d1.scripts[p1!.id]!.pronunciationText).toContain("HIIT");
+
+    // A term the lecturer deletes stays deleted on the next plan.
+    const kept = d1.outline!.glossary.filter((g) => g.term !== "ANOVA");
+    expect((await t.app.inject({ method: "PUT", url: `/projects/${projectId}/outline/glossary`, payload: { glossary: kept } })).statusCode).toBe(200);
+    expect((await run({ type: "generate_outline", force: true })).status).toBe("succeeded");
+    expect((await detail()).outline?.glossary.some((g) => g.term === "ANOVA")).toBe(false);
   });
 });

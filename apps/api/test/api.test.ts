@@ -440,6 +440,30 @@ describe("outline vs. deck replacement", () => {
   });
 });
 
+describe("readings vs. voices being made", () => {
+  it("refuses a new outline or a reading change while voices are being made, and voices while an outline is planned", async () => {
+    const t = await createTestServer();
+    try {
+      const mk = async (name: string) => (await t.app.inject({ method: "POST", url: "/projects", payload: { name } })).json().id as string;
+      const a = await mk("voice-a");
+      expect((await t.app.inject({ method: "POST", url: `/projects/${a}/jobs`, payload: { type: "synthesize_speech", force: false } })).statusCode).toBe(202);
+      const outline = await t.app.inject({ method: "POST", url: `/projects/${a}/jobs`, payload: { type: "generate_outline", force: true } });
+      expect(outline.statusCode).toBe(409);
+      expect(outline.json().error.message).toContain("產生語音");
+      const glossary = await t.app.inject({ method: "PUT", url: `/projects/${a}/outline/glossary`, payload: { glossary: [] } });
+      expect(glossary.statusCode).toBe(409);
+      expect(glossary.json().error.message).toContain("產生語音");
+
+      const b = await mk("voice-b");
+      expect((await t.app.inject({ method: "POST", url: `/projects/${b}/jobs`, payload: { type: "generate_outline", force: true } })).statusCode).toBe(202);
+      const voice = await t.app.inject({ method: "POST", url: `/projects/${b}/jobs`, payload: { type: "synthesize_speech", force: false } });
+      expect(voice.statusCode).toBe(409);
+    } finally {
+      await t.close();
+    }
+  });
+});
+
 describe("duplicate jobs", () => {
   it("refuses a second job of the same kind for the same pages while one is queued (double click, two tabs)", async () => {
     const t = await createTestServer();

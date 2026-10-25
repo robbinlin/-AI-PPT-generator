@@ -22,6 +22,8 @@ export function OutlinePanel({ actions }: { actions: Pick<EditorActions, "enqueu
   const hasSlides = (slides?.length ?? 0) > 0;
   const generating = useEditor((s) => s.detail?.activeJobs.some((j) => j.type === "generate_outline") ?? false);
   const positionOf = useMemo(() => new Map((slides ?? []).map((s) => [s.id, s.index + 1])), [slides]);
+  // Readings being edited: save or cancel them first (a new plan would be merged with the saved ones).
+  const [editingGlossary, setEditingGlossary] = useState(false);
 
   const generate = async () => {
     // Regenerating replaces the glossary too, including readings the user corrected.
@@ -56,12 +58,12 @@ export function OutlinePanel({ actions }: { actions: Pick<EditorActions, "enqueu
         <span className="text-xs text-neutral-400">
           {fmt(t.outline.version, { v: outline.version, time: formatRelativeTime(outline.createdAt) })}
         </span>
-        <Button size="sm" variant="ghost" icon={RefreshCw} disabled={generating} onClick={() => void generate()}>
+        <Button size="sm" variant="ghost" icon={RefreshCw} disabled={generating || editingGlossary} title={editingGlossary ? t.outline.regenerateWhileEditing : undefined} onClick={() => void generate()}>
           {t.outline.regenerate}
         </Button>
       </div>
 
-      <Glossary glossary={outline.glossary} />
+      <Glossary glossary={outline.glossary} onEditingChange={setEditingGlossary} />
 
       {outline.summary && (
         <section>
@@ -129,18 +131,46 @@ function useReadingEffects(glossary: GlossaryEntry[]): Map<string, { text: strin
   }, [detail, glossary]);
 }
 
-function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
+/** The user's edits (rows vs. the list they started from) replayed onto a newer glossary. */
+export function rebaseRows(base: GlossaryEntry[], rows: GlossaryEntry[], next: GlossaryEntry[]): GlossaryEntry[] {
+  const same = (a?: GlossaryEntry, b?: GlossaryEntry) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const baseBy = new Map(base.map((e) => [e.term, e]));
+  const rowBy = new Map(rows.map((e) => [e.term, e]));
+  const removed = new Set(base.filter((e) => !rowBy.has(e.term)).map((e) => e.term));
+  const out = next.filter((e) => !removed.has(e.term)).map((e) => {
+    const mine = rowBy.get(e.term);
+    return mine && !same(mine, baseBy.get(e.term)) ? mine : e;
+  });
+  const have = new Set(out.map((e) => e.term));
+  return [...out, ...rows.filter((r) => !have.has(r.term) && !baseBy.has(r.term))];
+}
+
+function Glossary({ glossary, onEditingChange }: { glossary: GlossaryEntry[]; onEditingChange?: (editing: boolean) => void }) {
   const effects = useReadingEffects(glossary);
   const api = useApi();
   const [editing, setEditing] = useState(false);
   const [rows, setRows] = useState<GlossaryEntry[]>(glossary);
   const [saving, setSaving] = useState(false);
-  // Not remounted on a new outline (that would drop unsaved rows): follow it only while not editing.
+  // A new outline while editing (a whole-deck 產生講稿 elsewhere): keep the user's own changes on
+  // top of it, so saving never deletes the terms the new plan added.
+  const [base, setBase] = useState<GlossaryEntry[]>(glossary);
   useEffect(() => {
-    if (!editing) setRows(glossary);
+    if (!editing) {
+      setRows(glossary);
+      setBase(glossary);
+    } else if (glossary !== base && !saving) {
+      // (Our own save reloads the outline too: that is not someone else's update.)
+      setRows((r) => rebaseRows(base, r, glossary));
+      setBase(glossary);
+      toast(t.outline.rebased, "info");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [glossary, editing]);
+  useEffect(() => onEditingChange?.(editing), [editing, onEditingChange]);
   // An outline or scripts being made would overwrite a save (the server refuses it too).
-  const planning = useEditor((s) => s.detail?.activeJobs.some((j) => j.type === "generate_outline" || j.type === "generate_script" || j.type === "translate_script") ?? false);
+  const planning = useEditor(
+    (s) => s.detail?.activeJobs.some((j) => ["generate_outline", "generate_script", "translate_script", "synthesize_speech", "generate_avatar"].includes(j.type)) ?? false,
+  );
   const dirty = editing && JSON.stringify(rows) !== JSON.stringify(glossary);
   // Not autosaved like scripts: leaving the tab or the page asks first.
   useEffect(() => {
@@ -174,7 +204,8 @@ function Glossary({ glossary }: { glossary: GlossaryEntry[] }) {
     const after = new Map(rows.filter((r) => r.term.trim()).map((r) => [r.term.trim(), r.reading?.trim() ?? ""]));
     const changed = [...new Set([...before.keys(), ...after.keys()])].filter((term) => (before.get(term) ?? "") !== (after.get(term) ?? ""));
     const settings = detail.project.settings;
-    const affected = visibleScenes(detail).filter((s) => !s.muted && changed.some((term) => detail.scripts[s.id]?.script.includes(term)));
+    // Same whole-word rule as the server (editing 「VO」 doesn't touch pages that only say VO₂max).
+    const affected = visibleScenes(detail).filter((s) => !s.muted && changed.some((term) => usesGlossaryTerm(detail.scripts[s.id]?.script ?? "", term)));
     const paid = avatarInVideo(settings.avatar) ? affected.filter((s) => s.avatar.status === "ready") : [];
     if (paid.length > 0) {
       let cost = "";
