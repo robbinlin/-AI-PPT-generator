@@ -106,14 +106,15 @@ export async function saveFileAs(
     data = typeof source === "function" ? await source() : source;
     if (typeof data === "string") res = await fetch(data);
   } catch (err) {
-    // Nothing written: discard, so no empty file is left under the chosen name.
+    // Nothing written: discard what we can. The browser may already have created the chosen file
+    // (empty), so say so rather than pretend nothing is there.
     await writable.abort().catch(() => undefined);
-    throw err;
+    throw new Error(`${(err as Error).message || String(err)}（選擇的檔案可能已變成空檔，可刪除後再試一次）`);
   }
   if (res) {
     if (!res.ok || !res.body) {
       await writable.abort().catch(() => undefined);
-      throw new Error(`下載失敗（HTTP ${res.status}）`);
+      throw new Error(`下載失敗（HTTP ${res.status}；選擇的檔案可能已變成空檔，可刪除後再試一次）`);
     }
     await res.body.pipeTo(writable); // aborts the file itself if the transfer breaks
   } else {

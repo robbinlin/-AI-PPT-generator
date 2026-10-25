@@ -5,7 +5,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { desc, eq, inArray } from "drizzle-orm";
@@ -550,6 +550,8 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
         srtAssetId = srt.id;
       }
 
+      // Stored: the job's working copy goes (the per-page cache next to it stays for the next export).
+      await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
       // Derived timeline: one clip per scene on each track, so the editor can draw it.
       const tracks = buildTimelineTracks(renderScenes, scenesInOrder);
       const [latest] = await ctx.db

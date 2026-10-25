@@ -177,6 +177,8 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     for (const key of new Set(own)) {
       if (!shared.has(key)) await ctx.storage.delete(key).catch((err: unknown) => req.log.warn({ err, key }, "could not delete a file of a deleted project"));
     }
+    // Its render work folders and per-page cache too (they can be hundreds of MB).
+    await rm(join(ctx.config.RENDER_WORK_DIR, project.id), { recursive: true, force: true }).catch((err: unknown) => req.log.warn({ err }, "could not delete a deleted project's render folder"));
     reply.code(204);
     return null;
   });

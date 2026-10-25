@@ -129,7 +129,13 @@ export function renderInputHash(input: {
       layout: s.avatarLayout ?? null,
       transitionIn: s.transitionIn ?? null,
     })),
-    subtitleStyle: input.subtitleStyle,
+    // The style only shows when subtitles are burnt in; the SRT alone depends on the line width.
+    subtitleStyle:
+      input.subtitlesEnabled === false
+        ? null
+        : input.burnSubtitles
+          ? input.subtitleStyle
+          : { maxCharsPerLine: input.subtitleStyle.maxCharsPerLine },
     burnSubtitles: input.burnSubtitles && input.subtitlesEnabled !== false,
     subtitlesEnabled: input.subtitlesEnabled ?? true,
     backgroundColor: input.backgroundColor ?? "#000000",

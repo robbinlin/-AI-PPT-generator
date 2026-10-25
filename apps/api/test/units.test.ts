@@ -163,6 +163,13 @@ describe("renderInputHash", () => {
     expect(h({ ...settings, backgroundColor: "#ffffff" })).not.toBe(base);
     expect(h({ ...settings, subtitles: { ...settings.subtitles, enabled: false } })).not.toBe(base);
     expect(h(settings)).toBe(base);
+    // No character chosen: nothing is drawn, so moving the presenter changes nothing; choosing one does.
+    const none = { ...settings, avatar: { ...settings.avatar, avatarId: undefined } };
+    expect(h({ ...none, avatar: { ...none.avatar, layout: { ...none.avatar.layout, size: 0.5 } } })).toBe(h(none));
+    expect(h(none)).not.toBe(base);
+    // Subtitle style only counts when burnt in.
+    const plain = (s: typeof settings) => renderInputHash({ scenesInOrder: [scene], settings: s, preset: "hd_1080p", burnSubtitles: false, slidesById: new Map(), assets: {} });
+    expect(plain({ ...settings, subtitles: { ...settings.subtitles, style: { ...settings.subtitles.style, fontSizePx: 60 } } })).toBe(plain(settings));
   });
 });
 

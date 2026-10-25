@@ -69,6 +69,9 @@ export function renderInputHash(args: {
   assets: Readonly<Record<string, { inputHash?: string } | undefined>>;
 }): string {
   const av = args.settings.avatar;
+  // The presenter appears (clip, or the slide framed for it) only with a character chosen and the
+  // layout visible — exactly renderVideo's conditions.
+  const shown = (s: Scene) => av.enabled && !!av.avatarId && (s.avatarLayout ?? av.layout).visible;
   return pipeline.renderInputHash({
     // What the render really draws (services/generation.ts renderVideo): the presenter clip only
     // when the presenter is on and the clip is ready, and the layout every page uses.
@@ -78,11 +81,11 @@ export function renderInputHash(args: {
       // slide must not make the video outdated. (Older uploads hashed the slide text instead.)
       imageAssetId: slideImageHash(args.slidesById.get(s.slideId), args.assets),
       audioAssetId: s.audio.assetId,
-      avatarVideoAssetId: av.enabled && !s.muted && s.avatar.status === "ready" ? s.avatar.assetId : undefined,
+      avatarVideoAssetId: shown(s) && !s.muted && s.avatar.status === "ready" ? s.avatar.assetId : undefined,
       subtitleAssetId: s.subtitle.assetId,
       muted: s.muted,
       tailPauseSec: s.tailPauseSec,
-      avatarLayout: av.enabled ? (s.avatarLayout ?? av.layout) : undefined,
+      avatarLayout: shown(s) ? (s.avatarLayout ?? av.layout) : undefined,
       transitionIn: s.transitionIn,
     })),
     subtitleStyle: args.settings.subtitles.style,
