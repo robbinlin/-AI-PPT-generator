@@ -1,5 +1,5 @@
 import type { AspectRatio, AvatarLayout, GlossaryEntry, ProjectSettings, SubtitleStyle, Transition } from "@lvs/shared";
-import { contentHash } from "@lvs/shared";
+import { contentHash, fittedSlideScale } from "@lvs/shared";
 
 /**
  * Input hashes, one per derived asset, exactly as documented in
@@ -107,6 +107,8 @@ export function renderInputHash(input: {
   /** Subtitles on at all (off: no cues burnt in, no SRT). */
   subtitlesEnabled?: boolean;
 }): string {
+  const [rw, rh] = input.aspectRatio.split(":").map(Number);
+  const ratio = rw && rh ? rw / rh : 16 / 9;
   return contentHash({
     kind: "render",
     // Bump together with the render worker's SCENE_RENDER_VERSION whenever its output changes, so a
@@ -118,17 +120,23 @@ export function renderInputHash(input: {
     // v6: the presenter layout every page really uses, presenter on/off, background colour and
     // subtitles on/off count, so moving the presenter after an export makes the video outdated).
     recipe: 6,
-    scenes: input.scenes.map((s) => ({
-      id: s.sceneId,
-      image: s.imageAssetId ?? null,
-      audio: s.audioAssetId ?? null,
-      avatar: s.avatarVideoAssetId ?? null,
-      subtitle: s.subtitleAssetId ?? null,
-      muted: s.muted,
-      tail: s.tailPauseSec,
-      layout: s.avatarLayout ?? null,
-      transitionIn: s.transitionIn ?? null,
-    })),
+    scenes: input.scenes.map((s) => {
+      // A slide the renderer shrinks off the presenter counts only where it is shrunk, so videos
+      // made the old way read outdated exactly where the slide ran under the presenter.
+      const fitted = fittedSlideScale(s.avatarLayout, ratio);
+      return {
+        id: s.sceneId,
+        image: s.imageAssetId ?? null,
+        audio: s.audioAssetId ?? null,
+        avatar: s.avatarVideoAssetId ?? null,
+        subtitle: s.subtitleAssetId ?? null,
+        muted: s.muted,
+        tail: s.tailPauseSec,
+        layout: s.avatarLayout ?? null,
+        transitionIn: s.transitionIn ?? null,
+        ...(fitted !== (s.avatarLayout?.slideScale ?? 1) ? { slideFit: fitted } : {}),
+      };
+    }),
     // The style only shows when subtitles are burnt in; the SRT alone depends on the line width.
     subtitleStyle:
       input.subtitlesEnabled === false

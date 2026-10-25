@@ -34,6 +34,30 @@ export function avatarFrameBox(layout: AvatarLayout, ratio: number): FrameBox {
   return { left, top, width, height };
 }
 
+/** Gap between a side-aligned slide and the frame edge, as a fraction of frame height (the renderer's inset). */
+export const SLIDE_INSET = 0.04;
+/** The fit never shrinks a slide below this scale (a huge presenter then overlaps instead). */
+const MIN_FITTED_SLIDE_SCALE = 0.5;
+
+/**
+ * Slide scale the video really uses. A slide aligned to one side shrinks (never grows) so it ends
+ * where the presenter on the other side begins, instead of running under it: a full slide's right
+ * edge was hidden behind the presenter. Both the renderer and the editor preview go by this.
+ */
+export function fittedSlideScale(layout: AvatarLayout | undefined, ratio: number): number {
+  const scale = layout?.slideScale ?? 1;
+  if (!layout || layout.visible === false || scale >= 1) return scale;
+  if (layout.slideAlign !== "left" && layout.slideAlign !== "right") return scale;
+  const box = avatarFrameBox(layout, ratio);
+  const onRight = box.left + box.width / 2 >= 0.5;
+  // Only a presenter on the other side can be in the way.
+  if ((layout.slideAlign === "left") !== onRight) return scale;
+  const gap = 0.01;
+  const room = (layout.slideAlign === "left" ? box.left : 1 - box.left - box.width) - SLIDE_INSET / ratio - gap;
+  if (room >= scale) return scale;
+  return Math.round(Math.max(Math.min(scale, MIN_FITTED_SLIDE_SCALE), room) * 1000) / 1000;
+}
+
 /** Default subtitle side margin (fraction of frame width). */
 export const SUBTITLE_SIDE_MARGIN = 0.04;
 /** Narrowest subtitle area worth moving to; below this the default full width is kept. */

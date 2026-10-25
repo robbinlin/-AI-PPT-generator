@@ -89,7 +89,7 @@ export const MOCK_AVATARS: Record<string, AvatarOption[]> = {
 /** Prices used by the mock estimate endpoint (USD). */
 export const MOCK_PRICES = {
   ttsPerChar: 0.000016,
-  avatarPerSecond: 0.05,
+  avatarPerSecond: 0.0385,
   renderPerSecond: 0,
 };
 

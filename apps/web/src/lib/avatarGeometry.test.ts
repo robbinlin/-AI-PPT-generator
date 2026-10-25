@@ -40,3 +40,25 @@ describe("presets", () => {
     for (const p of SUBTITLE_PRESETS) expect(matchSubtitlePreset(SubtitleStyle.parse({ ...p.style }))).toBe(p.id);
   });
 });
+
+describe("side presets", () => {
+  it("leave room for the presenter: the slide is never shrunk or covered", () => {
+    for (const p of LAYOUT_PRESETS.filter((x) => x.layout.visible !== false)) {
+      const layout = AvatarLayout.parse({ ...base, ...p.layout });
+      const slide = slideBox(layout, R);
+      expect(slide.width).toBe(layout.slideScale);
+      if (layout.slideScale < 1) {
+        const av = avatarBox(layout, R);
+        const overlap = Math.min(slide.left + slide.width, av.left + av.width) - Math.max(slide.left, av.left);
+        expect(overlap).toBeLessThanOrEqual(0);
+      }
+    }
+  });
+
+  it("still name projects saved with the earlier side presets", () => {
+    const old = AvatarLayout.parse({ shape: "rect", anchor: "bottom-right", size: 0.86, margin: 0, slideScale: 0.74, slideAlign: "left", x: 0.86, y: 0.57 });
+    expect(matchLayoutPreset(old)).toBe("presenter-right");
+    // ... and the preview shows the slide shrunk off the presenter, like the video.
+    expect(slideBox(old, R).width).toBeLessThan(0.74);
+  });
+});

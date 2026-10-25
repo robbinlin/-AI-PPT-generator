@@ -36,6 +36,15 @@ import { parse } from "../util/validate.js";
 
 const HEAD_BYTES = 64 * 1024;
 
+/** Input hashes of the presenter clips a project already has (the avatar job reuses them for free). */
+async function avatarClipHashes(db: AppContext["db"], projectId: string): Promise<Set<string>> {
+  const rows = await db
+    .select({ inputHash: assets.inputHash })
+    .from(assets)
+    .where(and(eq(assets.projectId, projectId), eq(assets.kind, "avatar_video")));
+  return new Set(rows.map((r) => r.inputHash).filter((h): h is string => !!h));
+}
+
 /**
  * Objects the editor always sends whole: replaced, not merged, so a field the new value leaves
  * out is really gone (an avatar layout without x/y means "back to the corner"; merging kept the
@@ -464,7 +473,8 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     }
     // Estimate before enqueueing (the runner may start the job right away) with the job's own
     // selection: force → everything, sceneIds respected.
-    const estimate = detail ? estimateJob(detail, payload.type, { force: !!sel.force, sceneIds: sel.sceneIds }) : undefined;
+    const clips = payload.type === "generate_avatar" ? await avatarClipHashes(db, project.id) : undefined;
+    const estimate = detail ? estimateJob(detail, payload.type, { force: !!sel.force, sceneIds: sel.sceneIds, avatarClipHashes: clips }) : undefined;
     const job = await ctx.runner.enqueue(project.id, payload, { dedupeKey });
     reply.code(202);
     return { job, estimate };
@@ -495,7 +505,9 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const sceneIds = req.query.sceneIds
       ? parse(z.array(z.string().uuid()), req.query.sceneIds.split(",").map((x) => x.trim()).filter(Boolean), "query.sceneIds")
       : undefined;
-    return estimateJob(await getProjectDetail(db, ownerId, req.params.id), type, { force: scope === "all", sceneIds });
+    const detail = await getProjectDetail(db, ownerId, req.params.id);
+    const clips = type === "generate_avatar" ? await avatarClipHashes(db, detail.project.id) : undefined;
+    return estimateJob(detail, type, { force: scope === "all", sceneIds, avatarClipHashes: clips });
   });
 
   app.get<{ Params: { id: string }; Querystring: { format?: string } }>("/projects/:id/export/script", async (req, reply) => {

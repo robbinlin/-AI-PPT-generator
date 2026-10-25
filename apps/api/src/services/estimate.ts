@@ -12,13 +12,21 @@ import {
   visibleScenesOf,
   type SelectionOptions,
 } from "../jobs/plan.js";
+import { avatarInputHash } from "../jobs/hashes.js";
 
 /** Prompt characters the script writer adds on top of the slide text (outline, neighbours, instructions). */
 const SCRIPT_PROMPT_OVERHEAD_CHARS = 2500;
 /** Instructions + glossary in a translation prompt. */
 const TRANSLATE_PROMPT_OVERHEAD_CHARS = 1500;
 
-export type EstimateOptions = SelectionOptions;
+export type EstimateOptions = SelectionOptions & {
+  /**
+   * Input hashes of the presenter clips this project already has. A pending page whose clip for its
+   * current voice and presenter exists is reused by the job for free (switching back to a presenter
+   * used before), so it is not priced.
+   */
+  avatarClipHashes?: ReadonlySet<string>;
+};
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -82,16 +90,24 @@ export function estimateJob(detail: ProjectDetail, type: JobType, opts: Estimate
     case "generate_avatar": {
       if (!avatarInVideo(s.avatar)) return merge([], 0, 0);
       const targets = avatarTargets(detail, opts);
-      const seconds = secondsOf(targets);
+      // Only "fill in what is missing" reuses: a forced estimate prices redoing every clip (what a
+      // script or voice change would cost, when the old clips no longer fit).
+      const reusable = (sc: ProjectDetail["scenes"][number]) =>
+        !opts.force && !!opts.avatarClipHashes && audioReady(sc) && !!sc.audio.assetId && opts.avatarClipHashes.has(avatarInputHash({ audioAssetId: sc.audio.assetId, settings: s }));
+      const reused = targets.filter(reusable);
+      const paid = targets.filter((sc) => !reusable(sc));
+      const seconds = secondsOf(paid);
       const parts: CostEstimate[] = [];
       // Pages without up-to-date audio get their narration synthesized first, in the same job.
-      const needAudio = targets.filter((sc) => !audioReady(sc));
+      const needAudio = paid.filter((sc) => !audioReady(sc));
       if (needAudio.length) {
         const chars = needAudio.reduce((n, sc) => n + (detail.scripts[sc.id]?.pronunciationText.length ?? 0), 0);
         parts.push(estimateCost("synthesize_speech", { providerId: s.voice.providerId, chars }));
       }
-      parts.push(estimateCost("generate_avatar", { providerId: s.avatar.providerId ?? "heygen", seconds: Math.ceil(seconds), engine: avatarEngine(s.avatar) }));
-      return merge(parts, targets.length, seconds);
+      if (paid.length || !reused.length) {
+        parts.push(estimateCost("generate_avatar", { providerId: s.avatar.providerId ?? "heygen", seconds: Math.ceil(seconds), engine: avatarEngine(s.avatar) }));
+      }
+      return { ...merge(parts, targets.length, seconds), ...(reused.length ? { reusedSceneCount: reused.length } : {}) };
     }
     case "translate_script": {
       // Estimated on the SOURCE project: one LLM call per page that has a script, each prompt

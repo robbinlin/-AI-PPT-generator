@@ -231,12 +231,21 @@ describe("generation handlers", () => {
     const original = before.scenes.map((s) => s.avatar.assetId);
     expect(before.scenes.every((s) => s.avatar.status === "ready")).toBe(true);
     await t.app.inject({ method: "PATCH", url: `/projects/${projectId}`, payload: { settings: { avatar: { avatarId: "mock-other" } } } });
+    expect((await estimate("type=generate_avatar")).reusedSceneCount).toBeUndefined();
     const calls = avatarCalls.length;
     expect((await run({ type: "generate_avatar" })).row.status).toBe("succeeded");
     expect(avatarCalls.length).toBe(calls + 3); // a new character is new clips
 
     await t.app.inject({ method: "PATCH", url: `/projects/${projectId}`, payload: { settings: { avatar: { avatarId: "mock-teacher" } } } });
     expect((await detail()).scenes.every((s) => s.avatar.status === "stale")).toBe(true);
+    // The price says so before the job starts: three pages to do, all reused, no presenter seconds.
+    const priced = await estimate("type=generate_avatar");
+    expect(priced).toMatchObject({ sceneCount: 3, reusedSceneCount: 3, total: 0, seconds: 0 });
+    expect(priced.lines.some((l) => l.unit === "avatar_seconds")).toBe(false);
+    // "Redo everything" still prices every clip (what a voice change would cost).
+    const redo = await estimate("type=generate_avatar&scope=all");
+    expect(redo.reusedSceneCount).toBeUndefined();
+    expect(redo.lines.find((l) => l.unit === "avatar_seconds")?.quantity).toBeGreaterThan(0);
     messages.length = 0;
     const back = await run({ type: "generate_avatar" });
     expect(back.row.result).toMatchObject({ processed: 3, reused: 3 });

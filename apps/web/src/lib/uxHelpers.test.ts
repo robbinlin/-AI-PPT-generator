@@ -79,7 +79,7 @@ describe("review fixes", () => {
     expect(needsConfirmWithoutEstimate({ type: "synthesize_speech", force: false })).toBe(false);
     const c = unknownEstimateContent("generate_avatar", "heygen");
     expect(c.lines.join()).toContain("無法取得預估費用");
-    expect(c.lines.join()).toContain("NT$96");
+    expect(c.lines.join()).toContain("NT$74");
     expect(c.confirmLabel).toBe("仍要開始");
   });
   it("puts NT$ first and calls zero 免費", () => {

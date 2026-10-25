@@ -1,4 +1,4 @@
-import { AVATAR_RECT_ASPECT, avatarFrameBox, type AvatarLayout } from "@lvs/shared";
+import { AVATAR_RECT_ASPECT, avatarFrameBox, fittedSlideScale, SLIDE_INSET, type AvatarLayout } from "@lvs/shared";
 
 /** Fraction of frame width a rect avatar takes relative to its height (portrait 3:4). */
 export const RECT_ASPECT = AVATAR_RECT_ASPECT;
@@ -19,11 +19,14 @@ export function avatarBox(layout: AvatarLayout, ratio: number): Box {
   return avatarFrameBox(layout, ratio);
 }
 
-/** Slide image box inside the frame (scaled down and aligned when an avatar sits beside it). */
+/**
+ * Slide image box inside the frame (scaled down and aligned when an avatar sits beside it, and
+ * shrunk to end where the presenter begins, exactly as the renderer does).
+ */
 export function slideBox(layout: AvatarLayout | undefined, ratio: number): Box {
-  const scale = layout?.slideScale ?? 1;
+  const scale = fittedSlideScale(layout, ratio);
   if (scale >= 1) return { left: 0, top: 0, width: 1, height: 1 };
-  const insetX = 0.04 / ratio; // renderer insets by 4% of frame height
+  const insetX = SLIDE_INSET / ratio;
   const left = layout?.slideAlign === "left" ? insetX : layout?.slideAlign === "right" ? 1 - scale - insetX : (1 - scale) / 2;
   return { left, top: (1 - scale) / 2, width: scale, height: scale };
 }

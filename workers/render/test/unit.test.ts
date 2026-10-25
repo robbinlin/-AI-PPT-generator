@@ -46,13 +46,14 @@ describe("wrapText", () => {
     expect(wrapText("一二三四，五六", 4)).toEqual(["一二三四，", "五六"]);
   });
   it("keeps Latin words whole and honours explicit newlines", () => {
-    expect(wrapText("the quick brown fox jumps", 10)).toEqual(["the quick brown fox", "jumps"]);
+    // Even lines, not a full line and a lone word.
+    expect(wrapText("the quick brown fox jumps", 10)).toEqual(["the quick brown", "fox jumps"]);
     expect(wrapText("a\nb", 10)).toEqual(["a", "b"]);
     expect(wrapText("abcdefghijkl", 5)).toEqual(["abcdefghij", "kl"]);
     expect(wrapText("使用 Python 程式", 6)).toEqual(["使用 Python", "程式"]);
   });
   it("also caps estimated width so large fonts on small frames do not overflow", () => {
-    expect(wrapText("一二三四五六", 28, 4)).toEqual(["一二三四", "五六"]);
+    expect(wrapText("一二三四五六", 28, 4)).toEqual(["一二三", "四五六"]);
     // 0.6 em per Latin char: "abcdef" = 3.6 em fits 4 em, "abcdefg" does not.
     expect(wrapText("abcdefg hi", 28, 4)).toEqual(["abcdef", "g hi"]);
     const ass = buildAss([{ index: 1, startSec: 0, endSec: 1, text: "一二三四五六七八九十一二三四五六七八九十" }], {
@@ -62,6 +63,19 @@ describe("wrapText", () => {
     });
     const text = ass.trim().split("\n").at(-1)?.split(",,").at(-1) ?? "";
     for (const line of text.split("\\N")) expect([...line].length).toBeLessThanOrEqual(14);
+  });
+});
+
+describe("re-wrapping beside the presenter", () => {
+  it("wraps a cue that no longer fits as one text into even lines (no lone word)", () => {
+    // The script's two lines, too wide for the area beside the presenter.
+    const cue = "In this class, we will examine relevant intervention\nstudies to help you gain a deep understanding";
+    const lines = wrapText(cue, 40, 26);
+    expect(lines.length).toBe(3);
+    for (const l of lines) expect(l.split(" ").length).toBeGreaterThan(2);
+    expect(lines.join(" ")).toBe(cue.replace("\n", " "));
+    // Lines that fit keep the script's own breaks.
+    expect(wrapText("short line\nanother", 40, 26)).toEqual(["short line", "another"]);
   });
 });
 
@@ -78,7 +92,7 @@ describe("buildAss", () => {
     expect(ass).toContain("PlayResX: 1280");
     expect(ass).toContain("PlayResY: 720");
     expect(ass).toMatch(/Style: Default,Noto Sans CJK TC,40,&H00FFFFFF,&H00FFFFFF,&H66000000,&H66000000,.*,3,\d+,0,8,\d+,\d+,30,1/);
-    expect(ass).toContain("Dialogue: 0,0:00:00.50,0:00:01.25,Default,,0,0,0,,這是一段很長的字\\N幕需要換行");
+    expect(ass).toContain("Dialogue: 0,0:00:00.50,0:00:01.25,Default,,0,0,0,,這是一段很長的\\N字幕需要換行");
     expect(ass).toContain("Dialogue: 0,0:00:02.00,0:00:03.00,Default,,0,0,0,,｛＼b1｝x");
   });
 });
@@ -235,9 +249,13 @@ describe("editor layouts", () => {
   });
 
   it("scales the slide down and aligns it to leave room for the avatar", () => {
-    const left = mk({ slideScale: 0.75, slideAlign: "left" });
+    const left = mk({ slideScale: 0.75, slideAlign: "left", size: 0.5 });
     const g = left[left.indexOf("-filter_complex") + 1]!;
     expect(g).toContain("[0:v]scale=1440:810:force_original_aspect_ratio=decrease,pad=1920:1080:43:(oh-ih)/2:color=0x112233");
+    // A bigger presenter on the other side: the slide shrinks to end where the presenter begins
+    // (0.70 tall rect = 29.5% of the width) instead of running under it.
+    const under = mk({ slideScale: 0.75, slideAlign: "left" });
+    expect(under[under.indexOf("-filter_complex") + 1]).toContain("[0:v]scale=1290:726:force_original_aspect_ratio=decrease,pad=1920:1080:43:");
     const right = mk({ slideScale: 0.75, slideAlign: "right" });
     expect(right[right.indexOf("-filter_complex") + 1]).toContain("pad=1920:1080:ow-iw-43:(oh-ih)/2");
     const full = mk({});

@@ -9,13 +9,13 @@ describe("estimateCost", () => {
     expect(e.currency).toBe("USD");
   });
   it("avatar by seconds and render", () => {
-    expect(estimateCost("generate_avatar", { providerId: "heygen", seconds: 100 }).total).toBe(5);
+    expect(estimateCost("generate_avatar", { providerId: "heygen", seconds: 100 }).total).toBe(3.85); // Avatar IV photo: $2.31/min
     expect(estimateCost("render_video", { seconds: 600 }).total).toBe(1.2);
   });
   it("prices HeyGen video twins at the Avatar III rate and picks that engine only for them", () => {
-    expect(estimateCost("generate_avatar", { providerId: "heygen", seconds: 60, engine: "avatar_iii" }).total).toBeCloseTo(1.0, 2);
-    expect(estimateCost("generate_avatar", { providerId: "heygen", seconds: 60 }).total).toBe(3);
-    expect(estimateCost("generate_avatar", { providerId: "heygen", seconds: 60, engine: "unknown" }).total).toBe(3);
+    expect(estimateCost("generate_avatar", { providerId: "heygen", seconds: 60, engine: "avatar_iii" }).total).toBeCloseTo(0.6, 2); // twin: $0.60/min
+    expect(estimateCost("generate_avatar", { providerId: "heygen", seconds: 60 }).total).toBe(2.31);
+    expect(estimateCost("generate_avatar", { providerId: "heygen", seconds: 60, engine: "unknown" }).total).toBe(2.31);
     expect(avatarEngine({ providerId: "heygen", avatarSource: "video" })).toBe("avatar_iii");
     expect(avatarEngine({ providerId: "heygen", avatarSource: "photo" })).toBeUndefined();
     expect(avatarEngine({ providerId: "heygen" })).toBeUndefined();

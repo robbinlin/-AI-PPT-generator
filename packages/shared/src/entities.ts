@@ -432,5 +432,7 @@ export const CostEstimate = z.object({
   seconds: z.number().nonnegative().optional(),
   /** generate_script: the job plans a new outline first (its new readings may change other pages). */
   replansOutline: z.boolean().optional(),
+  /** generate_avatar: pages whose clip for exactly this voice and presenter already exists (reused for free). */
+  reusedSceneCount: z.number().int().nonnegative().optional(),
 });
 export type CostEstimate = z.infer<typeof CostEstimate>;

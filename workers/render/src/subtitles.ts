@@ -50,13 +50,42 @@ export function emWidth(s: string): number {
 }
 
 /**
- * Greedy wrap. A line holds at most `maxChars` columns (CJK = 1, other = 0.5) and, when `maxEm` is given, at
- * most `maxEm` em of estimated width (so a large font on a small frame cannot overflow).
- * CJK text breaks between any two characters; Latin words are kept whole unless longer
- * than a full line. Closing punctuation is never moved to the start of a line (it may
- * overhang by one character). Explicit newlines in `text` are kept.
+ * Wraps a cue. A line holds at most `maxChars` columns (CJK = 1, other = 0.5) and, when `maxEm` is
+ * given, at most `maxEm` em of estimated width (so a large font on a small frame cannot overflow).
+ * CJK text breaks between any two characters; Latin words are kept whole unless longer than a full
+ * line. Closing punctuation is never moved to the start of a line (it may overhang by one character).
+ * The cue's own line breaks are kept when every line fits; otherwise (e.g. the narrower area beside
+ * the presenter) the cue is wrapped again as one text into even lines, so no word is left alone on
+ * a line of its own.
  */
 export function wrapText(text: string, maxChars: number, maxEm = Number.POSITIVE_INFINITY): string[] {
+  const fits = (s: string) => len(s) <= maxChars && emWidth(s) <= maxEm + 1e-9;
+  const paragraphs = text
+    .split(/\r?\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (paragraphs.every(fits)) return paragraphs;
+  const joined = paragraphs.reduce((acc, p) => {
+    if (!acc) return p;
+    // Chinese lines join without a space; anything else is a word boundary.
+    const cjk = CJK_RE.test(acc.slice(-1)) && CJK_RE.test(p.charAt(0));
+    return acc + (cjk ? "" : " ") + p;
+  }, "");
+  const lines = greedyWrap(joined, maxChars, maxEm);
+  // A word longer than a line is cut where the line ends; evening out would only move the cut.
+  if (lines.length < 2 || tokenize(joined).some((tok) => tok !== " " && !fits(tok))) return lines;
+  // Narrow the width while the number of lines holds: the same lines, evenly filled.
+  let best = lines;
+  for (let f = 0.98; f >= 0.5; f -= 0.02) {
+    const narrower = greedyWrap(joined, maxChars * f, maxEm * f);
+    if (narrower.length > lines.length) break;
+    best = narrower;
+  }
+  return best;
+}
+
+/** Greedy wrap of one paragraph (see `wrapText`). */
+function greedyWrap(paragraph: string, maxChars: number, maxEm: number): string[] {
   const fits = (s: string) => len(s) <= maxChars && emWidth(s) <= maxEm + 1e-9;
   /** Splits a token that cannot fit on an empty line into full-line chunks + remainder. */
   const hardSplit = (token: string, into: string[]): string => {
@@ -71,29 +100,25 @@ export function wrapText(text: string, maxChars: number, maxEm = Number.POSITIVE
     return chunk;
   };
 
-  const out: string[] = [];
-  for (const paragraph of text.split(/\r?\n/)) {
-    const lines: string[] = [];
-    let line = "";
-    let pendingSpace = false;
-    for (const token of tokenize(paragraph.trim())) {
-      if (token === " ") {
-        pendingSpace = line.length > 0;
-        continue;
-      }
-      const candidate = line + (pendingSpace ? " " : "") + token;
-      pendingSpace = false;
-      if (fits(candidate) || (line !== "" && NO_LINE_START.has(token))) {
-        line = candidate;
-        continue;
-      }
-      if (line) lines.push(line);
-      line = fits(token) ? token : hardSplit(token, lines);
+  const lines: string[] = [];
+  let line = "";
+  let pendingSpace = false;
+  for (const token of tokenize(paragraph.trim())) {
+    if (token === " ") {
+      pendingSpace = line.length > 0;
+      continue;
+    }
+    const candidate = line + (pendingSpace ? " " : "") + token;
+    pendingSpace = false;
+    if (fits(candidate) || (line !== "" && NO_LINE_START.has(token))) {
+      line = candidate;
+      continue;
     }
     if (line) lines.push(line);
-    out.push(...lines);
+    line = fits(token) ? token : hardSplit(token, lines);
   }
-  return out.filter((l) => l.length > 0);
+  if (line) lines.push(line);
+  return lines.filter((l) => l.length > 0);
 }
 
 // ---------------------------------------------------------------------------

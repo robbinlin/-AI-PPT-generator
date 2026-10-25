@@ -24,6 +24,7 @@ import type {
   SubtitleCue,
   Track,
 } from "@lvs/shared";
+import { fittedSlideScale } from "@lvs/shared";
 import { detectPauses } from "./audio.js";
 import {
   avatarEngine,
@@ -469,6 +470,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       const assetRows = assetIds.size ? await ctx.db.select().from(assets).where(inArray(assets.id, [...assetIds])) : [];
       const assetMap = new Map(assetRows.map((r) => [r.id, toAsset(r)]));
       const imageBySlide = new Map(slideRowsAll.map((s) => [s.id, s.imageAssetId]));
+      const frameRatio = size.width / size.height;
 
       const renderScenes: RenderScene[] = [];
       for (let i = 0; i < scenesInOrder.length; i++) {
@@ -502,7 +504,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
           // No clip on this page (not made yet, or muted) while the project shows a presenter:
           // keep the presenter pages' slide size and side so pages don't jump.
           ...(!avatarAsset && settings.avatar.enabled && settings.avatar.avatarId && layout.visible
-            ? { slideFrame: { slideScale: layout.slideScale, slideAlign: layout.slideAlign } }
+            ? { slideFrame: { slideScale: fittedSlideScale(layout, frameRatio), slideAlign: layout.slideAlign } }
             : {}),
           transitionIn: i === 0 ? "none" : (s.transitionIn ?? settings.transition),
           transitionDurationSec: 0.4,

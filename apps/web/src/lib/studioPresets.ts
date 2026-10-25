@@ -24,12 +24,12 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
   {
     id: "presenter-right",
     label: "人像在右",
-    layout: { visible: true, shape: "rect", anchor: "bottom-right", size: 0.86, margin: 0, slideScale: 0.74, slideAlign: "left", x: 0.86, y: 0.57 },
+    layout: { visible: true, shape: "rect", anchor: "bottom-right", size: 0.8, margin: 0, slideScale: 0.62, slideAlign: "left", x: 0.831, y: 0.6 },
   },
   {
     id: "presenter-left",
     label: "人像在左",
-    layout: { visible: true, shape: "rect", anchor: "bottom-left", size: 0.86, margin: 0, slideScale: 0.74, slideAlign: "right", x: 0.14, y: 0.57 },
+    layout: { visible: true, shape: "rect", anchor: "bottom-left", size: 0.8, margin: 0, slideScale: 0.62, slideAlign: "right", x: 0.169, y: 0.6 },
   },
   {
     id: "bust-br",
@@ -43,11 +43,20 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
   },
 ];
 
+/**
+ * Earlier values of the side presets (slide 74%, presenter 86%): the slide ran under the presenter,
+ * so the presets now leave room, but projects saved with the old values still read as these presets.
+ */
+const LEGACY_LAYOUT_PRESETS: LayoutPreset[] = [
+  { id: "presenter-right", label: "人像在右", layout: { visible: true, shape: "rect", slideScale: 0.74, slideAlign: "left", x: 0.86, y: 0.57 } },
+  { id: "presenter-left", label: "人像在左", layout: { visible: true, shape: "rect", slideScale: 0.74, slideAlign: "right", x: 0.14, y: 0.57 } },
+];
+
 /** The preset a layout currently matches (ignores fine size tweaks within a few percent). */
 export function matchLayoutPreset(layout: AvatarLayout): string | undefined {
   const near = (a: number | undefined, b: number | undefined, eps: number) =>
     a === undefined || b === undefined ? a === b : Math.abs(a - b) <= eps;
-  return LAYOUT_PRESETS.find((p) => {
+  return [...LAYOUT_PRESETS, ...LEGACY_LAYOUT_PRESETS].find((p) => {
     const l = p.layout;
     if (l.visible === false) return !layout.visible;
     return (

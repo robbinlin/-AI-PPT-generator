@@ -17,7 +17,7 @@ import { openEditorTab } from "./RightPanel";
 
 export const SCRIPT_MAX_CHARS = 5000;
 /** HeyGen API price per avatar second (pipeline price table): video twin (Avatar III) / photo (Avatar IV). */
-const HEYGEN_USD_PER_SEC = { video: 0.0167, photo: 0.05 } as const;
+const HEYGEN_USD_PER_SEC = { video: 0.01, photo: 0.0385 } as const;
 
 export interface ScriptPanelProps {
   actions: Pick<EditorActions, "enqueue" | "saveScript" | "updateScene">;

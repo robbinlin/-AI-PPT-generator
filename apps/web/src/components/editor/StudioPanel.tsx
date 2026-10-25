@@ -1,4 +1,4 @@
-import { avatarInVideo, ttsSpeedRange } from "@lvs/shared";
+import { avatarInVideo, fittedSlideScale, SLIDE_INSET, ttsSpeedRange } from "@lvs/shared";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Ban, Check, ChevronDown, Loader2, Pencil, Play, Plus, RotateCcw, Search, Square, Trash2, UserRound } from "lucide-react";
 import type { AvatarLayout, AvatarSettings, Project, ProviderInfo, SubtitleSettings, SubtitleStyle, UpdateProjectRequest, VoiceSettings } from "@lvs/shared";
@@ -580,6 +580,8 @@ function LayoutSection({
   const presenterOn = avatarInVideo(s.avatar);
   const active = presenterOn ? matchLayoutPreset(layout) : "hidden";
   const pct = (v: number) => `${Math.round(v * 100)}%`;
+  // What the video really uses: a side slide ends where the presenter begins.
+  const fitted = presenterOn ? fittedSlideScale(layout, frameRatio(s.aspectRatio)) : (layout.slideScale ?? 1);
   return (
     <Section title={t.studio.layout}>
       <div className="grid grid-cols-3 gap-2" data-testid="layout-presets">
@@ -630,6 +632,11 @@ function LayoutSection({
       <Field label={t.studio.slideScale}>
         <CommitRange label={t.studio.slideScale} value={layout.slideScale ?? 1} min={0.5} max={1} step={0.01} format={pct} onCommit={(slideScale) => setLayout({ slideScale })} />
       </Field>
+      {fitted < (layout.slideScale ?? 1) - 0.005 && (
+        <p className="text-xs text-neutral-400" role="note" data-testid="slide-fitted-hint">
+          {fmt(t.studio.slideFitted, { pct: pct(fitted) })}
+        </p>
+      )}
       {presenterOn && layout.x !== undefined && (
         <Button size="sm" variant="ghost" icon={RotateCcw} onClick={() => setLayout({ x: undefined, y: undefined })}>
           {t.studio.resetPosition}
@@ -643,6 +650,12 @@ function LayoutSection({
  * Below this (fraction of the frame height) the mouth is a few pixels tall in a 1080p video:
  * a circle crops to the face, a half-body box shows much more than the face.
  */
+/** Frame width / height of a project aspect ratio such as "16:9". */
+function frameRatio(aspect: string | undefined): number {
+  const [w, h] = (aspect ?? "16:9").split(":").map(Number);
+  return w && h ? w / h : 16 / 9;
+}
+
 export function minReadableSize(layout: Pick<AvatarLayout, "shape">): number {
   return layout.shape === "circle" ? 0.35 : 0.5;
 }
@@ -652,8 +665,8 @@ function LayoutThumb({ layout, background }: { layout: AvatarLayout; background:
   const W = 64;
   const H = 36;
   const ratio = 16 / 9;
-  const scale = layout.visible ? (layout.slideScale ?? 1) : 1;
-  const inset = (0.04 / ratio) * W;
+  const scale = layout.visible ? fittedSlideScale(layout, ratio) : 1;
+  const inset = (SLIDE_INSET / ratio) * W;
   const sw = W * scale;
   const sh = H * scale;
   const sx = scale >= 1 ? 0 : layout.slideAlign === "left" ? inset : layout.slideAlign === "right" ? W - sw - inset : (W - sw) / 2;

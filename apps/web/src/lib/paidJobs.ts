@@ -29,8 +29,11 @@ export function estimateWaitSec(type: EstimateType, estimate: CostEstimate, avat
       return pages * 15;
     case "synthesize_speech":
       return pages * 8;
-    case "generate_avatar":
-      return avatarProviderId === "local" ? 20 + seconds * 3 : pages * 90 + seconds * 6;
+    case "generate_avatar": {
+      // Reused clips are only relinked; the wait is for the pages really made.
+      const made = Math.max(0, pages - (estimate.reusedSceneCount ?? 0));
+      return avatarProviderId === "local" ? 20 + seconds * 3 : made * 90 + seconds * 6;
+    }
     case "render_video":
       return 20 + seconds * 0.5;
     case "translate_script":
@@ -81,6 +84,7 @@ export function confirmContent(type: EstimateType, req: EnqueueJobRequest, estim
   const wait = estimateWaitSec(type, estimate, avatarProviderId);
   const lines = [
     ...(pages !== undefined ? [fmt(t.paid.pages, { n: pages })] : []),
+    ...(estimate.reusedSceneCount ? [fmt(t.paid.reusedAvatars, { n: estimate.reusedSceneCount })] : []),
     fmt(t.paid.cost, { cost: estimate.total > 0 ? formatTwdFirst(estimate.total, estimate.currency) : avatarProviderId === "local" && type === "generate_avatar" ? t.paid.freeLocal : t.paid.free }),
     ...estimateLines(estimate).map((l) => `・${l}`),
     fmt(t.paid.wait, { wait: formatWait(wait) }),

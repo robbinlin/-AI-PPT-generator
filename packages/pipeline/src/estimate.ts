@@ -19,9 +19,11 @@ export const DEFAULT_PRICE_TABLE: PriceTable = {
     mock: { charsPer1k: 0 },
   },
   avatar: {
-    // HeyGen API pay-as-you-go (heygen.com/blog/ai-video-generator-pricing, 2026-10-20):
-    // Avatar IV photo avatar $0.05/s (the default), Avatar III digital twin $0.0167/s.
-    heygen: { perSecond: 0.05, perSecondByEngine: { avatar_iii: 0.0167, avatar_v: 0.0667 } },
+    // HeyGen API pay-as-you-go, billed per second generated (help.heygen.com "HeyGen API Pricing
+    // Explained", updated 2026-10-19): Avatar IV photo avatar $2.31/min (the default), Avatar III
+    // digital twin $0.60/min, Avatar V digital twin $7.20/min. A 53 s twin test on 2026-10-25 was
+    // charged exactly $0.53.
+    heygen: { perSecond: 0.0385, perSecondByEngine: { avatar_iii: 0.01, avatar_v: 0.12 } },
     mock: { perSecond: 0 },
   },
   render: { perSecond: 0.002 },

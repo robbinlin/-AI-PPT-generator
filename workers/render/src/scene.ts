@@ -1,7 +1,7 @@
 ﻿import { constants as fsc } from "node:fs";
 import { copyFile, link, mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { contentHash, sha256Hex, subtitleSideMargins, type AvatarLayout, type RenderScene, type SubtitleStyle } from "@lvs/shared";
+import { contentHash, fittedSlideScale, sha256Hex, SLIDE_INSET, subtitleSideMargins, type AvatarLayout, type RenderScene, type SubtitleStyle } from "@lvs/shared";
 import { ffmpegColor } from "./color.js";
 import { DEFAULT_FFMPEG, DEFAULT_FFPROBE, ffprobe, num, runFfmpeg, throwIfAborted } from "./ffmpeg.js";
 import { buildAss } from "./subtitles.js";
@@ -57,6 +57,20 @@ function avatarVisible(scene: RenderScene): boolean {
   return !!scene.avatar && scene.avatar.layout.visible !== false;
 }
 
+/**
+ * How the slide is framed: beside the presenter (shrunk to end where the presenter begins, same
+ * rule as the editor preview), or for a page without its clip, the presenter pages' frame (whose
+ * scale the API has already fitted).
+ */
+function slideFrame(scene: RenderScene, ratio: number): { scale: number; align: AvatarLayout["slideAlign"] | undefined; fitted: boolean } {
+  if (scene.avatar && avatarVisible(scene)) {
+    const { layout } = scene.avatar;
+    const scale = fittedSlideScale(layout, ratio);
+    return { scale, align: layout.slideAlign, fitted: scale !== (layout.slideScale ?? 1) };
+  }
+  return { scale: scene.slideFrame?.slideScale ?? 1, align: scene.slideFrame?.slideAlign, fitted: false };
+}
+
 function sceneAss(scene: RenderScene, ctx: SceneContext): string {
   const style = ctx.subtitleStyle;
   return buildAss(scene.subtitles, {
@@ -85,9 +99,13 @@ export async function sceneCacheKey(scene: RenderScene, ctx: SceneContext): Prom
   const burn = ctx.burnSubtitles && scene.subtitles.length > 0;
   // Transitions are applied at assembly time, so they do not affect the scene file.
   const { transitionIn: _t, transitionDurationSec: _d, ...sceneSpec } = scene;
+  // A slide shrunk off the presenter is a different picture; only then does the fit join the key,
+  // so pages it leaves alone keep their cached files.
+  const frame = slideFrame(scene, ctx.width / ctx.height);
   return contentHash({
     v: SCENE_RENDER_VERSION,
     scene: sceneSpec,
+    ...(frame.fitted ? { slideFit: frame.scale } : {}),
     inputs,
     width: ctx.width,
     height: ctx.height,
@@ -162,12 +180,11 @@ export function buildSceneArgs(input: SceneCommandInput): string[] {
   // 0: slide image, looped. With an avatar beside it the slide may be scaled down and aligned.
   args.push("-loop", "1", "-framerate", String(fps), "-i", scene.imagePath);
   // A page without its clip keeps the presenter pages' slide frame (scene.slideFrame).
-  const frameLayout = scene.avatar && avatarVisible(scene) ? scene.avatar.layout : scene.slideFrame;
-  const scale = frameLayout?.slideScale ?? 1;
+  const { scale, align } = slideFrame(scene, W / H);
   const sw = even(W * scale);
   const sh = even(H * scale);
-  const inset = Math.round(H * 0.04);
-  const padX = frameLayout?.slideAlign === "left" ? String(inset) : frameLayout?.slideAlign === "right" ? `ow-iw-${inset}` : "(ow-iw)/2";
+  const inset = Math.round(H * SLIDE_INSET);
+  const padX = align === "left" ? String(inset) : align === "right" ? `ow-iw-${inset}` : "(ow-iw)/2";
   filters.push(
     `[0:v]scale=${sw}:${sh}:force_original_aspect_ratio=decrease,` +
       `pad=${W}:${H}:${scale < 1 ? padX : "(ow-iw)/2"}:(oh-ih)/2:color=${bg},setsar=1,fps=${fps}[bg]`,
