@@ -362,6 +362,13 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const { ownerId } = ctx.auth.resolve(req);
     const project = await requireProject(db, ownerId, req.params.id);
     const body = parse(UpdateGlossaryRequest, req.body);
+    // An outline being (re)planned would overwrite this save, or this save its new terms.
+    const [planning] = await db
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.projectId, project.id), inArray(jobs.type, ["generate_outline", "generate_script"]), inArray(jobs.status, ["queued", "running"])))
+      .limit(1);
+    if (planning) throw conflict(`「${planning.type === "generate_outline" ? "產生大綱" : "產生講稿"}」正在進行，請等它完成後再修改讀音。`);
     const result = await updateGlossary(ctx, ownerId, project.id, body.glossary);
     await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, project.id));
     return result;

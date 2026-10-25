@@ -44,13 +44,33 @@ export function outlineNeedsRegeneration(detail: ProjectDetail): boolean {
 }
 
 /**
- * True when this generate_script job re-plans the outline first: when there is none, or for a whole-deck
- * run after pages/settings changed. Rewriting chosen pages (「AI 重寫本頁」) keeps the stored outline —
- * a new one would make every other AI page 需更新 (and, through new readings, their voice and presenter).
+ * The stored outline is out of date only because pages were hidden, shown again or moved: the pages it
+ * planned, read in its own order with today's settings, still give its hash (same text, same 長度/對象/
+ * 風格). A settings or content change gives another hash.
+ */
+function outlineOnlyLacksPageChanges(detail: ProjectDetail): boolean {
+  const outline = detail.outline;
+  if (!outline) return false;
+  const bySlide = new Map(detail.slides.map((s) => [s.id, s]));
+  const planned = outline.sections.flatMap((sec) => sec.slideIds).map((id) => bySlide.get(id));
+  if (!planned.length || planned.some((s) => !s)) return false;
+  return outlineInputHash(planned.map((s) => ({ ...s!, hidden: false })), detail.project.settings) === outline.inputHash;
+}
+
+/**
+ * True when this generate_script job re-plans the outline first: when there is none, after a settings
+ * or slide-content change (so 目標總長, 對象, 風格 are followed), or for a whole-deck run. Rewriting chosen
+ * pages that the outline already plans, when only hidden/moved pages made it out of date, keeps it —
+ * a new one would make every other AI page 需更新.
  */
 export function scriptJobReplansOutline(detail: ProjectDetail, opts: SelectionOptions = {}): boolean {
   if (!outlineNeedsRegeneration(detail)) return false;
-  return !detail.outline || !opts.sceneIds?.length;
+  if (!detail.outline || !opts.sceneIds?.length) return true;
+  if (!outlineOnlyLacksPageChanges(detail)) return true;
+  // A page the outline never planned (shown again, or new) has no section and no time share.
+  const planned = new Set(detail.outline.sections.flatMap((sec) => sec.slideIds));
+  const sceneSlide = new Map(detail.scenes.map((s) => [s.id, s.slideId]));
+  return opts.sceneIds.some((id) => !planned.has(sceneSlide.get(id) ?? ""));
 }
 
 export function scriptTargets(detail: ProjectDetail, opts: SelectionOptions = {}): Scene[] {

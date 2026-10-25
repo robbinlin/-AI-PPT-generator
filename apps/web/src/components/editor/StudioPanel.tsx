@@ -1,4 +1,4 @@
-import { avatarInVideo } from "@lvs/shared";
+import { avatarInVideo, ttsSpeedRange } from "@lvs/shared";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Ban, Check, ChevronDown, Loader2, Pencil, Play, Plus, RotateCcw, Search, Square, Trash2, UserRound } from "lucide-react";
 import type { AvatarLayout, AvatarSettings, Project, ProviderInfo, SubtitleSettings, SubtitleStyle, UpdateProjectRequest, VoiceSettings } from "@lvs/shared";
@@ -711,6 +711,7 @@ function VoiceSection({
 }) {
   const api = useApi();
   const s = project.settings.voice;
+  const speedRange = ttsSpeedRange(s.providerId);
   const provider = providers.find((p) => p.kind === "tts" && p.id === s.providerId);
   const language = project.settings.language === "en" ? "en" : "zh-TW";
   const player = useVoicePlayer();
@@ -801,7 +802,7 @@ function VoiceSection({
               <button
                 type="button"
                 aria-label={`${t.settings.previewVoice} ${v.name}`}
-                onClick={() => void player.toggle(v.id, () => api.previewVoice(s.providerId, v.id, language, { speed: s.speed, sentencePauseSec: s.sentencePauseSec }))}
+                onClick={() => void player.toggle(v.id, () => api.previewVoice(s.providerId, v.id, language, speedRange ? { speed: s.speed } : undefined))}
                 className="flex size-7 shrink-0 items-center justify-center rounded-full border border-neutral-600 text-neutral-200 hover:border-accent-400"
               >
                 {state === "loading" ? <Loader2 className="size-3.5 animate-spin" /> : state === "playing" ? <Square className="size-3" /> : <Play className="size-3.5" />}
@@ -892,19 +893,22 @@ function VoiceSection({
           )}
         </div>
       )}
+      {/* Only the speeds the service really applies (a change re-voices every page). 句間停頓 is not
+          offered: no voice service applies it yet, so changing it only made pages 需更新. */}
       <Field label={t.settings.speed}>
-        <CommitRange label={t.settings.speed} value={s.speed} min={0.5} max={2} step={0.05} format={(v) => `${v.toFixed(2)}×`} onCommit={(speed) => setVoice({ speed })} />
-      </Field>
-      <Field label={t.settings.sentencePause}>
-        <CommitRange
-          label={t.settings.sentencePause}
-          value={s.sentencePauseSec}
-          min={0}
-          max={3}
-          step={0.1}
-          format={(v) => `${v.toFixed(1)} 秒`}
-          onCommit={(sentencePauseSec) => setVoice({ sentencePauseSec })}
-        />
+        {speedRange ? (
+          <CommitRange
+            label={t.settings.speed}
+            value={Math.min(speedRange[1], Math.max(speedRange[0], s.speed))}
+            min={speedRange[0]}
+            max={speedRange[1]}
+            step={0.05}
+            format={(v) => `${v.toFixed(2)}×`}
+            onCommit={(speed) => setVoice({ speed })}
+          />
+        ) : (
+          <p className="text-xs text-neutral-400">{t.settings.speedUnsupported}</p>
+        )}
       </Field>
     </Section>
   );

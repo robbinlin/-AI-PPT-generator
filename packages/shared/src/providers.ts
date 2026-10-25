@@ -62,6 +62,19 @@ export interface Voice {
   tags?: string[];
 }
 
+/**
+ * The 語速 each voice service really applies (others: 0.5–2×). Gemini has no speed control, so the
+ * editor hides the slider there instead of letting a change make every page 需更新 for identical audio.
+ */
+const TTS_SPEED_RANGE: Record<string, readonly [number, number] | null> = {
+  gemini: null,
+  elevenlabs: [0.7, 1.2],
+  yating: [0.7, 2],
+};
+export function ttsSpeedRange(providerId: string): readonly [number, number] | null {
+  return providerId in TTS_SPEED_RANGE ? TTS_SPEED_RANGE[providerId]! : [0.5, 2];
+}
+
 export interface TtsCapabilities {
   wordTimestamps: boolean;
   ssml: boolean;

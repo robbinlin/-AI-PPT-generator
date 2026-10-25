@@ -442,6 +442,17 @@ describe("generation handlers", () => {
 
   it("rewriting one page after a page was shown again keeps the outline (no re-plan, other pages untouched)", async () => {
     const d = await detail();
+    // An outline that planned pages 2–3 (page 1 hidden at the time).
+    const planned = d.scenes.slice(1).map((sc) => d.slides.find((sl) => sl.id === sc.slideId)!);
+    await t.ctx.db.insert(outlineRevisions).values({
+      id: randomUUID(),
+      projectId,
+      version: (d.outline?.version ?? 0) + 1,
+      sections: [{ title: "一", slideIds: planned.map((s) => s.id) }] as never,
+      glossary: d.outline?.glossary ?? [],
+      timeAllocation: {},
+      inputHash: outlineInputHash(planned, d.project.settings),
+    });
     // Page 1 back on: the stored outline no longer matches the visible pages.
     await t.app.inject({ method: "PATCH", url: `/projects/${projectId}/slides/${d.slides[0]!.id}`, payload: { hidden: false } });
     const before = await detail();
@@ -455,5 +466,11 @@ describe("generation handlers", () => {
       expect(other.script.status).toBe(before.scenes.find((s) => s.id === other.id)!.script.status);
       expect(other.audio.status).toBe(before.scenes.find((s) => s.id === other.id)!.audio.status);
     }
+    // A page the outline never planned (page 1) needs a new plan; so does a changed 目標總長.
+    const est = async (sceneId: string) => (await estimate(`type=generate_script&scope=all&sceneIds=${sceneId}`)).lines.length;
+    const planned1 = await est(sc.id);
+    expect(await est(before.scenes[0]!.id)).toBeGreaterThan(planned1);
+    await t.app.inject({ method: "PATCH", url: `/projects/${projectId}`, payload: { settings: { targetDurationSec: 1200 } } });
+    expect(await est(sc.id)).toBeGreaterThan(planned1);
   });
 });

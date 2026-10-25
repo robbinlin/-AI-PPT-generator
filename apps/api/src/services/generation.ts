@@ -224,6 +224,9 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       // The readings the lecturer corrected survive a new plan (and pages whose narration doesn't
       // change keep their voice and presenter: re-stamped below).
       const glossary = latest ? mergeGlossary(latest.glossary, outline.glossary) : outline.glossary;
+      // Read before the new outline is stored: statuses are judged against the glossary in use, so
+      // read afterwards every page would already look 需更新 and nothing would be carried over.
+      const before = latest ? await getProjectDetail(ctx.db, ownerId, ctx.job.projectId) : undefined;
       const [row] = await ctx.db
         .insert(outlineRevisions)
         .values({
@@ -238,10 +241,7 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
           inputHash,
         })
         .returning();
-      if (latest) {
-        const detail = await getProjectDetail(ctx.db, ownerId, ctx.job.projectId);
-        await applyGlossaryChange({ db: ctx.db, publish: ctx.publish }, detail, latest.glossary, glossary, row!.id);
-      }
+      if (latest && before) await applyGlossaryChange({ db: ctx.db, publish: ctx.publish }, before, latest.glossary, glossary, row!.id);
       await ctx.emit(1, "大綱完成");
       return toOutline(row!);
     },

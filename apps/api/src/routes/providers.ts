@@ -149,7 +149,7 @@ export async function providerRoutes(
   /** Short sample so the user can hear a voice before committing to it. */
   app.post<{
     Params: { providerId: string; voiceId: string };
-    Querystring: { language?: string; speed?: string; sentencePauseSec?: string };
+    Querystring: { language?: string; speed?: string };
   }>("/providers/:providerId/voices/:voiceId/preview", async (req, reply) => {
     const { ownerId } = ctx.auth.resolve(req);
     const tts = await ctx.providers.requireTts(ownerId, req.params.providerId);
@@ -160,13 +160,12 @@ export async function providerRoutes(
       return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : undefined;
     };
     const speed = num(req.query.speed, 0.5, 2);
-    const sentencePauseSec = num(req.query.sentencePauseSec, 0, 3);
     const text =
       language === "en"
         ? "Hello everyone, this is a sample of my voice. In today's lesson we will go through the key ideas step by step."
         : "各位同學好，這是我的聲音示範。今天這堂課，我們會一步一步把重點講清楚。";
     // The same sample again is replayed, not bought again (vendor voices cost per character).
-    const key = [ownerId, req.params.providerId, req.params.voiceId, language, speed ?? "", sentencePauseSec ?? ""].join("|");
+    const key = [ownerId, req.params.providerId, req.params.voiceId, language, speed ?? ""].join("|");
     const cached = previewCache.get(key);
     if (cached) {
       reply.header("Cache-Control", "no-store");
@@ -179,7 +178,6 @@ export async function providerRoutes(
         voiceId: req.params.voiceId,
         language,
         ...(speed !== undefined ? { speed } : {}),
-        ...(sentencePauseSec !== undefined ? { sentencePauseSec } : {}),
       });
     } catch (err) {
       req.log.warn(

@@ -589,6 +589,7 @@ export const zhTW = {
     avatarListFailed: "無法取得人像清單",
     speed: "語速",
     sentencePause: "句間停頓（秒）",
+    speedUnsupported: "這個語音服務不能調整語速，會用聲音本身的速度。",
     avatarEnabled: "啟用人像",
     avatarProvider: "人像供應商",
     avatarId: "人像",
@@ -686,7 +687,7 @@ export const zhTW = {
     shortTermWarn: "很短的英文詞也會換掉其他字裡的同樣字母（例如 Two 會影響 Two-way），確認一下是否需要。",
     regenerateTitle: "重新產生大綱？",
     regenerateBody: "AI 會重新規劃大綱與術語表，取代目前的版本；你修正過的讀音會保留。",
-    regenerateNote: "已寫好的講稿不會自動重寫；AI 寫的講稿會標成「需更新」，重新產生時才依新大綱（語音與人像只有在講稿改了之後才需要重做）。",
+    regenerateNote: "已寫好的講稿不會自動重寫，也不會因此標成「需更新」；要讓某頁照新大綱寫，請在那頁按「AI 重寫本頁」。語音與人像只有講稿或讀音改了的頁面才需要重做。",
     regenerateConfirm: "重新產生",
   },
   upload: {
