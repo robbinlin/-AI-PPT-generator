@@ -132,6 +132,23 @@ describe("matchScenes", () => {
     expect(m2.get(moved[0]!.id)).toEqual({ scene: oldB.scene, kind: "same" });
     expect(m2.get(moved[1]!.id)).toEqual({ scene: oldA.scene, kind: "same" });
   });
+  it("tells text-less pages apart by their picture, and keeps older uploads matching in order", () => {
+    const o1 = { scene: scene(), slide: slide(1, "") };
+    const o2 = { scene: scene(), slide: slide(2, "") };
+    // Swapped pictures: each follows its picture, no script moves to the wrong page.
+    const n = [slide(1, ""), slide(2, "")];
+    const pics = { new: new Map([[n[0]!.id, "p2"], [n[1]!.id, "p1"]]), old: new Map([[o1.slide.id, "p1"], [o2.slide.id, "p2"]]) };
+    const m = matchScenes(n, [o1, o2], pics);
+    expect(m.get(n[0]!.id)).toEqual({ scene: o2.scene, kind: "same" });
+    expect(m.get(n[1]!.id)).toEqual({ scene: o1.scene, kind: "same" });
+    // A new picture is not 「same」: it falls back to its page number as changed.
+    const m2 = matchScenes([n[0]!], [o1], { new: new Map([[n[0]!.id, "p9"]]), old: new Map([[o1.slide.id, "p1"]]) });
+    expect(m2.get(n[0]!.id)).toEqual({ scene: o1.scene, kind: "changed" });
+    // Old pages without a picture hash (uploaded before) still match in order as same.
+    const m3 = matchScenes(n, [o1, o2], { new: pics.new, old: new Map() });
+    expect(m3.get(n[0]!.id)).toEqual({ scene: o1.scene, kind: "same" });
+    expect(m3.get(n[1]!.id)).toEqual({ scene: o2.scene, kind: "same" });
+  });
 });
 
 describe("providerErrorMessage", () => {

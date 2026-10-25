@@ -1,4 +1,5 @@
 import { loadConfig } from "./config.js";
+import { STOP_CRITICAL_MS } from "./jobs/runner.js";
 import { buildServer } from "./server.js";
 
 const PGLITE_HINT =
@@ -26,16 +27,20 @@ const shutdown = async (signal: string) => {
   }
   shuttingDown = true;
   server.app.log.info({ signal }, "shutting down (press Ctrl+C again to force)");
-  // Never hang on a provider call or an open SSE stream: exit after a bounded grace period.
+  // Never hang on a provider call or an open SSE stream: exit after a bounded grace period — longer
+  // than the job runner waits for a presenter task being created, so its id is stored first.
   setTimeout(() => {
     console.error("[api] shutdown timed out; exiting");
     process.exit(0);
-  }, 5000).unref();
+  }, STOP_CRITICAL_MS + 3000).unref();
   await server.close();
   process.exit(0);
 };
 process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
+// Windows: closing the console window (SIGHUP; Windows ends the process about 10 s later) and Ctrl+Break.
+process.on("SIGHUP", () => void shutdown("SIGHUP"));
+process.on("SIGBREAK", () => void shutdown("SIGBREAK"));
 
 await server.app.listen({ port: config.PORT, host: config.HOST });
 server.app.log.info({ driver: server.dbHandle.driver, storage: config.STORAGE_ROOT }, "api ready");

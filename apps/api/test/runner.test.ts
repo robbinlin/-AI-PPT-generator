@@ -80,6 +80,45 @@ describe("JobRunner", () => {
     expect((await read(job.id)).status).toBe("cancelled");
   });
 
+  it("keeps a stop the user presses while the server is shutting down", async () => {
+    let started = false;
+    const runner = makeRunner(
+      (ctx) =>
+        new Promise((_resolve, reject) => {
+          started = true;
+          ctx.signal.addEventListener("abort", () => setTimeout(() => reject(Object.assign(new Error("aborted"), { name: "AbortError" })), 50));
+        }),
+    );
+    const job = await runner.enqueue(projectId, { type: "generate_outline", force: false });
+    runner.start();
+    for (let i = 0; i < 100 && !started; i++) await new Promise((r) => setTimeout(r, 10));
+    const stopping = runner.stop(); // shutdown aborts first …
+    await runner.cancel(job.id); // … then the user presses 停止
+    await stopping;
+    expect((await read(job.id)).status).toBe("cancelled");
+  });
+
+  it("waits for a provider task being created before shutting down, and claims nothing while stopping", async () => {
+    let started = false;
+    let stored = false;
+    const runner = makeRunner(async (ctx) => {
+      started = true;
+      await ctx.critical(async () => {
+        await new Promise((r) => setTimeout(r, 300)); // createTask in flight
+        stored = true;
+      });
+      throw Object.assign(new Error("aborted"), { name: "AbortError" });
+    });
+    const job = await runner.enqueue(projectId, { type: "generate_outline", force: false });
+    runner.start();
+    for (let i = 0; i < 100 && !started; i++) await new Promise((r) => setTimeout(r, 10));
+    await runner.stop();
+    expect(stored).toBe(true);
+    expect((await read(job.id)).status).toBe("queued");
+    expect(await runner.claimNext()).toBeNull();
+    await t.ctx.db.delete(jobs).where(eq(jobs.id, job.id));
+  });
+
   it("claims the oldest queued job and runs the handler to success", async () => {
     let seen = 0;
     const runner = makeRunner(async (ctx) => {

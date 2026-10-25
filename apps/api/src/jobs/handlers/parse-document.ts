@@ -56,7 +56,7 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
 
     const projectId = doc.projectId;
     const prefix = `projects/${projectId}/slides/${docId}`;
-    const created: Array<{ page: ParsedPage; imageAssetId: string; thumbnailAssetId: string }> = [];
+    const created: Array<{ page: ParsedPage; imageAssetId: string; thumbnailAssetId: string; imageHash: string }> = [];
     for (const page of pages) {
       throwIfAborted(ctx.signal);
       const n = String(page.pageNumber).padStart(3, "0");
@@ -65,6 +65,7 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
       await storage.put(imageKey, page.image.buffer, "image/png");
       await storage.put(thumbKey, page.thumbnail.buffer, "image/png");
       const imageAssetId = randomUUID();
+      const imageHash = sha256Hex(page.image.buffer);
       const thumbnailAssetId = randomUUID();
       await db.insert(assets).values([
         {
@@ -78,7 +79,7 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
           height: page.image.height,
           // What the page looks like (a swapped photo or recoloured chart changes it; notes don't):
           // the render fingerprint uses this to tell whether a video still shows the current slides.
-          inputHash: sha256Hex(page.image.buffer),
+          inputHash: imageHash,
           producedBy: { jobId: job.id },
         },
         {
@@ -92,7 +93,7 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
           producedBy: { jobId: job.id },
         },
       ]);
-      created.push({ page, imageAssetId, thumbnailAssetId });
+      created.push({ page, imageAssetId, thumbnailAssetId, imageHash });
     }
 
     await ctx.emit(0.9, "建立頁面與場景");
@@ -122,9 +123,24 @@ export const parseDocument: JobHandler<{ type: "parse_document"; sourceDocumentI
         insertedSlides.push(row!);
       }
 
+      // Picture hashes, to tell text-less pages apart (old slide images uploaded before pictures
+      // were hashed carry the text hash instead: ignored).
+      const oldImageIds = oldSlides.map((s) => s.imageAssetId).filter((id): id is string => !!id);
+      const oldImages = oldImageIds.length ? await tx.select().from(assets).where(inArray(assets.id, oldImageIds)) : [];
+      const hashByAsset = new Map(oldImages.map((a) => [a.id, a.inputHash]));
+      const imageHashes = {
+        new: new Map(insertedSlides.map((s, i) => [s.id, created[i]!.imageHash])),
+        old: new Map(
+          oldSlides.flatMap((s) => {
+            const h = s.imageAssetId ? hashByAsset.get(s.imageAssetId) : undefined;
+            return h && h !== s.contentHash ? [[s.id, h] as const] : [];
+          }),
+        ),
+      };
       const matched = matchScenes(
         insertedSlides,
         oldScenes.map((sc) => ({ scene: sc, slide: oldSlideById.get(sc.slideId) })),
+        imageHashes,
       );
 
       const resultScenes: SceneRow[] = [];
@@ -232,9 +248,10 @@ async function loadPages(manifest: ParserManifest, outDir: string): Promise<Pars
     pages.push({
       pageNumber: entry.pageNumber,
       content,
-      // A page without text or notes (a picture, a scanned PDF) is told apart by its picture;
-      // otherwise every such page would share one hash and scripts could move between them.
-      contentHash: (content.plainText ?? "").trim() || (content.notes ?? "").trim() ? slideContentHash(content.plainText, content.notes) : sha256Hex(image),
+      // Text-based on purpose: outline and script hashes build on it (a picture hash here would make
+      // every text-less page of an existing project 需更新 on its next upload). Text-less pages are
+      // told apart by their picture in matchScenes instead.
+      contentHash: slideContentHash(content.plainText, content.notes),
       image: { buffer: image, width: entry.imageWidthPx, height: entry.imageHeightPx },
       thumbnail: { buffer: thumbnail },
     });
@@ -254,7 +271,15 @@ type Match = { scene: SceneRow; kind: "same" | "changed" };
 /** Kept pages (hand-written scripts whose slide left the deck) carry page numbers from here up. */
 export const KEPT_PAGE_BASE = 100_000;
 
-export function matchScenes(newSlides: SlideRow[], old: OldEntry[]): Map<string, Match> {
+/** contentHash of a page with no text and no notes (pictures, scanned PDFs). */
+const EMPTY_TEXT_HASH = slideContentHash("", undefined);
+
+export function matchScenes(
+  newSlides: SlideRow[],
+  old: OldEntry[],
+  /** Picture hashes by slide id: text-less pages are matched by picture when both sides have one. */
+  images: { new: Map<string, string>; old: Map<string, string> } = { new: new Map(), old: new Map() },
+): Map<string, Match> {
   const out = new Map<string, Match>();
   const unused = new Set(old.map((_, i) => i));
   const byHash = new Map<string, number[]>();
@@ -272,6 +297,20 @@ export function matchScenes(newSlides: SlideRow[], old: OldEntry[]): Map<string,
   };
   const pending: SlideRow[] = [];
   for (const s of newSlides) {
+    if (s.contentHash === EMPTY_TEXT_HASH) {
+      // Text-less: the same picture is the same page; an old page without a picture hash (older
+      // upload) may still match in order, as before; a different picture is not 「same」.
+      const pic = images.new.get(s.id);
+      const candidates = (byHash.get(s.contentHash) ?? []).filter((i) => {
+        const oldPic = old[i]!.slide ? images.old.get(old[i]!.slide!.id) : undefined;
+        return !pic || !oldPic || oldPic === pic;
+      });
+      const samePic = pic ? candidates.find((i) => old[i]!.slide && images.old.get(old[i]!.slide!.id) === pic && unused.has(i)) : undefined;
+      const hit = samePic !== undefined ? take([samePic]) : take(candidates);
+      if (hit) out.set(s.id, { scene: hit.scene, kind: "same" });
+      else pending.push(s);
+      continue;
+    }
     const hit = take(byHash.get(s.contentHash));
     if (hit) out.set(s.id, { scene: hit.scene, kind: "same" });
     else pending.push(s);

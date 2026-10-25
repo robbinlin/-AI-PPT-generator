@@ -170,13 +170,16 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const project = await requireProject(db, ownerId, req.params.id);
     // Replacing the deck while pages are being written, voiced or animated would let those jobs
     // keep working (and paying) for pages the new deck no longer has.
-    const [busy] = await db
-      .select()
-      .from(jobs)
-      .where(and(eq(jobs.projectId, project.id), inArray(jobs.type, [...PAGE_JOBS, "render_video", "parse_document"]), inArray(jobs.status, ["queued", "running"])))
-      .limit(1);
-    // Two decks read at once would delete each other's pages (and the scripts on them).
-    if (busy) throw conflict(`「${JOB_LABEL[busy.type] ?? (busy.type === "parse_document" ? "解析簡報" : "匯出影片")}」正在進行，請等它完成（或在「工作」停止）後再替換簡報。`);
+    const refuseIfBusy = async () => {
+      const [busy] = await db
+        .select()
+        .from(jobs)
+        .where(and(eq(jobs.projectId, project.id), inArray(jobs.type, [...PAGE_JOBS, "render_video", "parse_document"]), inArray(jobs.status, ["queued", "running"])))
+        .limit(1);
+      // Two decks read at once would delete each other's pages (and the scripts on them).
+      if (busy) throw conflict(`「${JOB_LABEL[busy.type] ?? (busy.type === "parse_document" ? "解析簡報" : "匯出影片")}」正在進行，請等它完成（或在「工作」停止）後再替換簡報。`);
+    };
+    await refuseIfBusy();
     // The parse job only exists once the file has arrived: hold the project for the whole upload, so a
     // second upload (another tab, a quick re-drop) can't slip in meanwhile.
     const held = uploading.get(project.id);
@@ -211,13 +214,9 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
       const kind = sniffSourceKind(Buffer.concat(headChunks), part.filename);
       if (!kind) throw badRequest("unsupported file type; upload a .pptx, .ppt or .pdf");
 
-      // Checked again now the file is here (the upload may have taken minutes): never two parses.
-      const [parsing] = await db
-        .select()
-        .from(jobs)
-        .where(and(eq(jobs.projectId, project.id), eq(jobs.type, "parse_document"), inArray(jobs.status, ["queued", "running"])))
-        .limit(1);
-      if (parsing) throw conflict("另一份簡報正在解析，請等它完成後再替換。");
+      // Checked again now the file is here (the upload may have taken minutes): never two parses, and
+      // no page work or export that started meanwhile (a stale lock lets those through).
+      await refuseIfBusy();
       const previous = await latestSourceDocument(db, project.id);
       const docId = randomUUID();
       const safeName = part.filename.replace(/[^\w.\-一-鿿]+/g, "_").slice(0, 120) || `deck.${kind}`;
@@ -392,6 +391,9 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
         .where(and(eq(jobs.projectId, project.id), eq(jobs.type, "parse_document"), inArray(jobs.status, ["queued", "running"])))
         .limit(1);
       if (parsing) throw conflict("簡報正在更新（解析新檔案中），完成後再開始這項工作。");
+      // A new deck still arriving: its pages are about to change too.
+      const held = uploading.get(project.id);
+      if (held && Date.now() - held.seen < UPLOAD_LOCK_MS) throw conflict("新的簡報正在上傳，完成後再開始這項工作。");
     }
     if (PAGE_JOBS.has(payload.type)) {
       const mine = (payload as { sceneIds?: string[] }).sceneIds;

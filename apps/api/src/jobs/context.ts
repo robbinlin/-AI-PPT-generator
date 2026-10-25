@@ -16,6 +16,8 @@ export interface JobContext<P extends JobPayload = JobPayload> {
   /** Persist an external provider task id immediately so a retry polls instead of re-creating. */
   /** null once the task's result is stored (nothing left to resume). */
   setProviderTaskId(id: string | null): Promise<void>;
+  /** Run a provider call a shutdown must wait for (creating a paid task, then storing its id). */
+  critical<T>(fn: () => Promise<T>): Promise<T>;
   /** Publish any non-job event (scene, asset, slides, outline…) to the project's SSE stream. */
   publish(event: ProjectEvent): void;
   /** Aborted when the job is cancelled or the runner stops. */

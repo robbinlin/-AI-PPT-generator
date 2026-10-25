@@ -364,14 +364,32 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
       const audioAsset = await assetById(ctx.db, audioAssetId);
 
       // Reuse the provider task a crashed attempt already created for this scene (no double billing).
-      const prefix = `${scene.id}:`;
-      let taskId = ctx.job.providerTaskId?.startsWith(prefix) ? ctx.job.providerTaskId.slice(prefix.length) : undefined;
+      // The task is tied to this page's inputs: a clip made from older audio or another presenter
+      // (script edited while the server was down) is never reused.
+      const prefix = `${scene.id}:${inputHash.slice(0, 16)}:`;
+      let taskId: string | undefined;
+      const saved = ctx.job.providerTaskId;
+      if (saved?.startsWith(prefix)) taskId = saved.slice(prefix.length);
+      else if (saved?.startsWith(`${scene.id}:`)) {
+        const rest = saved.slice(scene.id.length + 1);
+        // Saved before tasks carried their inputs (no second colon): resumed as before.
+        if (!rest.includes(":")) taskId = rest;
+        else {
+          await provider.cancelTask(rest.slice(rest.indexOf(":") + 1)).catch(() => undefined);
+          await ctx.setProviderTaskId(null);
+        }
+      }
       if (!taskId) {
         const { url } = ctx.storage.signUrl(audioAsset.id, config.AVATAR_AUDIO_URL_TTL_SEC);
         // Hand the provider the bytes as well as a URL: HeyGen uploads them as an asset, which
         // also works when the API runs on localhost where no vendor could fetch the URL.
         const audioBytes = await streamToBuffer((await ctx.storage.getStream(audioAsset.storageKey)).stream);
-        const created = await labelled(`${providerLabel(provider.id)} 產生失敗`, () => provider.createTask({
+        // Stopped or shutting down already: don't start paid work.
+        throwIfAborted(ctx.signal);
+        // Creating the task and storing its id is one step a shutdown waits for: cut off in between,
+        // the clip would be paid for and then bought again after the restart.
+        taskId = await ctx.critical(async () => {
+          const created = await labelled(`${providerLabel(provider.id)} 產生失敗`, () => provider.createTask({
           avatarId,
           aspectRatio: settings.aspectRatio,
           audio: { data: audioBytes, mimeType: audioAsset.mimeType, fileName: `scene-${scene.index + 1}.${AUDIO_EXT[audioAsset.mimeType] ?? "bin"}` },
@@ -379,9 +397,10 @@ export function createGenerationSeams(deps: GenerationDeps): GenerationSeams {
           clientReference: ctx.job.id,
           // Video twins → Avatar III (motion from the recording, a third of Avatar IV's price).
           ...(avatarEngine(settings.avatar) ? { engine: avatarEngine(settings.avatar) } : {}),
-        }));
-        taskId = created.taskId;
-        await ctx.setProviderTaskId(prefix + taskId);
+          }));
+          await ctx.setProviderTaskId(prefix + created.taskId);
+          return created.taskId;
+        });
       }
 
       const label = `${providerLabel(provider.id)} 產生失敗`;

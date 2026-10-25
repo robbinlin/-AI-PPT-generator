@@ -200,7 +200,8 @@ describe.skipIf(!toolsPresent)("end-to-end on the sample deck (mock providers)",
       expect(d.assets[sc.avatar.assetId!]?.producedBy.providerTaskId).toMatch(/^mock-avatar-/);
     }
     const [row] = await t.ctx.db.select().from(jobs).where(eq(jobs.id, job.id));
-    expect(row?.providerTaskId).toMatch(/^[0-9a-f-]{36}:mock-avatar-/);
+    // Cleared once each clip is stored (nothing left to resume).
+    expect(row?.providerTaskId ?? null).toBeNull();
   });
 
   it("renders a 540p MP4 with SRT whose duration matches the scenes", async () => {

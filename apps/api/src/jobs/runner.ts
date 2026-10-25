@@ -41,6 +41,10 @@ export class JobRunner {
   private stopping = false;
   private timer: NodeJS.Timeout | undefined;
   private active = new Map<string, AbortController>();
+  /** Jobs the user stopped: a shutdown landing at the same moment must not re-queue them. */
+  private userCancelled = new Set<string>();
+  /** Provider calls that must not be cut off (a HeyGen task being created is already paid for). */
+  private critical = 0;
   private readonly concurrency: number;
   private readonly pollIntervalMs: number;
   private readonly backoffBaseMs: number;
@@ -103,9 +107,10 @@ export class JobRunner {
     if (this.timer) clearTimeout(this.timer);
     this.wake?.();
     for (const ctrl of this.active.values()) ctrl.abort(SHUTDOWN_ABORT);
-    // Give handlers a moment to observe the abort.
-    const deadline = Date.now() + 5000;
-    while (this.active.size > 0 && Date.now() < deadline) await sleep(20);
+    // Give handlers a moment to observe the abort; a provider task being created gets longer, so
+    // its id is stored and the restarted job resumes it instead of paying for a second one.
+    const start = Date.now();
+    while (this.active.size > 0 && (Date.now() - start < STOP_GRACE_MS || (this.critical > 0 && Date.now() - start < STOP_CRITICAL_MS))) await sleep(20);
   }
 
   /** Trigger an immediate poll (called after enqueue). */
@@ -145,6 +150,7 @@ export class JobRunner {
     const { db } = this.deps;
     const ctrl = this.active.get(jobId);
     if (ctrl) {
+      this.userCancelled.add(jobId);
       ctrl.abort("user-cancel");
       // The running loop finalises the row as `cancelled` when the handler returns.
       const [row] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
@@ -173,6 +179,8 @@ export class JobRunner {
   async claimNext(): Promise<JobRow | null> {
     const { db } = this.deps;
     return db.transaction(async (tx) => {
+      // The server is stopping: claim nothing (a job claimed now would only be put back).
+      if (this.stopping) return null;
       const [candidate] = await tx
         .select()
         .from(jobs)
@@ -230,10 +238,16 @@ export class JobRunner {
     const { db, bus, handlers, logger } = this.deps;
     // Claimed just as the server began to stop: put it straight back, don't start paid work now.
     if (this.stopping) {
-      await db
-        .update(jobs)
-        .set({ status: "queued", startedAt: null, attempts: sql`GREATEST(${jobs.attempts} - 1, 0)` })
-        .where(eq(jobs.id, row.id));
+      // Tracked as active so stop() waits for the row to be put back.
+      this.active.set(row.id, new AbortController());
+      try {
+        await db
+          .update(jobs)
+          .set({ status: "queued", startedAt: null, attempts: sql`GREATEST(${jobs.attempts} - 1, 0)` })
+          .where(and(eq(jobs.id, row.id), eq(jobs.status, "running")));
+      } finally {
+        this.active.delete(row.id);
+      }
       return;
     }
     const ctrl = new AbortController();
@@ -259,6 +273,14 @@ export class JobRunner {
           .where(eq(jobs.id, row.id));
         await publishJob();
       },
+      critical: async (fn) => {
+        this.critical++;
+        try {
+          return await fn();
+        } finally {
+          this.critical--;
+        }
+      },
       setProviderTaskId: async (id) => {
         await db.update(jobs).set({ providerTaskId: id }).where(eq(jobs.id, row.id));
       },
@@ -274,6 +296,8 @@ export class JobRunner {
     try {
       if (!handler) throw new NonRetryableJobError(`不支援的工作類型：${row.type}`);
       const result = await handler(ctx);
+      // Some handlers return early when aborted (pages left undone), so an abort always counts —
+      // a shutdown re-queues, and finished pages are skipped on the re-run.
       if (ctrl.signal.aborted) throw Object.assign(new Error("job cancelled"), { name: "AbortError" });
       await db
         .update(jobs)
@@ -293,7 +317,7 @@ export class JobRunner {
       const retryable = !cancelled && !(e instanceof NonRetryableJobError) && row.attempts < row.maxAttempts;
       // The stored error is shown to the user in the editor; keep the stack in the log only.
       const message = providerErrorMessage(err).slice(0, 2000);
-      if (cancelled && abortedByShutdown(ctrl.signal)) {
+      if (cancelled && abortedByShutdown(ctrl.signal) && !this.userCancelled.has(row.id)) {
         // The server is shutting down (Ctrl+C, a reload), not the user stopping it: back in the queue,
         // with the attempt given back and the provider task kept, so a presenter clip already paid
         // for is picked up again instead of bought twice.
@@ -316,10 +340,15 @@ export class JobRunner {
       }
     } finally {
       this.active.delete(row.id);
+      this.userCancelled.delete(row.id);
       await publishJob();
       this.poke();
     }
   }
 }
+
+/** How long stop() waits for aborted handlers, and for a provider task being created. main.ts exits after both. */
+export const STOP_GRACE_MS = 5000;
+export const STOP_CRITICAL_MS = 20_000;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
