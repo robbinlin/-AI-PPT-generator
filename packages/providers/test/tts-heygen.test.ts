@@ -77,6 +77,37 @@ describe("heygen tts", () => {
     expect(res.providerRequestId).toBe("r1");
   });
 
+  it("creates an instant clone: upload, clone once, wait for ACTIVE", async () => {
+    const calls: Array<{ url: string; method: string; headers: Record<string, string>; body?: unknown }> = [];
+    let polls = 0;
+    const fetchImpl = (async (url: string, init: RequestInit = {}) => {
+      calls.push({ url, method: init.method ?? "GET", headers: (init.headers ?? {}) as Record<string, string>, body: init.body });
+      if (url.endsWith("/v3/assets")) return new Response(JSON.stringify({ data: { asset_id: "as1" } }), { status: 200 });
+      if (url.endsWith("/v3/models/audio/voices")) return new Response(JSON.stringify({ data: { voice_id: "v9" } }), { status: 202 });
+      polls += 1;
+      const status = polls < 2 ? "PENDING" : "ACTIVE";
+      return new Response(JSON.stringify({ data: { voice_id: "v9", mode: "instant", name: "林老師", status, created_at: 1 } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const p = new HeyGenTtsProvider({ apiKey: "k" }, { fetchImpl, retryBaseMs: 0 }, 5, 0);
+    const v = await p.createVoice({ data: new Uint8Array([1]), mimeType: "audio/mpeg", fileName: "a.mp3", name: "林老師" });
+    expect(v).toMatchObject({ id: "instant:v9", name: "我的聲音・林老師" });
+    const clone = calls.find((c) => c.url.endsWith("/v3/models/audio/voices"))!;
+    expect(clone.headers["idempotency-key"]).toBe("lvs-as1");
+    expect(JSON.parse(clone.body as string)).toEqual({ mode: "instant", name: "林老師", language: "zh", similarity: "max", audio: [{ type: "asset_id", asset_id: "as1" }] });
+    expect(polls).toBe(2);
+    await expect(p.createVoice({ data: new Uint8Array([1]), mimeType: "audio/mp4", fileName: "a.m4a", name: "x" })).rejects.toThrow(/MP3 or WAV/);
+  });
+
+  it("reports a failed clone with HeyGen's reason", async () => {
+    const fetchImpl = (async (url: string) => {
+      if (url.endsWith("/v3/assets")) return new Response(JSON.stringify({ data: { asset_id: "as1" } }), { status: 200 });
+      if (url.endsWith("/v3/models/audio/voices")) return new Response(JSON.stringify({ data: { voice_id: "v9" } }), { status: 202 });
+      return new Response(JSON.stringify({ data: { voice_id: "v9", mode: "instant", name: "x", status: "FAILED", failure_reason: "INSUFFICIENT_AUDIO", created_at: 1 } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const p = new HeyGenTtsProvider({ apiKey: "k" }, { fetchImpl, retryBaseMs: 0 }, 5, 0);
+    await expect(p.createVoice({ data: new Uint8Array([1]), mimeType: "audio/wav", fileName: "a.wav", name: "x" })).rejects.toThrow(/INSUFFICIENT_AUDIO/);
+  });
+
   it("lists clones and catalog voices without duplicates, surviving one list failing", async () => {
     const fetchImpl = (async (url: string) => {
       if (url.includes("/v3/models/audio/voices")) return new Response(JSON.stringify({ data: [{ voice_id: "same", mode: "instant", name: "A", status: "ACTIVE" }] }), { status: 200 });

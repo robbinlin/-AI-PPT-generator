@@ -223,6 +223,9 @@ export class HeyGenTtsProvider implements TtsProvider {
   constructor(
     creds: ProviderCredentials,
     private readonly fetchOpts: FetchOptions = {},
+    /** Waiting for a new clone to become ACTIVE: polls × interval (about 3 minutes by default). */
+    private readonly clonePolls = 60,
+    private readonly clonePollMs = 3000,
   ) {
     if (!creds.apiKey) throw new Error("heygen: apiKey required");
     this.apiKey = creds.apiKey;
@@ -261,6 +264,52 @@ export class HeyGenTtsProvider implements TtsProvider {
       (v) => !seen.has(parseHeyGenVoiceId(v.id).voiceId),
     );
     return numberDuplicateNames([...clones, ...others]);
+  }
+
+  /**
+   * Instant voice clone from one recording (HeyGen uses its first 3 minutes; MP3 or WAV). Creating
+   * one is not billed; it is ACTIVE within seconds and then speaks on the free model.
+   */
+  async createVoice(input: { data: Uint8Array; mimeType: string; fileName: string; name: string }): Promise<Voice> {
+    if (!/^audio\/(mpeg|mp3|wav|x-wav|wave)$/.test(input.mimeType)) throw new Error("heygen: a voice clone needs an MP3 or WAV recording");
+    const form = new FormData();
+    form.append("file", new Blob([input.data], { type: input.mimeType }), input.fileName);
+    const asset = await fetchJson<{ data?: { asset_id?: string } }>(`${this.baseUrl}/v3/assets`, {
+      ...this.fetchOpts,
+      method: "POST",
+      headers: { "x-api-key": this.apiKey, accept: "application/json" },
+      body: form,
+      timeoutMs: this.fetchOpts.timeoutMs ?? 120_000,
+    });
+    const assetId = asset.data?.asset_id;
+    if (!assetId) throw new Error("heygen: recording upload returned no asset_id");
+    const created = await fetchJson<{ data?: { voice_id?: string } }>(`${this.baseUrl}/v3/models/audio/voices`, {
+      ...this.fetchOpts,
+      method: "POST",
+      // A retried request must not make a second voice.
+      headers: { ...this.headers(), "idempotency-key": `lvs-${assetId}` },
+      body: JSON.stringify({
+        mode: "instant",
+        name: input.name.slice(0, 64),
+        language: "zh",
+        // HeyGen Studio's setting for the closest match to the speaker.
+        similarity: "max",
+        audio: [{ type: "asset_id", asset_id: assetId }],
+      }),
+    });
+    const voiceId = created.data?.voice_id;
+    if (!voiceId) throw new Error("heygen: voice clone returned no voice_id");
+    for (let i = 0; i < this.clonePolls; i++) {
+      const res = await fetchJson<{ data?: NonNullable<HeyGenModelVoicesResponse["data"]>[number] & { failure_reason?: string | null } }>(
+        `${this.baseUrl}/v3/models/audio/voices/${encodeURIComponent(voiceId)}`,
+        { ...this.fetchOpts, headers: this.headers() },
+      );
+      const v = res.data;
+      if (v?.status === "ACTIVE") return mapHeyGenModelVoices({ data: [v] })[0]!;
+      if (v?.status === "FAILED") throw new Error(`heygen: voice clone failed (${v.failure_reason ?? "unknown reason"})`);
+      await new Promise((r) => setTimeout(r, this.clonePollMs));
+    }
+    throw new Error(`heygen: voice ${voiceId} was still being prepared; it appears in the list once HeyGen finishes`);
   }
 
   async synthesize(req: TtsRequest): Promise<ProviderResult<TtsResult>> {
