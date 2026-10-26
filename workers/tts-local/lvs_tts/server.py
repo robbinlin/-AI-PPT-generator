@@ -19,9 +19,10 @@ from .store import ResultStore, VoiceStore, default_data_dir
 log = logging.getLogger("lvs_tts")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-# Engines whose text front-ends were trained on simplified Chinese. Only the text sent to the
-# engine is converted; the caller's traditional text is what subtitles are built from.
-NEEDS_SIMPLIFIED = {"cosyvoice2", "gptsovits"}
+# Engines whose text front-ends were trained on simplified Chinese (Fish Speech reads traditional
+# text as Cantonese). Only the text sent to the engine is converted; the caller's traditional text
+# is what subtitles are built from.
+NEEDS_SIMPLIFIED = {"cosyvoice2", "gptsovits", "fishspeech"}
 # Engines that reject references longer than N seconds get a shortened clip + matching prompt text.
 MAX_REF_SECONDS: dict[str, float] = {"gptsovits": 9.5}
 
