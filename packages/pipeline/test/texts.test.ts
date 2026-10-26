@@ -62,15 +62,17 @@ describe("derivePronunciationText (zh-TW)", () => {
     expect(derivePronunciationText("α = .05 ± 2", glossary, "zh-TW")).toBe("阿爾法 等於 零點零五 正負 2");
     expect(derivePronunciationText("由 A → B", glossary, "zh-TW")).toBe("由 A 到 B");
   });
-  it("says μ the lecturer's way: Mu, Mu0, Mu one", () => {
-    expect(derivePronunciationText("H0：μ₀ = μ₁，μ2 > μ", [], "zh-TW")).toBe("H0：Mu0 等於 Mu one，Mu two 大於 Mu");
-    expect(derivePronunciationText("μ存活 減去 μ死亡，μ_diff 等於 0", [], "zh-TW")).toBe("Mu 存活 減去 Mu 死亡，Mu diff 等於 0");
-    expect(muReading("μ₀")).toBe("Mu0");
-    expect(muReading("μ1")).toBe("Mu one");
-    expect(muReading("μ_diff")).toBe("Mu diff");
+  it("says μ the lecturer's way (miu): Mew, Mew 0, Mew one", () => {
+    expect(derivePronunciationText("H0：μ₀ = μ₁，μ2 > μ", [], "zh-TW")).toBe("H0：Mew 0 等於 Mew one，Mew two 大於 Mew");
+    expect(derivePronunciationText("μ存活 減去 μ死亡，μ_diff 等於 0", [], "zh-TW")).toBe("Mew 存活 減去 Mew 死亡，Mew diff 等於 0");
+    expect(muReading("μ₀")).toBe("Mew 0");
+    expect(muReading("μ1")).toBe("Mew one");
+    expect(muReading("μ_diff")).toBe("Mew diff");
     expect(muReading("μ")).toBe("");
-    // A bare-μ glossary entry must not turn μ_diff into "Mu_diff" before the rules run.
-    expect(derivePronunciationText("μ_diff 與 μ₁", [{ term: "μ", reading: "" }], "zh-TW")).toBe("Mu diff 與 Mu one");
+    // A bare-μ glossary entry must not turn μ_diff into "Mew_diff" before the rules run.
+    expect(derivePronunciationText("μ_diff 與 μ₁", [{ term: "μ", reading: "" }], "zh-TW")).toBe("Mew diff 與 Mew one")
+    // Levene is respelled the way it is said (le-VEEN), also after a glossary reading.
+    expect(derivePronunciationText("Levene's Test 與 Levene 檢定", [{ term: "Levene's Test", reading: "Levene's 檢定" }], "zh-TW")).toBe("Leveen's 檢定 與 Leveen 檢定");;
     expect(muReading("Levene's Test")).toBeUndefined();
   });
   it("leaves author names to the glossary", () => {

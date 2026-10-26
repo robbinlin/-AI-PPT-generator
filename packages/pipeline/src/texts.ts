@@ -67,22 +67,30 @@ function decimalToEnglish(s: string): string {
 const SUBSCRIPTS: Record<string, string> = { "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4", "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9" };
 const SUPERSCRIPTS: Record<string, string> = { "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9" };
 
+/**
+ * "Mu" is spelled out letter by letter (M, U) by HeyGen; "Mew" is the English word said "miu", which is
+ * how the lecturer says μ (measured: Whisper hears the clip as μ).
+ */
+const MU = "Mew";
 const DIGIT_EN = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
 /**
- * μ in Chinese narration, the way the lecturer says it: μ → Mu, μ₀ → Mu0, μ₁ → Mu one (μ₂ → Mu two …),
+ * μ in Chinese narration, the way the lecturer says it (miu): μ → Mew, μ₀ → Mew 0, μ₁ → Mew one (μ₂ → Mew two …),
  * μ_diff → Mu diff. Subscript digits are already plain digits here (normaliseScripts).
  */
 const MU_ZH: Array<[RegExp, string | ((m: string, d: string) => string)]> = [
-  // Spaces only where a word touches it, so 「，μ₁」 does not become 「， Mu one」.
+  // Spaces only where a word touches it, so 「，μ₁」 does not become 「， Mew one」.
   [/(?<=[\p{L}\p{N}])(?=[μµ])/gu, " "],
-  [/[μµ]\s*_?\s*0(?!\d)/g, "Mu0"],
-  [/[μµ]\s*_?\s*([1-9])(?!\d)(?=[\p{L}\p{N}])/gu, (_m, d) => `Mu ${DIGIT_EN[Number(d)]} `],
-  [/[μµ]\s*_?\s*([1-9])(?!\d)/g, (_m, d) => `Mu ${DIGIT_EN[Number(d)]}`],
-  [/[μµ]\s*_\s*/g, "Mu "],
-  [/[μµ](?=[\p{L}\p{N}])/gu, "Mu "],
-  [/[μµ]/g, "Mu"],
+  [/[μµ]\s*_?\s*0(?!\d)/g, `${MU} 0`],
+  [/[μµ]\s*_?\s*([1-9])(?!\d)(?=[\p{L}\p{N}])/gu, (_m, d) => `${MU} ${DIGIT_EN[Number(d)]} `],
+  [/[μµ]\s*_?\s*([1-9])(?!\d)/g, (_m, d) => `${MU} ${DIGIT_EN[Number(d)]}`],
+  [/[μµ]\s*_\s*/g, `${MU} `],
+  [/[μµ](?=[\p{L}\p{N}])/gu, `${MU} `],
+  [/[μµ]/g, MU],
 ];
+
+/** Names HeyGen and the local engines mispronounce, respelled the way they are said (Levene → le-VEEN). */
+const NAMES_ZH: Array<[RegExp, string]> = [[/\bLevene(?=['’]s\b|\b)/g, "Leveen"]];
 
 /**
  * Reading of a glossary term that is μ with a subscript (μ₀, μ1, μ_diff …), or undefined when it is not
@@ -114,6 +122,7 @@ const SYMBOLS_ZH: Array<[RegExp, string | ((m: string, d: string) => string)]> =
   [/γ/g, "伽瑪"],
   [/δ|Δ/g, "德爾塔"],
   ...MU_ZH,
+  ...NAMES_ZH,
   [/σ/g, "西格瑪"],
   [/η²|η2/g, "eta 平方"],
   [/χ²|χ2/g, "卡方"],
