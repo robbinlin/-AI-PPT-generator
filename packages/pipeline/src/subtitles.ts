@@ -435,6 +435,33 @@ export function alignToPauses(
  * is shared by text weight. Free (no TTS). Callers only use it when the cues were built for a
  * different width; at the same width the cues are already right.
  */
+/**
+ * New subtitle text on the same audio (a typo fixed on screen only): the old cues' timing — their
+ * word timings, or each cue's span spread over its characters — times the new text, so no speech
+ * is redone. Unchanged characters keep their times; edited ones fall between their neighbours.
+ */
+export function retextCues(cues: SubtitleCue[], subtitleText: string, opts: { durationSec: number; maxCharsPerLine: number; language: Language }): SubtitleCue[] {
+  const timing: WordTimestamp[] = [];
+  for (const c of cues) {
+    if (c.words?.length) {
+      timing.push(...c.words);
+      continue;
+    }
+    const units = textUnits(c.text.replace(/\n/g, " "));
+    const step = units.length ? (c.endSec - c.startSec) / units.length : 0;
+    units.forEach((u, i) => timing.push({ text: u.text, startSec: c.startSec + i * step, endSec: c.startSec + (i + 1) * step }));
+  }
+  const built = buildCues({ subtitleText, timestamps: timing, durationSec: opts.durationSec, maxCharsPerLine: opts.maxCharsPerLine, language: opts.language });
+  const hadWords = cues.some((c) => c.words?.length);
+  return built.map((c) => {
+    const { words, ...rest } = c;
+    if (!hadWords || !words?.length) return rest;
+    // Karaoke words carry the old spelling; relabel them with the new text when they line up.
+    const units = textUnits(c.text.replace(/\n/g, " "));
+    return units.length === words.length ? { ...rest, words: words.map((w, i) => ({ ...w, text: units[i]!.text })) } : rest;
+  });
+}
+
 export function rechunkCues(cues: SubtitleCue[], maxCharsPerLine: number): SubtitleCue[] {
   const out: SubtitleCue[] = [];
   for (const cue of cues) {

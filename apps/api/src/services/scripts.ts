@@ -73,8 +73,9 @@ export async function createScriptRevision(db: Db, input: CreateRevisionInput): 
   const derive = input.deriveTexts ?? pipelineDeriveTexts;
   const derived = derive(input.script, input.language, input.glossary);
   const pronunciationText = input.pronunciationText ?? derived.pronunciationText;
-  const subtitleText = input.subtitleText ?? derived.subtitleText;
   const latest = await latestRevisionForScene(db, input.scene.id);
+  // The same script saved again keeps a subtitle corrected by hand (only a new script re-derives it).
+  const subtitleText = input.subtitleText ?? (latest && latest.script === input.script ? latest.subtitleText : derived.subtitleText);
   if (
     latest &&
     latest.script === input.script &&

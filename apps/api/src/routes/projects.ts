@@ -29,7 +29,8 @@ import { outlineNeedsRegeneration, scriptJobReplansOutline } from "../jobs/plan.
 import { estimateJob } from "../services/estimate.js";
 import { getProjectDetail, latestOutline, latestSourceDocument, projectListExtras, requireProject } from "../services/projects.js";
 import { updateGlossary } from "../services/glossary.js";
-import { createScriptRevision } from "../services/scripts.js";
+import { createScriptRevision, latestRevisionForScene } from "../services/scripts.js";
+import { retextSubtitleOnly } from "../services/subtitleEdit.js";
 import { createTranslatedProject } from "../services/translation.js";
 import { SOURCE_MIME, sniffSourceKind } from "../util/magic.js";
 import { parse } from "../util/validate.js";
@@ -359,6 +360,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const body = parse(UpdateScriptRequest, req.body);
     const scene = await requireScene(project.id, req.params.sceneId);
     const outline = await latestOutline(db, project.id);
+    const previous = await latestRevisionForScene(db, scene.id);
     const { revision, created } = await createScriptRevision(db, {
       scene,
       script: body.script,
@@ -370,8 +372,10 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
       glossary: outline?.glossary,
     });
     if (created) {
-      const [fresh] = await db.select().from(scenes).where(eq(scenes.id, scene.id)).limit(1);
       ctx.bus.publish(project.id, { kind: "script", script: revision });
+      // Only 字幕文本 changed: re-time the subtitles on the existing speech instead of asking for new speech.
+      const retexted = await retextSubtitleOnly(ctx, project, scene, previous, revision, outline?.glossary);
+      const [fresh] = retexted ? [] : await db.select().from(scenes).where(eq(scenes.id, scene.id)).limit(1);
       if (fresh) ctx.bus.publish(project.id, { kind: "scene", scene: toScene(fresh) });
       await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, project.id));
     } else if (scene.script.status === "stale") {

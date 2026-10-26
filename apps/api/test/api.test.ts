@@ -127,6 +127,41 @@ describe("project lifecycle", () => {
     expect(history.map((h: ScriptRevision) => h.version)).toEqual([2, 1]);
   });
 
+  it("a subtitle-only fix re-times the cues and keeps the speech and presenter", async () => {
+    let detail = (await t.app.inject({ method: "GET", url: `/projects/${projectId}` })).json() as ProjectDetail;
+    const scene = detail.scenes.at(-1)!;
+    const url = `/projects/${projectId}/scenes/${scene.id}/script`;
+    const rev = (await t.app.inject({ method: "PUT", url, payload: { script: "在連續變異數方面，存活組較重。至於類別變異數，比例較高。" } })).json() as ScriptRevision;
+    // Finished speech, presenter clip and subtitles for this text.
+    const { scenes: scenesTable } = await import("../src/db/schema.js");
+    const { audioInputHash } = await import("../src/jobs/hashes.js");
+    const { buildCues } = await import("@lvs/pipeline");
+    const settings = detail.project.settings;
+    const aHash = audioInputHash({ pronunciationText: rev.pronunciationText, settings, glossaryReadings: detail.outline?.glossary });
+    const cues = buildCues({ subtitleText: rev.subtitleText, durationSec: 6, maxCharsPerLine: settings.subtitles.style.maxCharsPerLine, language: settings.language });
+    const audio = { status: "ready" as const, assetId: rev.id, inputHash: aHash };
+    const avatar = { status: "ready" as const, assetId: rev.id, inputHash: "clip" };
+    await t.ctx.db.update(scenesTable).set({ audio, avatar, durationSec: 6, subtitle: { status: "ready", assetId: rev.id, inputHash: "old", cues } }).where(eq(scenesTable.id, scene.id));
+
+    const fixedText = "在連續變項方面，存活組較重。至於類別變項，比例較高。";
+    const r = await t.app.inject({ method: "PUT", url, payload: { script: rev.script, pronunciationText: rev.pronunciationText, subtitleText: fixedText } });
+    expect(r.statusCode).toBe(200);
+    expect((r.json() as ScriptRevision).subtitleText).toBe(fixedText);
+    const [row] = await t.ctx.db.select().from(scenesTable).where(eq(scenesTable.id, scene.id));
+    expect(row!.audio).toEqual(audio);
+    expect(row!.avatar).toEqual(avatar);
+    expect(row!.subtitle.status).toBe("ready");
+    expect(row!.subtitle.cues!.map((c) => c.text).join("")).toBe(fixedText);
+    expect(row!.subtitle.assetId).not.toBe(rev.id);
+    detail = (await t.app.inject({ method: "GET", url: `/projects/${projectId}` })).json() as ProjectDetail;
+    const shown = detail.scenes.find((s) => s.id === scene.id)!;
+    expect([shown.audio.status, shown.subtitle.status]).toEqual(["ready", "ready"]);
+
+    // Saving the same script again (autosave, 「講稿沒問題」) keeps the corrected subtitle.
+    const again = (await t.app.inject({ method: "PUT", url, payload: { script: rev.script } })).json() as ScriptRevision;
+    expect(again.subtitleText).toBe(fixedText);
+  });
+
   it("re-upload keeps scripts for unchanged pages and marks changed pages stale", async () => {
     t.parser.pages = [
       { pageNumber: 1, title: "Intro", plainText: "Welcome to the course" }, // unchanged => script survives

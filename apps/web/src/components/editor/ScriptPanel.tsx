@@ -20,7 +20,7 @@ export const SCRIPT_MAX_CHARS = 5000;
 const HEYGEN_USD_PER_SEC = { video: 0.01, photo: 0.0385 } as const;
 
 export interface ScriptPanelProps {
-  actions: Pick<EditorActions, "enqueue" | "saveScript" | "updateScene">;
+  actions: Pick<EditorActions, "enqueue" | "saveScript" | "saveSubtitle" | "updateScene">;
 }
 
 export function ScriptPanel({ actions }: ScriptPanelProps) {
@@ -285,7 +285,7 @@ export function ScriptPanel({ actions }: ScriptPanelProps) {
           </button>
         </p>
       )}
-      <DerivedTexts revision={revision} pending={hasDraft} />
+      <DerivedTexts revision={revision} pending={hasDraft} onSaveSubtitle={(text) => (revision ? actions.saveSubtitle(scene.id, revision, text) : Promise.resolve(false))} />
     </div>
   );
 }
@@ -314,7 +314,15 @@ function SaveIndicator({ state, hasDraft, onRetry }: { state: SaveState | undefi
   return <span className="text-xs text-neutral-400">{t.script.saved}</span>;
 }
 
-function DerivedTexts({ revision, pending }: { revision: ScriptRevision | undefined; pending: boolean }) {
+function DerivedTexts({
+  revision,
+  pending,
+  onSaveSubtitle,
+}: {
+  revision: ScriptRevision | undefined;
+  pending: boolean;
+  onSaveSubtitle: (text: string) => Promise<boolean>;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <div className="rounded-md border border-neutral-800">
@@ -329,12 +337,52 @@ function DerivedTexts({ revision, pending }: { revision: ScriptRevision | undefi
         {pending && <span className="ml-auto font-normal text-neutral-400">{t.script.derivedPending}</span>}
       </button>
       {open && (
-        <div className="flex max-h-56 flex-col gap-3 overflow-y-auto border-t border-neutral-800 px-2.5 py-2">
+        <div className="flex max-h-80 flex-col gap-3 overflow-y-auto border-t border-neutral-800 px-2.5 py-2">
           <ReadOnlyText label={t.script.pronunciation} text={revision?.pronunciationText} />
           <button type="button" className="self-start text-xs text-accent-300 hover:underline" onClick={() => openEditorTab("outline")} data-testid="fix-reading">
             {t.script.fixReading}
           </button>
-          <ReadOnlyText label={t.script.subtitle} text={revision?.subtitleText} />
+          {revision ? (
+            <SubtitleEditor key={revision.id} revision={revision} locked={pending} onSave={onSaveSubtitle} />
+          ) : (
+            <ReadOnlyText label={t.script.subtitle} text={undefined} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 字幕文本 can be corrected on its own (typos on screen); the narration stays as it is. */
+function SubtitleEditor({ revision, locked, onSave }: { revision: ScriptRevision; locked: boolean; onSave: (text: string) => Promise<boolean> }) {
+  const [text, setText] = useState(revision.subtitleText);
+  const [saving, setSaving] = useState(false);
+  const changed = text !== revision.subtitleText;
+  const save = async () => {
+    setSaving(true);
+    await onSave(text);
+    setSaving(false);
+  };
+  return (
+    <div>
+      <div className="mb-1 text-xs font-medium text-neutral-400">{t.script.subtitle}</div>
+      <textarea
+        aria-label={t.script.subtitle}
+        className="h-28 w-full resize-y rounded-md border border-neutral-700 bg-neutral-950 p-2 text-xs leading-relaxed text-neutral-200 focus:border-accent-500 focus:outline-none read-only:opacity-60"
+        value={text}
+        readOnly={locked || saving}
+        onChange={(e) => setText(e.target.value)}
+        data-testid="subtitle-text"
+      />
+      <p className="mt-1 text-xs text-neutral-400">{locked ? t.script.subtitleLocked : t.script.subtitleHint}</p>
+      {changed && !locked && (
+        <div className="mt-1.5 flex gap-1.5">
+          <Button size="sm" variant="primary" disabled={saving || !text.trim()} onClick={() => void save()} data-testid="save-subtitle">
+            {saving ? t.script.saving : t.script.saveSubtitle}
+          </Button>
+          <Button size="sm" disabled={saving} onClick={() => setText(revision.subtitleText)}>
+            {t.common.cancel}
+          </Button>
         </div>
       )}
     </div>

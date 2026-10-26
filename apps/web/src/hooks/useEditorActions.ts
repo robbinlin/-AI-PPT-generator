@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { CostEstimate, EnqueueJobRequest, Job, UpdateProjectRequest, UpdateSceneRequest } from "@lvs/shared";
+import type { CostEstimate, EnqueueJobRequest, Job, ScriptRevision, UpdateProjectRequest, UpdateSceneRequest } from "@lvs/shared";
 import { useApi } from "../api/context";
 import { errorMessage, type EstimateType } from "../api/types";
 import { fmt, t } from "../i18n";
@@ -274,12 +274,29 @@ export function useEditorActions() {
       }
     };
 
+    /**
+     * Fix only the on-screen text of a page: script and narration text are sent unchanged, so the
+     * server re-times the subtitles on the existing speech (no new speech, no new presenter).
+     */
+    const saveSubtitle = async (sceneId: string, revision: ScriptRevision, subtitleText: string): Promise<boolean> => {
+      try {
+        const rev = await api.updateScript(projectId(), sceneId, { script: revision.script, pronunciationText: revision.pronunciationText, subtitleText });
+        store().markSaved(sceneId, rev, rev.script);
+        toast(t.script.subtitleSaved);
+        return true;
+      } catch (err) {
+        toast(fmt(t.script.subtitleSaveFailed, { message: errorMessage(err) }), "error");
+        return false;
+      }
+    };
+
     return {
       enqueue,
       updateProject,
       changeSettings,
 
       saveScript,
+      saveSubtitle,
 
       async cancelJob(jobId: string): Promise<void> {
         try {

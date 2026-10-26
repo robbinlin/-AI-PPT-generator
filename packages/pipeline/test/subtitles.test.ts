@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SubtitleStyle } from "@lvs/shared";
 import { displayWidth, splitSentences } from "../src/segment.js";
-import { alignToPauses, assColor, balancedWrap, buildCues, chunkSentence, cuesToAss, cuesToSrt, formatAssTime, formatSrtTime, segmentCueTexts, wrapCueLines } from "../src/subtitles.js";
+import { alignToPauses, assColor, balancedWrap, buildCues, chunkSentence, cuesToAss, cuesToSrt, formatAssTime, formatSrtTime, retextCues, segmentCueTexts, wrapCueLines } from "../src/subtitles.js";
 
 describe("segmentation", () => {
   it("splits sentences on CJK and Latin terminators", () => {
@@ -145,5 +145,27 @@ describe("alignToPauses", () => {
   it("feeds through buildCues when no timestamps are given", () => {
     const cues = buildCues({ subtitleText: "第一句話。第二句話。第三句話。", durationSec: 9, maxCharsPerLine: 28, language: "zh-TW", pauses: [{ startSec: 2.6, endSec: 2.9 }, { startSec: 6.2, endSec: 6.5 }] });
     expect(cues.map((c) => [c.startSec, c.endSec])).toEqual([[0, 2.6], [2.9, 6.2], [6.5, 9]]);
+  });
+});
+
+describe("retextCues", () => {
+  const opts = { durationSec: 6, maxCharsPerLine: 28, language: "zh-TW" as const };
+  it("keeps the timing when only a character is corrected", () => {
+    const old = buildCues({ subtitleText: "在連續變異數方面，存活組較重。至於類別變異數，比例較高。", durationSec: 6, maxCharsPerLine: 28, language: "zh-TW" });
+    const fixed = retextCues(old, "在連續變項方面，存活組較重。至於類別變項，比例較高。", opts);
+    expect(fixed.map((c) => c.text)).toEqual(["在連續變項方面，存活組較重。", "至於類別變項，比例較高。"]);
+    // Same sentence boundaries in time as before (within a frame).
+    expect(Math.abs(fixed[1]!.startSec - old[1]!.startSec)).toBeLessThan(0.1);
+    expect(fixed.at(-1)!.endSec).toBeLessThanOrEqual(6);
+  });
+  it("relabels karaoke words with the corrected text when they line up, drops them otherwise", () => {
+    const words = [..."兩種樣本"].map((c, i) => ({ text: c, startSec: i * 0.5, endSec: i * 0.5 + 0.5 }));
+    const old = buildCues({ subtitleText: "兩種樣本", timestamps: words, durationSec: 2, maxCharsPerLine: 28, language: "zh-TW" });
+    const same = retextCues(old, "兩組樣本", { ...opts, durationSec: 2 });
+    expect(same[0]!.words!.map((w) => w.text)).toEqual(["兩", "組", "樣", "本"]);
+    expect(same[0]!.words![1]!.startSec).toBe(0.5);
+    const longer = retextCues(old, "兩組獨立樣本", { ...opts, durationSec: 2 });
+    expect(longer[0]!.text).toBe("兩組獨立樣本");
+    expect(longer[0]!.words).toBeUndefined();
   });
 });
