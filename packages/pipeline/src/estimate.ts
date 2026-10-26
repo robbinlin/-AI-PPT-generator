@@ -16,6 +16,10 @@ export const DEFAULT_PRICE_TABLE: PriceTable = {
     elevenlabs: { charsPer1k: 0.18 },
     // 雅婷: NT$298 per 100,000 characters (developer.yating.tw/pricing, 2026-10) ≈ US$0.093 per 1k.
     yating: { charsPer1k: 0.093 },
+    // HeyGen (help.heygen.com "HeyGen API Pricing Explained", 2026-10): catalog voices (Starfish)
+    // $0.12/min ≈ 270 Chinese chars, so ~$0.45 per 1k; HeyGen Voice clones $15 per 1M chars; instant
+    // clones on heygen-voice-1-turbo-free are free until 2026-11-30 (see providers tts/heygen.ts).
+    heygen: { charsPer1k: 0.45, charsPer1kByVoicePrefix: { "instant:": 0, "pro:": 0.015 } },
     mock: { charsPer1k: 0 },
   },
   avatar: {
@@ -32,7 +36,7 @@ export const DEFAULT_PRICE_TABLE: PriceTable = {
 
 export interface PriceTable {
   llm: Record<string, { tokensInPer1k: number; tokensOutPer1k: number }>;
-  tts: Record<string, { charsPer1k: number }>;
+  tts: Record<string, { charsPer1k: number; charsPer1kByVoicePrefix?: Record<string, number> }>;
   avatar: Record<string, { perSecond: number; perSecondByEngine?: Record<string, number> }>;
   render: { perSecond: number };
   currency: string;
@@ -52,6 +56,8 @@ export interface EstimateInputs {
   seconds?: number;
   /** Avatar rendering engine (see `avatarEngine`); priced per engine where the table says. */
   engine?: string;
+  /** TTS voice; priced by its id prefix where the table says (HeyGen clones vs catalog voices). */
+  voiceId?: string;
 }
 
 /**
@@ -83,8 +89,9 @@ export function estimateCost(kind: EstimateKind, inputs: EstimateInputs, table: 
     case "synthesize_speech": {
       const id = inputs.providerId ?? "gemini";
       const p = table.tts[id] ?? { charsPer1k: 0 };
+      const byVoice = Object.entries(p.charsPer1kByVoicePrefix ?? {}).find(([prefix]) => inputs.voiceId?.startsWith(prefix));
       const chars = inputs.chars ?? 0;
-      add(id, "chars", chars, (chars / 1000) * p.charsPer1k);
+      add(id, "chars", chars, (chars / 1000) * (byVoice ? byVoice[1] : p.charsPer1k));
       break;
     }
     case "generate_avatar": {

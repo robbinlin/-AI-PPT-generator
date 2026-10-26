@@ -110,7 +110,7 @@ function ProviderPills({
           } ${p.configured ? "" : "opacity-60"} disabled:cursor-not-allowed`}
         >
           {p.displayName}
-          {priceHint(p.id) && <span className="text-xs text-neutral-400">・{priceHint(p.id)}</span>}
+          {priceHint(p.id, kind) && <span className="text-xs text-neutral-400">・{priceHint(p.id, kind)}</span>}
           {!p.configured && " ⚠"}
         </button>
       ))}
@@ -127,10 +127,12 @@ function ProviderPills({
   );
 }
 
-function priceHint(providerId: string): string | undefined {
+function priceHint(providerId: string, kind: ProviderInfo["kind"]): string | undefined {
   // Local providers already say 免費 in their display name.
   if (providerId === "local" || providerId === "cosyvoice" || providerId === "gpt-sovits" || providerId === "fish-speech") return undefined;
-  return (t.studio.price as Record<string, string>)[providerId];
+  const prices = t.studio.price as Record<string, string>;
+  // A vendor selling both voices and presenters (HeyGen) prices them differently.
+  return prices[`${kind}:${providerId}`] ?? prices[providerId];
 }
 
 const SCENE_WORDS: Array<[RegExp, string]> = [

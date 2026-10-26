@@ -85,7 +85,7 @@ export function estimateJob(detail: ProjectDetail, type: JobType, opts: Estimate
     case "synthesize_speech": {
       const targets = speechTargets(detail, opts);
       const chars = targets.reduce((n, sc) => n + (detail.scripts[sc.id]?.pronunciationText.length ?? 0), 0);
-      return merge([estimateCost("synthesize_speech", { providerId: s.voice.providerId, chars })], targets.length, secondsOf(targets));
+      return merge([estimateCost("synthesize_speech", { providerId: s.voice.providerId, voiceId: s.voice.voiceId, chars })], targets.length, secondsOf(targets));
     }
     case "generate_avatar": {
       if (!avatarInVideo(s.avatar)) return merge([], 0, 0);
@@ -102,7 +102,7 @@ export function estimateJob(detail: ProjectDetail, type: JobType, opts: Estimate
       const needAudio = paid.filter((sc) => !audioReady(sc));
       if (needAudio.length) {
         const chars = needAudio.reduce((n, sc) => n + (detail.scripts[sc.id]?.pronunciationText.length ?? 0), 0);
-        parts.push(estimateCost("synthesize_speech", { providerId: s.voice.providerId, chars }));
+        parts.push(estimateCost("synthesize_speech", { providerId: s.voice.providerId, voiceId: s.voice.voiceId, chars }));
       }
       if (paid.length || !reused.length) {
         parts.push(estimateCost("generate_avatar", { providerId: s.avatar.providerId ?? "heygen", seconds: Math.ceil(seconds), engine: avatarEngine(s.avatar) }));

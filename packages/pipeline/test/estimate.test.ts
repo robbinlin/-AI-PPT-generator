@@ -8,6 +8,13 @@ describe("estimateCost", () => {
     expect(e.total).toBe(0.36);
     expect(e.currency).toBe("USD");
   });
+  it("heygen speech is priced by voice: free instant clones, cheap clones, paid catalog voices", () => {
+    const cost = (voiceId?: string) => estimateCost("synthesize_speech", { providerId: "heygen", ...(voiceId ? { voiceId } : {}), chars: 2000 }).total;
+    expect(cost("instant:i1")).toBe(0);
+    expect(cost("pro:p1")).toBeCloseTo(0.03);
+    expect(cost("catalog:c1")).toBeCloseTo(0.9);
+    expect(cost()).toBeCloseTo(0.9);
+  });
   it("avatar by seconds and render", () => {
     expect(estimateCost("generate_avatar", { providerId: "heygen", seconds: 100 }).total).toBe(3.85); // Avatar IV photo: $2.31/min
     expect(estimateCost("render_video", { seconds: 600 }).total).toBe(1.2);

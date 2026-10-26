@@ -6,6 +6,7 @@ import { elevenLabsTtsFactory } from "./tts/elevenlabs.js";
 import { geminiTtsFactory } from "./tts/gemini.js";
 import { yatingTtsFactory } from "./tts/yating.js";
 import { localTtsFactory } from "./tts/local.js";
+import { heyGenTtsFactory } from "./tts/heygen.js";
 import { mockTtsFactory } from "./tts/mock.js";
 import { heyGenAvatarFactory } from "./avatar/heygen.js";
 import { localAvatarFactory } from "./avatar/local.js";
@@ -80,6 +81,7 @@ export const defaultRegistry = new ProviderRegistry()
   .registerTts(elevenLabsTtsFactory)
   .registerTts(yatingTtsFactory)
   .registerTts(localTtsFactory)
+  .registerTts(heyGenTtsFactory)
   .registerTts(mockTtsFactory)
   .registerAvatar(heyGenAvatarFactory)
   .registerAvatar(localAvatarFactory)

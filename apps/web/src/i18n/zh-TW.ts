@@ -320,6 +320,7 @@ export const zhTW = {
     sizeSmall: "人像偏小，學生可能看不清嘴型。建議選「人像在右」，或把大小調到 {min} 以上。",
     price: {
       heygen: "約 NT$19–74／分鐘",
+      "tts:heygen": "約 NT$4／分鐘",
       elevenlabs: "約 NT$6／千字（依方案）",
       yating: "約 NT$3／千字",
       gemini: "幾乎免費",

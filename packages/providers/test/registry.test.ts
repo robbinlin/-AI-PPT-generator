@@ -5,9 +5,9 @@ describe("registry", () => {
   it("lists providers by kind", () => {
     const ids = (k: "llm" | "tts" | "avatar") => defaultRegistry.listProviders(k).map((p) => p.id).sort();
     expect(ids("llm")).toEqual(["anthropic", "gemini", "mock"]);
-    expect(ids("tts")).toEqual(["elevenlabs", "gemini", "local", "mock", "yating"]);
+    expect(ids("tts")).toEqual(["elevenlabs", "gemini", "heygen", "local", "mock", "yating"]);
     expect(ids("avatar")).toEqual(["heygen", "local", "mock"]);
-    expect(defaultRegistry.listProviders()).toHaveLength(11);
+    expect(defaultRegistry.listProviders()).toHaveLength(12);
   });
   it("creates mocks without keys and refuses keyed providers without one", () => {
     expect(defaultRegistry.createTts("mock").id).toBe("mock");

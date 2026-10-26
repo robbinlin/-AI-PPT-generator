@@ -11,6 +11,7 @@ export * from "./tts/gemini.js";
 export * from "./tts/elevenlabs.js";
 export * from "./tts/yating.js";
 export * from "./tts/local.js";
+export * from "./tts/heygen.js";
 export * from "./avatar/heygen.js";
 export * from "./avatar/local.js";
 export * from "./avatar/mock.js";
