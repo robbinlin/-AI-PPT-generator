@@ -7,6 +7,7 @@ import {
   deriveSubtitleText,
   estimateSpeakingSeconds,
   integerToChinese,
+  muReading,
   normaliseScripts,
   targetLength,
 } from "../src/texts.js";
@@ -60,6 +61,17 @@ describe("derivePronunciationText (zh-TW)", () => {
   it("symbols and greek", () => {
     expect(derivePronunciationText("α = .05 ± 2", glossary, "zh-TW")).toBe("阿爾法 等於 零點零五 正負 2");
     expect(derivePronunciationText("由 A → B", glossary, "zh-TW")).toBe("由 A 到 B");
+  });
+  it("says μ the lecturer's way: Mu, Mu0, Mu one", () => {
+    expect(derivePronunciationText("H0：μ₀ = μ₁，μ2 > μ", [], "zh-TW")).toBe("H0：Mu0 等於 Mu one，Mu two 大於 Mu");
+    expect(derivePronunciationText("μ存活 減去 μ死亡，μ_diff 等於 0", [], "zh-TW")).toBe("Mu 存活 減去 Mu 死亡，Mu diff 等於 0");
+    expect(muReading("μ₀")).toBe("Mu0");
+    expect(muReading("μ1")).toBe("Mu one");
+    expect(muReading("μ_diff")).toBe("Mu diff");
+    expect(muReading("μ")).toBe("");
+    // A bare-μ glossary entry must not turn μ_diff into "Mu_diff" before the rules run.
+    expect(derivePronunciationText("μ_diff 與 μ₁", [{ term: "μ", reading: "" }], "zh-TW")).toBe("Mu diff 與 Mu one");
+    expect(muReading("Levene's Test")).toBeUndefined();
   });
   it("leaves author names to the glossary", () => {
     expect(derivePronunciationText("Smith 等人提出", glossary, "zh-TW")).toBe("史密斯 等人提出");

@@ -4,6 +4,7 @@ import { contentHash } from "@lvs/shared";
 import { outlineInputHash } from "./hashes.js";
 import { describeAudience, describeLanguage, describeMode, isZh, renderGlossary, renderSlideContent, type PipelineSlide } from "./prompts.js";
 import { textUnits, unitWeight } from "./segment.js";
+import { muReading } from "./texts.js";
 
 export const MIN_SLIDE_SEC = 15;
 export const MAX_SLIDE_SEC = 90;
@@ -67,7 +68,7 @@ Return data matching the requested JSON structure. Write all text in ${describeL
           : "內容邊界：允許補充背景知識，但在 keyPoints 中以「補充：」開頭標示非投影片內容。",
         settings.styleNote ? `風格要求：${settings.styleNote}` : "",
         "sections 必須涵蓋每一頁且每頁只屬於一個 section，slideNumbers 使用上方標示的 Slide 編號。",
-        "glossary 請列出所有統計符號、縮寫、英文術語、人名與專有名詞，reading 寫出適合語音朗讀的讀法（例如 VO₂max → V O two max；ANOVA → 變異數分析；η² → 伊塔平方；p < .05 → p 小於 零點零五；95% CI → 百分之九十五信賴區間；作者姓名用中文音譯）。reading 只能給一種讀法，不可用「或」並列多種；用書面語，不用「趴」等口語；希臘字母與統計量優先用中文名稱。不需要讀法時 reading 填空字串。",
+        "glossary 請列出所有統計符號、縮寫、英文術語、人名與專有名詞，reading 寫出適合語音朗讀的讀法（例如 VO₂max → V O two max；ANOVA → 變異數分析；η² → 伊塔平方；p < .05 → p 小於 零點零五；95% CI → 百分之九十五信賴區間；Levene's Test → Levene's 檢定；μ₀ → Mu0；μ₁ → Mu one）。人名與以人名命名的方法保留英文原文，不要中文音譯，其中的英文通用詞照常翻成中文（Test → 檢定）。μ 念 Mu，下標 0 念 0、其他下標數字用英文念。reading 只能給一種讀法，不可用「或」並列多種；用書面語，不用「趴」等口語；其他希臘字母與統計量優先用中文名稱。不需要讀法時 reading 填空字串。",
         target
           ? `timeAllocation 每頁的秒數總和必須等於 ${target} 秒，依內容密度分配。`
           : `timeAllocation 依內容密度分配，每頁介於 ${MIN_SLIDE_SEC} 到 ${MAX_SLIDE_SEC} 秒。`,
@@ -164,7 +165,9 @@ export function normalizeOutline(raw: OutlineLlmOutput, input: Pick<GenerateOutl
     if (!term || terms.has(term)) continue;
     terms.add(term);
     const seed = seedMap.get(term);
-    const reading = normalizeReading(g.reading || seed?.reading || "");
+    // μ terms follow the fixed narration rule (μ₀ → Mu0, μ₁ → Mu one) unless the user set a reading.
+    const mu = isZh(settings) && !seed?.reading ? muReading(term) : undefined;
+    const reading = mu ?? normalizeReading(g.reading || seed?.reading || "");
     const definition = (g.definition || seed?.definition || "").trim();
     glossary.push({ term, ...(reading ? { reading } : {}), ...(definition ? { definition } : {}) });
   }

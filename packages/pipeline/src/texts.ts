@@ -67,7 +67,37 @@ function decimalToEnglish(s: string): string {
 const SUBSCRIPTS: Record<string, string> = { "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4", "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9" };
 const SUPERSCRIPTS: Record<string, string> = { "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9" };
 
-const SYMBOLS_ZH: Array<[RegExp, string]> = [
+const DIGIT_EN = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+
+/**
+ * μ in Chinese narration, the way the lecturer says it: μ → Mu, μ₀ → Mu0, μ₁ → Mu one (μ₂ → Mu two …),
+ * μ_diff → Mu diff. Subscript digits are already plain digits here (normaliseScripts).
+ */
+const MU_ZH: Array<[RegExp, string | ((m: string, d: string) => string)]> = [
+  // Spaces only where a word touches it, so 「，μ₁」 does not become 「， Mu one」.
+  [/(?<=[\p{L}\p{N}])(?=[μµ])/gu, " "],
+  [/[μµ]\s*_?\s*0(?!\d)/g, "Mu0"],
+  [/[μµ]\s*_?\s*([1-9])(?!\d)(?=[\p{L}\p{N}])/gu, (_m, d) => `Mu ${DIGIT_EN[Number(d)]} `],
+  [/[μµ]\s*_?\s*([1-9])(?!\d)/g, (_m, d) => `Mu ${DIGIT_EN[Number(d)]}`],
+  [/[μµ]\s*_\s*/g, "Mu "],
+  [/[μµ](?=[\p{L}\p{N}])/gu, "Mu "],
+  [/[μµ]/g, "Mu"],
+];
+
+/**
+ * Reading of a glossary term that is μ with a subscript (μ₀, μ1, μ_diff …), or undefined when it is not
+ * one. Bare μ gets no reading ("") so the rules above still see μ₀, μ_diff in the narration.
+ */
+export function muReading(term: string): string | undefined {
+  const t = normaliseScripts(term.trim());
+  if (/^[μµ]$/.test(t)) return "";
+  if (!/^[μµ]\s*(_?\s*[\w\p{Script=Han}]*)$/u.test(t)) return undefined;
+  let out = t;
+  for (const [re, rep] of MU_ZH) out = out.replace(re, rep as never);
+  return out.replace(/\s{2,}/g, " ").trim();
+}
+
+const SYMBOLS_ZH: Array<[RegExp, string | ((m: string, d: string) => string)]> = [
   [/\s*≤\s*/g, " 小於等於 "],
   [/\s*≥\s*/g, " 大於等於 "],
   [/\s*≠\s*/g, " 不等於 "],
@@ -83,7 +113,7 @@ const SYMBOLS_ZH: Array<[RegExp, string]> = [
   [/β/g, "貝塔"],
   [/γ/g, "伽瑪"],
   [/δ|Δ/g, "德爾塔"],
-  [/μ/g, "謬"],
+  ...MU_ZH,
   [/σ/g, "西格瑪"],
   [/η²|η2/g, "eta 平方"],
   [/χ²|χ2/g, "卡方"],
@@ -157,7 +187,7 @@ export function derivePronunciationText(script: string, glossary: GlossaryEntry[
   let t = applyGlossaryReadings(script, glossary);
   t = normaliseScripts(t);
   const zh = language !== "en";
-  for (const [re, rep] of zh ? SYMBOLS_ZH : SYMBOLS_EN) t = t.replace(re, rep);
+  for (const [re, rep] of zh ? SYMBOLS_ZH : SYMBOLS_EN) t = t.replace(re, rep as never);
   t = zh ? expandNumbersZh(t) : expandNumbersEn(t);
   return t.replace(/[ \t]{2,}/g, " ").replace(/ +([，。！？、；：])/g, "$1").trim();
 }
