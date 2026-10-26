@@ -8,6 +8,7 @@ import {
   mapHeyGenCatalogVoices,
   mapHeyGenModelVoices,
   mapHeyGenTimestamps,
+  restoreOriginalText,
   parseHeyGenVoiceId,
 } from "../src/tts/heygen.js";
 
@@ -31,12 +32,14 @@ describe("heygen tts", () => {
   it("routes each voice kind to its endpoint and model", () => {
     const instant = buildHeyGenTtsRequest(req("instant:i1"));
     expect(instant.path).toBe("/v3/models/audio/tts");
-    expect(instant.body).toEqual({ model: HEYGEN_TTS_FREE_MODEL, voice_id: "i1", text: "各位同學好", language: "zh", expressiveness_boost: 0.5, with_timestamps: true });
+    expect(instant.body).toEqual({ model: HEYGEN_TTS_FREE_MODEL, voice_id: "i1", text: "各位同学好", language: "zh", expressiveness_boost: 0.5, with_timestamps: true });
     // Turbo models refuse professional clones.
     const pro = buildHeyGenTtsRequest(req("pro:p1", { speed: 2 }));
     expect(pro.body).toMatchObject({ model: "heygen-voice-1", voice_id: "p1", speed: 1.25 });
     const catalog = buildHeyGenTtsRequest(req("catalog:c1", { language: "mixed" }));
-    expect(catalog).toEqual({ path: "/v3/voices/speech", body: { text: "各位同學好", voice_id: "c1", speed: 1.2 } });
+    expect(catalog).toEqual({ path: "/v3/voices/speech", body: { text: "各位同学好", voice_id: "c1", speed: 1.2 } });
+    // English is sent as written.
+    expect(buildHeyGenTtsRequest(req("instant:i1", { text: "Hello 學生", language: "en" })).body).toMatchObject({ text: "Hello 學生" });
     expect(parseHeyGenVoiceId("bare")).toEqual({ kind: "catalog", voiceId: "bare" });
   });
 
@@ -58,6 +61,13 @@ describe("heygen tts", () => {
       { text: "學", startSec: 1.2, endSec: 1.4 },
       { text: "OK", startSec: 1.4, endSec: 1.6 },
     ]);
+  });
+
+  it("speaks simplified text but keeps the caller's characters in the timings", () => {
+    const spoken = mapHeyGenTimestamps({ data: { original_characters: [..."两组，ok"].map((c, i) => ({ text: c, start_time: i, end_time: i + 1 })) } });
+    expect(restoreOriginalText(spoken, "兩組，ok")!.map((t) => t.text)).toEqual(["兩", "組", "ok"]);
+    // A length mismatch keeps the spoken text rather than mislabelling timings.
+    expect(restoreOriginalText(spoken, "兩組")!.map((t) => t.text)).toEqual(["两", "组", "ok"]);
   });
 
   it("synthesizes, downloads the audio and keeps the key in the header", async () => {

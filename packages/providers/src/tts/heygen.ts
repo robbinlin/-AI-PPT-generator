@@ -12,7 +12,15 @@ import type {
 } from "@lvs/shared";
 import { fetchJson, fetchWithRetry, type FetchOptions } from "../http.js";
 import { HEYGEN_BASE_URL } from "../avatar/heygen.js";
+import { Converter } from "opencc-js";
 import { groupCharacterAlignment, timingUnits } from "./timing.js";
+
+/**
+ * HeyGen reads traditional Chinese badly (新生兒 → 新生以, 連續 → 連數, 兩組 → 兩種, measured on the
+ * free model) and simplified text cleanly, so Chinese is sent simplified. Character variants only
+ * ("tw" → "cn", no vocabulary swaps), so the text keeps its length and the timings map back.
+ */
+const toSimplified = Converter({ from: "tw", to: "cn" });
 
 /**
  * HeyGen speech with the same key as the HeyGen presenter. Two kinds of voice, two endpoints:
@@ -132,10 +140,11 @@ export function buildHeyGenTtsRequest(
 ): { path: string; body: HeyGenModelTtsBody | HeyGenCatalogSpeechBody } {
   const { kind, voiceId } = parseHeyGenVoiceId(req.voiceId);
   const language = LANG[req.language];
+  const text = req.language === "en" ? req.text : toSimplified(req.text);
   if (kind === "catalog") {
     return {
       path: "/v3/voices/speech",
-      body: { text: req.text, voice_id: voiceId, speed: clamp(req.speed ?? 1, 0.5, 2), ...(language ? { language } : {}) },
+      body: { text, voice_id: voiceId, speed: clamp(req.speed ?? 1, 0.5, 2), ...(language ? { language } : {}) },
     };
   }
   return {
@@ -144,7 +153,7 @@ export function buildHeyGenTtsRequest(
       // Turbo models refuse professional clones; those need the full model (paid).
       model: kind === "pro" ? "heygen-voice-1" : model,
       voice_id: voiceId,
-      text: req.text,
+      text,
       ...(language ? { language } : {}),
       // HeyGen Studio's setting for the closest match to the speaker (the API default 1.0 drifts).
       ...(kind === "instant" ? { expressiveness_boost: 0.5 } : { speed: clamp(req.speed ?? 1, 0.75, 1.25) }),
@@ -185,6 +194,13 @@ export function mapHeyGenTimestamps(res: HeyGenSpeechResponse): WordTimestamp[] 
     return out;
   }
   return undefined;
+}
+
+/** Timings come back in the simplified text that was spoken; give them the caller's characters again. */
+export function restoreOriginalText(ts: WordTimestamp[] | undefined, original: string): WordTimestamp[] | undefined {
+  if (!ts) return ts;
+  const units = timingUnits(original);
+  return units.length === ts.length ? ts.map((t, i) => ({ ...t, text: units[i]!.text })) : ts;
 }
 
 /** HeyGen names every clone after its owner (and older ones carry no engine), so same names get 1, 2, … */
@@ -325,7 +341,7 @@ export class HeyGenTtsProvider implements TtsProvider {
     if (!url) throw new Error("heygen: speech response had no audio_url");
     const file = await fetchWithRetry(url, { ...this.fetchOpts, timeoutMs: this.fetchOpts.timeoutMs ?? 120_000 });
     const audio = new Uint8Array(await file.arrayBuffer());
-    const timestamps = mapHeyGenTimestamps(res);
+    const timestamps = restoreOriginalText(mapHeyGenTimestamps(res), req.text);
     const durationSec = Math.round((res.data?.duration ?? timestamps?.at(-1)?.endSec ?? 0) * 1000) / 1000;
     return {
       data: { audio, mimeType: mimeOf(url, file.headers.get("content-type")), durationSec, ...(timestamps?.length ? { timestamps } : {}) },

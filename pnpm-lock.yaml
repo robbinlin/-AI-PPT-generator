@@ -185,6 +185,9 @@ importers:
       '@lvs/shared':
         specifier: workspace:*
         version: link:../shared
+      opencc-js:
+        specifier: 1.4.2
+        version: 1.4.2
       zod:
         specifier: ^3.25.76
         version: 3.25.76
@@ -1879,6 +1882,9 @@ packages:
   on-exit-leak-free@2.1.2:
     resolution: {integrity: sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA==}
     engines: {node: '>=14.0.0'}
+
+  opencc-js@1.4.2:
+    resolution: {integrity: sha512-EdcspgdROiCCZDM+jZR6Pa670xW+EW2QhctPBQ8gRjg6lrx4IHEl+2s+kt5izk/TkxVRgdWuFgaGkaEdIUfdaw==}
 
   p-retry@4.6.2:
     resolution: {integrity: sha512-312Id396EbJdvRONlngUx0NydfrIQ5lsYu0znKVUzVvArzEIt08V1qhtyESbGVd1FGX7UKtiFp5uwKZdM8wIuQ==}
@@ -3740,6 +3746,8 @@ snapshots:
   node-releases@2.0.59: {}
 
   on-exit-leak-free@2.1.2: {}
+
+  opencc-js@1.4.2: {}
 
   p-retry@4.6.2:
     dependencies:
