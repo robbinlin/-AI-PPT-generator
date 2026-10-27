@@ -93,6 +93,15 @@ const MU_ZH: Array<[RegExp, string | ((m: string, d: string) => string)]> = [
 const NAMES_ZH: Array<[RegExp, string]> = [[/\bLevene(?=['’]s\b|\b)/g, "Leveen"]];
 
 /**
+ * Said the lecturer's way in both languages (checked with the HeyGen clone on 2026-10-27):
+ * Ha is the letters H, A (not "ha"/「它」), chi-square is /kaɪ/ (written "chi", it came out "chee").
+ */
+const SPELLINGS: Array<[RegExp, string]> = [
+  [/\bH_?a\b/g, "H A"],
+  [/\bchi(?=[- ]?squared?\b)/gi, "kai"],
+];
+
+/**
  * Reading of a glossary term that is μ with a subscript (μ₀, μ1, μ_diff …), or undefined when it is not
  * one. Bare μ gets no reading ("") so the rules above still see μ₀, μ_diff in the narration.
  */
@@ -123,6 +132,7 @@ const SYMBOLS_ZH: Array<[RegExp, string | ((m: string, d: string) => string)]> =
   [/δ|Δ/g, "德爾塔"],
   ...MU_ZH,
   ...NAMES_ZH,
+  ...SPELLINGS,
   [/σ/g, "西格瑪"],
   [/η²|η2/g, "eta 平方"],
   [/χ²|χ2/g, "卡方"],
@@ -150,7 +160,9 @@ const SYMBOLS_EN: Array<[RegExp, string]> = [
   [/μ/g, "mu"],
   [/σ/g, "sigma"],
   [/η²|η2/g, "eta squared"],
-  [/χ²|χ2/g, "chi squared"],
+  [/χ²|χ2/g, "kai-square"],
+  [/χ/g, "kai"],
+  ...SPELLINGS,
   [/°C/g, " degrees Celsius"],
   [/°/g, " degrees"],
   [/%/g, " percent"],

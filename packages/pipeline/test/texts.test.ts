@@ -95,6 +95,12 @@ describe("derivePronunciationText (en)", () => {
       "p less than zero point 0 5 and 25 percent of V O two max",
     );
   });
+  it("says chi-square /kaɪ/ and Ha as the letters H A", () => {
+    expect(derivePronunciationText("The Chi-Square test and chi squared statistic, χ² with H0 against Ha.", [], "en")).toBe(
+      "The kai-Square test and kai squared statistic, kai-square with H0 against H A.",
+    );
+    expect(derivePronunciationText("對立假設Ha為有關，H_a 也是；Hawaii 與 Hall 不動", [], "zh-TW")).toBe("對立假設H A為有關，H A 也是；Hawaii 與 Hall 不動");
+  });
 });
 
 describe("deriveSubtitleText", () => {
