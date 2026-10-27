@@ -201,6 +201,30 @@ export function derivePronunciationText(script: string, glossary: GlossaryEntry[
   return t.replace(/[ \t]{2,}/g, " ").replace(/ +([，。！？、；：])/g, "$1").trim();
 }
 
+const LATEX_SYMBOLS: Record<string, string> = {
+  times: "×", cdot: "·", div: "÷", le: "≤", leq: "≤", ge: "≥", geq: "≥", ne: "≠", neq: "≠", approx: "≈", pm: "±",
+  alpha: "α", beta: "β", gamma: "γ", delta: "δ", Delta: "Δ", mu: "μ", sigma: "σ", chi: "χ", eta: "η", rho: "ρ", infty: "∞", sum: "Σ",
+};
+
+/**
+ * Models sometimes write formulas as LaTeX ($R \times C$, $N_{ij}$), which a subtitle would show
+ * verbatim. Math between $…$ becomes plain text (R × C, Nij); text outside $…$ is left alone.
+ */
+export function delatex(text: string): string {
+  if (!text.includes("$")) return text;
+  return text.replace(/\$\$?([^$]+?)\$\$?/g, (_m, math: string) =>
+    math
+      .replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, "$1/$2")
+      .replace(/\\([A-Za-z]+)/g, (_c, name: string) => LATEX_SYMBOLS[name] ?? "")
+      .replace(/\^\{?2\}?/g, "²")
+      .replace(/[_^]\{([^{}]*)\}/g, "$1")
+      .replace(/[_^]([A-Za-z0-9])/g, "$1")
+      .replace(/[{}\\]/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trim(),
+  );
+}
+
 /** On-screen text keeps formal spelling; only whitespace is normalised. */
 export function deriveSubtitleText(script: string): string {
   return script

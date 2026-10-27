@@ -3,6 +3,7 @@ import {
   applyGlossaryReadings,
   isTranslationNotReading,
   decimalToChinese,
+  delatex,
   derivePronunciationText,
   deriveSubtitleText,
   estimateSpeakingSeconds,
@@ -77,6 +78,14 @@ describe("derivePronunciationText (zh-TW)", () => {
   });
   it("leaves author names to the glossary", () => {
     expect(derivePronunciationText("Smith 等人提出", glossary, "zh-TW")).toBe("史密斯 等人提出");
+  });
+});
+
+describe("delatex", () => {
+  it("turns $…$ math into plain text and leaves the rest alone", () => {
+    expect(delatex("我們來看 $R \\times C$ 列聯表，令 $N_{ij}$ 為第 $i$ 列，$R_1$ 到 $R_r$")).toBe("我們來看 R × C 列聯表，令 Nij 為第 i 列，R1 到 Rr");
+    expect(delatex("$\\chi^2 \\geq \\frac{a}{b}$，μ_diff 不動")).toBe("χ² ≥ a/b，μ_diff 不動");
+    expect(delatex("沒有公式")).toBe("沒有公式");
   });
 });
 

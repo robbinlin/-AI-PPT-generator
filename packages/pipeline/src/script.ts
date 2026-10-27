@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { LlmAttachment, LlmProvider, ProjectSettings, UsageDelta, GlossaryEntry } from "@lvs/shared";
 import type { OutlineDraft } from "./outline.js";
 import { describeAudience, describeLanguage, describeMode, isZh, renderGlossary, renderSlideContent, slideBrief, type PipelineSlide } from "./prompts.js";
-import { derivePronunciationText, deriveSubtitleText, estimateSpeakingSeconds, targetLength } from "./texts.js";
+import { delatex, derivePronunciationText, deriveSubtitleText, estimateSpeakingSeconds, targetLength } from "./texts.js";
 
 export const ScriptLlmOutput = z.object({
   script: z.string(),
@@ -70,6 +70,8 @@ Language: ${describeLanguage(settings)}.`;
         "術語表中的術語若已在前面頁面定義過，不要重新定義，直接使用。",
         // Seen on 2026-10-26: the slide said 連續變項／類別變項 and the script said 連續變異數／類別變異數.
         "投影片上的專有名詞照投影片的寫法說，不可換成意思不同的近似詞。特別注意：變項（variable，例如連續變項、類別變項）與變異數（variance）是不同概念，不可混用。",
+        // Seen on 2026-10-27: 「$R \times C$」「$N_{ij}$」 in a script, shown verbatim in the subtitles.
+        "公式不要用 LaTeX 或 $ 符號，直接用一般文字與符號寫（例如 R × C、Nij、χ²）。",
         settings.contentBoundary === "source_only"
           ? "只能講投影片與備忘稿有的內容；不可補充未出現的數據、文獻、年份或作者。"
           : "可以補充投影片以外的背景或例子，但補充的句子必須以「補充：」開頭。",
@@ -168,10 +170,10 @@ export function finalizeScriptTexts(
   input: Pick<GenerateSceneScriptInput, "outline" | "settings">,
 ): Omit<GenerateSceneScriptResult, "usage"> {
   const glossary = input.outline.glossary;
-  const script = restoreTermSpellings(raw.script.replace(/\r\n?/g, "\n").trim(), glossary);
+  const script = restoreTermSpellings(delatex(raw.script.replace(/\r\n?/g, "\n").trim()), glossary);
   if (!script) throw new Error("model returned an empty script");
   const lang = input.settings.language;
-  const pronunciationText = derivePronunciationText(raw.pronunciationText.trim() || script, glossary, lang);
+  const pronunciationText = derivePronunciationText(delatex(raw.pronunciationText.trim()) || script, glossary, lang);
   // Subtitles must match what is spoken; models tend to condense their own subtitleText, so
   // derive it from the script and ignore raw.subtitleText.
   const subtitleText = deriveSubtitleText(script);

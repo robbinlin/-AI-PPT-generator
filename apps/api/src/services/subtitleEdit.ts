@@ -21,7 +21,8 @@ export async function retextSubtitleOnly(
   revision: ScriptRevision,
   glossary: GlossaryEntry[] | undefined,
 ): Promise<boolean> {
-  if (!previous || previous.script !== revision.script || previous.pronunciationText !== revision.pronunciationText) return false;
+  // What is spoken decides: a script tidied without changing the narration text keeps its speech too.
+  if (!previous || previous.pronunciationText !== revision.pronunciationText) return false;
   if (previous.subtitleText === revision.subtitleText) return false;
   const cues = before.subtitle.cues ?? [];
   const settings = project.settings;
