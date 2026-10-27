@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MockLlmProvider } from "@lvs/providers";
-import { buildTranslatePrompt, TRANSLATION_PROMPT_HEADING, translateSceneScript } from "../src/translate.js";
+import { buildTranslatePrompt, inTargetLanguage, TRANSLATION_PROMPT_HEADING, translateSceneScript } from "../src/translate.js";
 
 describe("translateSceneScript", () => {
   it("builds a prompt with the page, its neighbours as context only, and the glossary", () => {
@@ -36,5 +36,17 @@ describe("translateSceneScript", () => {
   it("rejects an empty translation", async () => {
     const llm = new MockLlmProvider(() => ({ script: "   " }));
     await expect(translateSceneScript({ llm, script: "x", from: "zh-TW", to: "en", pageNumber: 1, pageCount: 1 })).rejects.toThrow(/empty/);
+  });
+
+  it("asks again when the model echoes the source, and fails if it keeps doing so", async () => {
+    let calls = 0;
+    const llm = new MockLlmProvider(() => ({ script: ++calls === 1 ? "接著來看獨立性檢定的判斷標準，若 p 值小於 α 則拒絕。" : "Next, the decision rule of the test of independence." }));
+    const out = await translateSceneScript({ llm, script: "接著來看獨立性檢定的判斷標準。", from: "zh-TW", to: "en", pageNumber: 9, pageCount: 18 });
+    expect(calls).toBe(2);
+    expect(out.script).toBe("Next, the decision rule of the test of independence.");
+    const stuck = new MockLlmProvider(() => ({ script: "接著來看獨立性檢定的判斷標準。" }));
+    await expect(translateSceneScript({ llm: stuck, script: "接著來看。", from: "zh-TW", to: "en", pageNumber: 1, pageCount: 1 })).rejects.toThrow(/untranslated/);
+    expect(inTargetLanguage("虛無假設 H0 為 PPHN 新生兒死亡與懷孕周數無關", "en")).toBe(false);
+    expect(inTargetLanguage("PPHN means 新生兒持續性肺動脈高壓 in Chinese, and we test H0 against Ha today.", "en")).toBe(true);
   });
 });

@@ -63,16 +63,36 @@ export function buildTranslatePrompt(input: Omit<TranslateSceneScriptInput, "llm
  */
 export async function translateSceneScript(input: TranslateSceneScriptInput): Promise<TranslateSceneScriptResult> {
   const { system, prompt } = buildTranslatePrompt(input);
-  // The fast model, like script writing: the default (thinking) model took ~2 min a page.
-  const res = await input.llm.generateJson({ system, prompt, schema: TranslationLlmOutput, temperature: 0.2, reasoning: "none" });
-  const script = res.data.script.replace(/\r\n?/g, "\n").trim();
+  const usage: UsageDelta[] = [];
+  const ask = async (sys: string) => {
+    // The fast model, like script writing: the default (thinking) model took ~2 min a page.
+    const res = await input.llm.generateJson({ system: sys, prompt, schema: TranslationLlmOutput, temperature: 0.2, reasoning: "none" });
+    usage.push(...res.usage);
+    return res.data.script.replace(/\r\n?/g, "\n").trim();
+  };
+  let script = await ask(system);
+  // Seen on 2026-10-27: 2 of 18 chapter-6 pages came back as the Chinese source, unchanged.
+  if (script && !inTargetLanguage(script, input.to)) {
+    const target = describeLanguage({ language: input.to } as ProjectSettings);
+    script = await ask(`${system}\nYour previous answer repeated the source text. Write the whole narration in ${target}.`);
+  }
   if (!script) throw new Error("model returned an empty translation");
+  if (!inTargetLanguage(script, input.to)) throw new Error("model returned the narration untranslated");
   return {
     script,
     // Source-language glossary readings must not leak into the target speech.
     pronunciationText: derivePronunciationText(script, [], input.to),
     subtitleText: deriveSubtitleText(script),
     estimatedDurationSec: Math.round(estimateSpeakingSeconds(script, input.to) * 10) / 10,
-    usage: res.usage,
+    usage,
   };
+}
+
+/** Rough script check: English narration is mostly free of Chinese characters, Chinese narration has them. */
+export function inTargetLanguage(text: string, to: Language): boolean {
+  const letters = text.replace(/[\s\p{P}\p{S}\d]/gu, "");
+  if (!letters) return true;
+  const han = (letters.match(/\p{Script=Han}/gu) ?? []).length / letters.length;
+  // An echoed source is ~90% Han; an English line may still quote a Chinese term or two.
+  return to === "en" ? han < 0.5 : han > 0.3;
 }
