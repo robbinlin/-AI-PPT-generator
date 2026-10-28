@@ -272,6 +272,21 @@ describe("render (real ffmpeg)", () => {
     expect(srt).toContain("00:00:06,200 --> 00:00:07,200");
   });
 
+  it("5a. cross-fades a 65-page deck through a filtergraph file", async () => {
+    const scenes = Array.from({ length: 65 }, (_, i) => ({
+      sceneId: randomUUID(),
+      imagePath: i % 2 ? slideB : slideA,
+      durationSec: 0.5,
+      transitionIn: "fade" as const,
+      transitionDurationSec: 0.1,
+    }));
+    const spec = baseSpec("t5a", scenes, { outputs: { mp4Path: path.join(dir, "t5a", "out.mp4") }, burnSubtitles: false });
+    const result = await render(spec, opts("t5a"));
+    const expected = 65 * 0.5 - 64 * 0.1;
+    expect(Math.abs(result.durationSec - expected)).toBeLessThan(0.3);
+    expect(Math.abs((await probe(result.mp4Path)).duration - expected)).toBeLessThan(0.3);
+  }, 180_000);
+
   it("6. reuses cached scene files on a second render", async () => {
     const wav = path.join(dir, "tone-1s.wav");
     await writeSineWav(wav, 1, 660);

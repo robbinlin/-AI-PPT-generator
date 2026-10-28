@@ -13,6 +13,7 @@ import {
   computeTimeline,
   ffmpegColor,
   globalCues,
+  graphGoesInFile,
   overlayPosition,
   srtTime,
   wrapText,
@@ -130,6 +131,14 @@ describe("timeline", () => {
     expect(g).toContain("[v0][v1]xfade=transition=fade:duration=0.4:offset=2.6[vx1]");
     expect(g).toContain("[a0][a1]acrossfade=d=0.4:c1=tri:c2=tri[ax1]");
     expect(g).toContain("[vx1][ax1][v2][a2]concat=n=2:v=1:a=1[vx2][ax2]");
+  });
+
+  it("moves a 65-page graph out of the command line (Windows caps it at 32,767 chars)", () => {
+    const t = computeTimeline(Array.from({ length: 65 }, () => scene({ transitionIn: "fade" })));
+    const g = buildTransitionGraph(t, 30);
+    const inputs = Array.from({ length: 65 }, (_, i) => ["-i", `C:\\Users\\user\\-AI-PPT-generator\\data\\storage\\projects\\af213d6f-9b59-4b28-98a3-28c1cdbc1dc4\\renders\\work\\scene-${i}.mp4`]).flat();
+    expect(graphGoesInFile(g, ["-y", ...inputs])).toBe(true);
+    expect(graphGoesInFile(buildTransitionGraph(computeTimeline([scene(), scene({ transitionIn: "fade" })]), 30), ["-y", "-i", "a.mp4", "-i", "b.mp4"])).toBe(false);
   });
 });
 

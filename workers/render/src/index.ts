@@ -7,7 +7,7 @@ import { renderScene, type SceneOutput } from "./scene.js";
 import { buildSrt } from "./subtitles.js";
 import { computeTimeline, globalCues } from "./timeline.js";
 
-export { assemble, buildConcatList, buildTransitionGraph } from "./assemble.js";
+export { assemble, buildConcatList, buildTransitionGraph, graphGoesInFile } from "./assemble.js";
 export { assColor, ffmpegColor, parseHexColor } from "./color.js";
 export { FfmpegError, RenderAbortedError, ffprobe, probeDuration, runFfmpeg } from "./ffmpeg.js";
 export { buildSceneArgs, chromaKeyFilter, overlayPosition, renderScene, sceneCacheKey } from "./scene.js";

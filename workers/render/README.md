@@ -83,4 +83,5 @@ binaries and `KEEP_RENDER_TEST_OUTPUT=1` to keep the temp directory for inspecti
 
 * Karaoke highlighting (`SubtitleStyle.highlightWords`, `SubtitleCue.words`) is ignored.
 * Very long decks with fades put every scene into one ffmpeg graph (fine for typical
-  lecture decks; the graph spills to `-filter_complex_script` when large).
+  lecture decks; past ~24k characters of command line the graph is read from a file with
+  `-/filter_complex`, since Windows caps a command line at 32,767 characters).

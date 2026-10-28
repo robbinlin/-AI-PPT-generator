@@ -62,6 +62,16 @@ export function buildTransitionGraph(timeline: Timeline, fps: number): string {
 }
 
 /**
+ * Windows caps a whole command line at 32,767 characters, so a 65-page deck with fades
+ * (one `-i` per scene plus the graph) fails to spawn. Long graphs go in a script file;
+ * the budget counts the other arguments and leaves room for the encode flags.
+ */
+export function graphGoesInFile(graph: string, argsSoFar: readonly string[]): boolean {
+  const used = argsSoFar.reduce((n, a) => n + a.length + 3, 0);
+  return used + graph.length > 24_000;
+}
+
+/**
  * Joins scene files into the final MP4. Hard cuts only → concat demuxer with stream copy;
  * any fade → one re-encode through an xfade/acrossfade graph.
  */
@@ -81,11 +91,11 @@ export async function assemble(input: AssembleInput): Promise<void> {
     const graph = buildTransitionGraph(timeline, input.fps);
     args = ["-y"];
     for (const file of input.sceneFiles) args.push("-i", path.resolve(file));
-    if (graph.length > 64_000) {
-      // Stay well clear of the per-argument size limit for very long decks.
+    if (graphGoesInFile(graph, args)) {
       const scriptPath = path.join(input.workDir, "assemble.filtergraph");
       await writeFile(scriptPath, graph, "utf8");
-      args.push("-filter_complex_script", scriptPath);
+      // `-/option file` reads the value from a file (ffmpeg 7+); -filter_complex_script is gone in 9.
+      args.push("-/filter_complex", scriptPath);
     } else {
       args.push("-filter_complex", graph);
     }
