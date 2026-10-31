@@ -71,6 +71,12 @@ export function graphGoesInFile(graph: string, argsSoFar: readonly string[]): bo
   return used + graph.length > 24_000;
 }
 
+/** A scene file relative to `workDir` when it lies inside it, else absolute. */
+export function inputPath(file: string, workDir: string): string {
+  const rel = path.relative(path.resolve(workDir), path.resolve(file));
+  return rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? rel : path.resolve(file);
+}
+
 /**
  * Joins scene files into the final MP4. Hard cuts only → concat demuxer with stream copy;
  * any fade → one re-encode through an xfade/acrossfade graph.
@@ -90,7 +96,9 @@ export async function assemble(input: AssembleInput): Promise<void> {
   } else {
     const graph = buildTransitionGraph(timeline, input.fps);
     args = ["-y"];
-    for (const file of input.sceneFiles) args.push("-i", path.resolve(file));
+    // ffmpeg runs in workDir, so scene files under it go in as short relative paths: a
+    // 189-page deck of absolute paths alone would nearly fill a Windows command line.
+    for (const file of input.sceneFiles) args.push("-i", inputPath(file, input.workDir));
     if (graphGoesInFile(graph, args)) {
       const scriptPath = path.join(input.workDir, "assemble.filtergraph");
       await writeFile(scriptPath, graph, "utf8");
@@ -120,6 +128,7 @@ export async function assemble(input: AssembleInput): Promise<void> {
     await runFfmpeg({
       bin,
       args,
+      cwd: path.resolve(input.workDir),
       signal: input.signal,
       durationSec: timeline.totalSec,
       onProgress: input.onProgress,
