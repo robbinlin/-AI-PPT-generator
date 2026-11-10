@@ -12,6 +12,7 @@
     "lint": "pnpm -r lint",
     "test": "pnpm build:libs && pnpm -r test",
     "dev": "node scripts/dev-all.mjs",
+    "dev:windows": "node scripts/dev-all.mjs --windows",
     "dev:api": "pnpm build:libs && pnpm --filter @lvs/api dev",
     "serve:api": "pnpm build:libs && pnpm --filter @lvs/api serve",
     "dev:web": "pnpm --filter @lvs/shared build && pnpm --filter @lvs/web dev",
