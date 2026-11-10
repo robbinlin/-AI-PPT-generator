@@ -262,8 +262,12 @@ function AvatarOverlay({
       {status !== "ready" && (
         <span
           data-testid="avatar-status-badge"
-          // Top edge of the avatar: the bottom is where subtitles usually sit.
-          className="pointer-events-none absolute inset-x-0 top-1 z-10 mx-auto w-fit max-w-full rounded on-dark bg-black/80 px-1.5 py-0.5 text-center text-xs leading-tight font-medium text-amber-200"
+          // Outside the avatar so the note never hides the face: above it (the bottom is where
+          // subtitles sit), below it when the avatar is at the top of the frame; hugging the side
+          // of the frame the avatar is on, so the wider-than-avatar note stays inside the frame.
+          className={`pointer-events-none absolute z-10 w-max max-w-[max(100%,11rem)] rounded on-dark bg-black/80 px-1.5 py-0.5 text-center text-xs leading-tight font-medium text-amber-200 ${
+            box.top < 0.14 ? "top-full mt-1" : "bottom-full mb-1"
+          } ${box.left + box.width / 2 > 0.5 ? "right-0" : "left-0"}`}
         >
           {status === "missing"
             ? t.preview.avatarMissing

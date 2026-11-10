@@ -170,7 +170,7 @@ function ProviderRow({
           <p className="mt-0.5 text-xs text-neutral-400">{fmt(t.providers.keyShared, { kinds: sharedWith.join("、") })}</p>
         )}
       </td>
-      <td className={`${cell} text-neutral-300`}>
+      <td className={`${cell} whitespace-nowrap text-neutral-300`}>
         <span className="text-neutral-400 lg:hidden">{t.providers.kindLabel}</span>
         {t.providers.kinds[provider.kind]}
       </td>

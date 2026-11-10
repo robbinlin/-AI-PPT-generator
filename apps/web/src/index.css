@@ -46,6 +46,16 @@ body {
   outline-offset: 2px;
 }
 
+/*
+ * Regions that only receive focus from script (tabindex="-1": the editor header after a page
+ * loads, dialogs) are landing spots for screen readers, not keyboard stops. Without this the
+ * rule above, being unlayered, beats Tailwind's `outline-none` and draws a stray accent line
+ * under the editor header.
+ */
+[tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
 @keyframes indeterminate {
   from {
     transform: translateX(-100%);
