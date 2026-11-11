@@ -1,4 +1,4 @@
-import type { Asset, AvatarLayout, Language, Project, Scene, Slide, Transition } from "@lvs/shared";
+import type { Asset, AvatarLayout, Language, Project, ProjectDetail, ProjectEvent, Scene, Slide, Transition } from "@lvs/shared";
 import { FADE_SEC, MUTED_SCENE_SEC } from "./timelineModel";
 
 /**
@@ -105,4 +105,17 @@ export function latestProjectAsset(
 export function isVideoCurrent(currentRenderHashes: readonly string[], video: Pick<Asset, "inputHash"> | undefined): boolean {
   if (!video) return false;
   return currentRenderHashes.length === 0 || currentRenderHashes.includes(video.inputHash ?? "");
+}
+
+/**
+ * Events after which the server's answer to "does the video still match?" may differ: anything
+ * but a job that is still running (those only report progress).
+ */
+export function changesRenderInputs(event: ProjectEvent): boolean {
+  return event.kind !== "job" || !["queued", "running"].includes(event.job.status);
+}
+
+/** Whether the project has an exported video (per-page avatar clips don't count). */
+export function hasExportedVideo(detail: Pick<ProjectDetail, "assets" | "scenes"> | null | undefined): boolean {
+  return !!detail && !!latestProjectAsset(detail.assets, detail.scenes, "video");
 }

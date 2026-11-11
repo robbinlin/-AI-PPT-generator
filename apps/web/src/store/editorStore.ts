@@ -66,6 +66,8 @@ export interface EditorState {
   markSaveError(sceneId: string, message: string): void;
 
   setProject(project: Project): void;
+  /** Which render inputs are current; changes whenever a script, voice, avatar or setting does. */
+  setRenderHashes(hashes: string[]): void;
   setSourceDocument(source: SourceDocument): void;
   upsertSlide(slide: Slide): void;
   upsertScene(scene: Scene): void;
@@ -310,6 +312,12 @@ export function createEditorStore(): StoreApi<EditorState> {
 
       setProject(project) {
         updateDetail((d) => ({ ...d, project }));
+      },
+
+      setRenderHashes(hashes) {
+        updateDetail((d) =>
+          d.currentRenderHashes.length === hashes.length && d.currentRenderHashes.every((h, i) => h === hashes[i]) ? d : { ...d, currentRenderHashes: hashes },
+        );
       },
 
       setSourceDocument(sourceDocument) {

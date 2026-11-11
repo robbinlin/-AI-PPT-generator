@@ -20,6 +20,7 @@ import { useScriptAutosave } from "../hooks/useScriptAutosave";
 import { fmt, t } from "../i18n";
 import { friendlyJobError } from "../lib/jobErrors";
 import { notifyIfHidden } from "../lib/notify";
+import { changesRenderInputs, hasExportedVideo } from "../lib/scenes";
 import { takePendingUpload } from "../lib/pendingUpload";
 import { confirmDiscard, hasUnsaved, setUnsaved } from "../lib/unsavedGuard";
 import { editorStore, useEditor } from "../store/editorStore";
@@ -88,12 +89,33 @@ export function EditorPage() {
         for (const e of buffer.splice(0)) editorStore.getState().applyEvent(e);
       });
 
+    // Whether the exported video still matches the project is worked out on the server, and no
+    // event carries it. Without this the step bar kept saying 「下一步：匯出影片」 after an export
+    // finished, and 「已完成」 after a script edit, until the page was reloaded.
+    let freshnessTimer: ReturnType<typeof setTimeout> | undefined;
+    let freshnessSeq = 0;
+    const refreshFreshness = () => {
+      clearTimeout(freshnessTimer);
+      freshnessTimer = setTimeout(() => {
+        const seq = ++freshnessSeq;
+        api.getProject(projectId).then(
+          (fresh) => {
+            // A newer change is already being looked up: its answer is the one that counts.
+            if (alive && seq === freshnessSeq) editorStore.getState().setRenderHashes(fresh.currentRenderHashes);
+          },
+          () => undefined,
+        );
+      }, 400);
+    };
+
     const unsubscribe = api.subscribe(projectId, (event) => {
       if (!ready) {
         buffer.push(event);
         return;
       }
       editorStore.getState().applyEvent(event);
+      // Only a project that has a video can show a wrong export state; progress ticks change nothing.
+      if (changesRenderInputs(event) && hasExportedVideo(editorStore.getState().detail)) refreshFreshness();
       // There is no SourceDocument event: after a parse finishes, take a fresh snapshot.
       // Also when it failed or was stopped: the server then shows the deck still in place.
       if (event.kind === "job" && event.job.type === "parse_document" && ["succeeded", "failed", "cancelled"].includes(event.job.status)) {
@@ -151,6 +173,7 @@ export function EditorPage() {
 
     return () => {
       alive = false;
+      clearTimeout(freshnessTimer);
       unsubscribe();
       editorStore.getState().stopPlayback();
     };

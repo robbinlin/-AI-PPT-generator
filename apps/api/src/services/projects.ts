@@ -18,6 +18,9 @@ import {
 /** Render variants the editor can produce; `currentRenderHashes` covers each of them. */
 export const RENDER_PRESETS = ["preview_540p", "hd_1080p"] as const;
 
+/** Stands in for the hashes while the project cannot be rendered; matches no video. */
+export const NARRATION_NOT_READY = "narration-not-ready";
+
 /**
  * Render input hashes the project would produce right now, computed exactly like the
  * render_video handler does (visible scenes in order, current settings).
@@ -29,6 +32,9 @@ export function currentRenderHashes(
   assets: Readonly<Record<string, { inputHash?: string } | undefined>>,
 ): string[] {
   const visible = scenesInOrder.filter((sc) => !slidesById.get(sc.slideId)?.hidden);
+  // The render refuses while a narrated page's voice is missing or out of date (a script was
+  // edited), so no video can match right now. Never empty: the editor reads [] as "current".
+  if (visible.some((sc) => !sc.muted && sc.audio.status !== "ready")) return [NARRATION_NOT_READY];
   const out: string[] = [];
   for (const preset of RENDER_PRESETS) {
     for (const burnSubtitles of [true, false]) out.push(renderInputHash({ scenesInOrder: visible, settings, preset, burnSubtitles, slidesById, assets }));

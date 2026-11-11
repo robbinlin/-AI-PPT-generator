@@ -209,6 +209,13 @@ describe("generation handlers", () => {
     const { row } = await run({ type: "render_video", preset: "preview_540p" });
     expect(row.status).toBe("failed");
     expect(row.error).toBe("第 1、3 頁的語音不是最新的，請先按上方的「補齊語音」，或在「匯出影片」裡按「產生語音並匯出」");
+    // The video made before the edit no longer counts as current either (the editor's 匯出 step
+    // and the project card read this), although nothing the render draws has changed yet.
+    const after = await detail();
+    const video = Object.values(after.assets).find((a) => a.kind === "video");
+    expect(video).toBeDefined();
+    expect(after.currentRenderHashes.length).toBeGreaterThan(0);
+    for (const a of Object.values(after.assets)) if (a.kind === "video") expect(after.currentRenderHashes).not.toContain(a.inputHash);
   });
 
   it("typing a script back to what the audio was made from makes audio, subtitles and avatar ready again", async () => {
