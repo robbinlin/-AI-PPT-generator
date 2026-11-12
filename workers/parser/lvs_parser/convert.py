@@ -127,6 +127,10 @@ def _powerpoint_export_once(src: Path, out_dir: Path, timeout: float) -> Path:
             app = win32com.client.DispatchEx("PowerPoint.Application")
             # WithWindow=False keeps the export headless; ReadOnly avoids lock files.
             pres = app.Presentations.Open(str(src.resolve()), True, False, False)
+            # The PDF export leaves hidden slides out, which would shift every later page image
+            # onto the wrong slide: show them all (in memory only; the file is opened read-only).
+            for slide in pres.Slides:
+                slide.SlideShowTransition.Hidden = 0
             pres.SaveAs(str(target.resolve()), PP_SAVE_AS_PDF)
         except BaseException as exc:  # noqa: BLE001
             error.append(exc)
