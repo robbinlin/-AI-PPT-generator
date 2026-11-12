@@ -86,8 +86,30 @@ def powerpoint_available() -> bool:
     return True
 
 
+POWERPOINT_RETRY_DELAYS = (5.0, 20.0)
+
+
 def powerpoint_convert_to_pdf(src: Path, out_dir: Path, timeout: float = 300) -> Path:
-    """Export `src` (pptx/ppt) to PDF with PowerPoint via COM. Runs in a thread to honour `timeout`."""
+    """Export `src` (pptx/ppt) to PDF with PowerPoint via COM, retrying a failed start.
+
+    PowerPoint's COM server sometimes refuses to start ("伺服器執行失敗", CO_E_SERVER_EXEC_FAILURE)
+    while a previous instance is still shutting down; a few seconds later it works. Without the
+    retry the deck silently fell back to plain text pages. A timeout is not retried.
+    """
+    import time
+
+    for delay in (*POWERPOINT_RETRY_DELAYS, None):
+        try:
+            return _powerpoint_export_once(src, out_dir, timeout)
+        except ConvertError as exc:
+            if delay is None or "timed out" in str(exc):
+                raise
+            time.sleep(delay)
+    raise AssertionError("unreachable")
+
+
+def _powerpoint_export_once(src: Path, out_dir: Path, timeout: float) -> Path:
+    """One PowerPoint export. Runs in a thread to honour `timeout`."""
     import threading
 
     out_dir.mkdir(parents=True, exist_ok=True)

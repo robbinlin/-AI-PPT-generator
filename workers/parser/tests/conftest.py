@@ -146,4 +146,6 @@ def sample_ppt(tmp_path_factory: pytest.TempPathFactory, sample_pptx: Path) -> P
 @pytest.fixture
 def no_soffice(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SOFFICE_BIN", "/nonexistent/soffice-missing")
+    # No converter at all: on a Windows machine with PowerPoint installed it would render instead.
+    monkeypatch.setenv("LVS_PPTX_CONVERTER", "soffice")
     assert shutil.which("/nonexistent/soffice-missing") is None
